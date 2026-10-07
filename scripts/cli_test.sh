@@ -11,6 +11,8 @@ cleanup()
 trap cleanup EXIT INT TERM
 
 mkdir -p "$tmp"
+export XDG_CONFIG_HOME="$tmp/config"
+unset LESSPASS_MASTER_PASSWORD
 
 fail()
 {
@@ -67,8 +69,12 @@ expect_fail "missing exclude value" 2 "requires a value" "$cli" --exclude
 expect_fail "invalid option value" 2 "Usage: pass" "$cli" --length nope site login master
 expect_fail "missing positional args" 2 "Usage: pass" "$cli" site
 expect_fail "too many positional args" 2 "too many positional arguments" "$cli" a b c d
-expect_fail "copy unavailable" 2 "--copy is not available" "$cli" --copy site login master
+expect_fail "copy without display" 2 "clipboard unavailable" env -u DISPLAY -u WAYLAND_DISPLAY "$cli" --copy site login master
 expect_fail "missing stdin master" 2 "missing master password" sh -c "\"\$1\" site login </dev/null" sh "$cli"
 expect_fail "core validation" 1 "at least one character class" "$cli" --no-lowercase --no-uppercase --no-digits --no-symbols site login master
 
 echo "all cli tests pass"
+python3 scripts/cli_profile_test.py --cli "$cli"
+env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS \
+    xvfb-run -a -e /dev/stderr env PASS_TEST_PRIVATE_DISPLAY=1 \
+    python3 scripts/cli_profile_test.py --cli "$cli" --clipboard

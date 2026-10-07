@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import hashlib
+import os
 import subprocess
 import sys
+import tempfile
 
 
 CHARACTER_SUBSETS = {
@@ -132,13 +134,17 @@ def main():
                        digits=bool(mask & 4), symbols=bool(mask & 8), exclude="0O1Il")
         cases.append((f"class mask {mask}", profile, "🐰 test master"))
 
-    for name, profile, master in cases:
-        expected = lesspass_password(profile, master)
-        actual = pass_cli(args.cli, profile, master)
-        if actual != expected:
-            print(f"FAIL {name}: got {actual!r}, want {expected!r}")
-            return 1
-        print(f"ok   {name}: {actual}")
+    with tempfile.TemporaryDirectory(prefix="pass-reference-") as config:
+        os.environ["XDG_CONFIG_HOME"] = config
+        for key in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "LESSPASS_MASTER_PASSWORD"):
+            os.environ.pop(key, None)
+        for name, profile, master in cases:
+            expected = lesspass_password(profile, master)
+            actual = pass_cli(args.cli, profile, master)
+            if actual != expected:
+                print(f"FAIL {name}: got {actual!r}, want {expected!r}")
+                return 1
+            print(f"ok   {name}")
     return 0
 
 
