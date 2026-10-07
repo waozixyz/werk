@@ -31,6 +31,10 @@ jobs:
     needs: guard-package-urls
     steps:
       - uses: actions/checkout@v4
+      - name: Install CLI test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssl xclip xvfb xauth
       - name: Install Emscripten
         run: |
           set -euo pipefail

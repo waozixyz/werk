@@ -4,6 +4,10 @@
 #import "version"
 #import "c_string"
 #import "text_buffer"
+#if !#defined(PLAN9_BUILD) {
+    #import "cli_profiles"
+    #import "cli_native"
+}
 
 libc :: #system_library "libc";
 Write :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign libc "write";
@@ -17,6 +21,7 @@ Read :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign libc "read";
 
 Usage :: #string END
 Usage: pass [OPTIONS] SITE LOGIN [MASTER_PASSWORD]
+       pass [OPTIONS] PROFILE SITE
 
 Derive a site-specific password.
 
@@ -33,7 +38,10 @@ Options:
       --no-symbols        exclude symbols
       --exclude CHARS     remove characters from all enabled classes
   -p, --prompt            read the master password from stdin
-  -c, --copy              reserved for app clipboard support
+  -P, --profile NAME      use a saved login and generation settings
+      --vault PATH        unlock an OpenSSL-encrypted master password
+      --clear-after TIME  release copied password after e.g. 90s
+  -c, --copy              copy the result to the X11 clipboard
       --no-copy           print instead of copying
   -v, --version           show version
   -h, --help              show this help
@@ -86,6 +94,8 @@ main :: (argc: s32, argv: **u8) -> s32 {
     options.lowercase = true; options.uppercase = true
     options.digits = true; options.symbols = true
     prompt: bool; copy: bool; no_copy: bool; version: bool
+    profile_name: string; vault_path: string; clear_after: string
+    explicit: u32
     positional: [3]string
     count: s32 = 0
     index: s32 = 1
@@ -94,35 +104,41 @@ main :: (argc: s32, argv: **u8) -> s32 {
         if arg == "-h" || arg == "--help" { Print(1, Usage); return 0 }
         if arg == "-v" || arg == "--version" { version = true }
         else if arg == "-L" || arg == "--length" || arg == "-C" ||
-        arg == "--counter" || arg == "--exclude" {
+        arg == "--counter" || arg == "--exclude" || arg == "-P" ||
+        arg == "--profile" || arg == "--vault" || arg == "--clear-after" {
             if index + 1 >= argc {
                 Print(2, "pass: "); Print(2, arg); Print(2, " requires a value\n")
                 Print(2, Usage); return 2
             }
             index += 1
             value := TextFromCString(argv[index])
-            if arg == "--exclude" { options.exclude = value }
+            if arg == "--exclude" { options.exclude = value; explicit |= cast(u32)64 }
+            else if arg == "-P" || arg == "--profile" { profile_name = value }
+            else if arg == "--vault" { vault_path = value }
+            else if arg == "--clear-after" { clear_after = value }
             else {
                 number := ParseNumber(value)
                 if !number.valid { Print(2, Usage); return 2 }
                 if arg == "-L" || arg == "--length" {
                     if number.value > 2147483647 || number.value < -2147483647 { Print(2, Usage); return 2 }
                     options.length = cast(s32)number.value
+                    explicit |= cast(u32)1
                 } else {
                     if number.value < 0 { number.value = 0 }
                     options.counter = cast(u64)number.value
+                    explicit |= cast(u32)2
                 }
             }
         } else {
             handled: bool = true
-            if arg == "-l" || arg == "--lowercase" { options.lowercase = true }
-            else if arg == "-u" || arg == "--uppercase" { options.uppercase = true }
-            else if arg == "-d" || arg == "--digits" { options.digits = true }
-            else if arg == "-s" || arg == "--symbols" { options.symbols = true }
-            else if arg == "--no-lowercase" { options.lowercase = false }
-            else if arg == "--no-uppercase" { options.uppercase = false }
-            else if arg == "--no-digits" { options.digits = false }
-            else if arg == "--no-symbols" { options.symbols = false }
+            if arg == "-l" || arg == "--lowercase" { options.lowercase = true; explicit |= cast(u32)4 }
+            else if arg == "-u" || arg == "--uppercase" { options.uppercase = true; explicit |= cast(u32)8 }
+            else if arg == "-d" || arg == "--digits" { options.digits = true; explicit |= cast(u32)16 }
+            else if arg == "-s" || arg == "--symbols" { options.symbols = true; explicit |= cast(u32)32 }
+            else if arg == "--no-lowercase" { options.lowercase = false; explicit |= cast(u32)4 }
+            else if arg == "--no-uppercase" { options.uppercase = false; explicit |= cast(u32)8 }
+            else if arg == "--no-digits" { options.digits = false; explicit |= cast(u32)16 }
+            else if arg == "--no-symbols" { options.symbols = false; explicit |= cast(u32)32 }
             else if arg == "-p" || arg == "--prompt" { prompt = true }
             else if arg == "-c" || arg == "--copy" { copy = true }
             else if arg == "--no-copy" { no_copy = true }
@@ -136,27 +152,79 @@ main :: (argc: s32, argv: **u8) -> s32 {
         index += 1
     }
     if version { Print(1, "pass "); Print(1, Version); Print(1, "\n"); return 0 }
-    if count < 2 { Print(2, Usage); return 2 }
-    if copy && !no_copy { return Error("--copy is not available in the CLI; use the app") }
+    site: string; login: string; clear_ms: s64
+    #if !#defined(PLAN9_BUILD) {
+        // Keep the decoded profile alive until generation has finished.
+        profile: LegacyProfile
+    }
+    if profile_name != "" {
+        if count != 1 { return Error("expected SITE with --profile") }
+    } else if count < 2 { Print(2, Usage); return 2 }
+    #if !#defined(PLAN9_BUILD) {
+        candidate := profile_name
+        if candidate == "" && count == 2 { candidate = positional[0] }
+        profile = LoadLegacyProfile(candidate, profile_name != "", *options, explicit)
+        if !profile.valid { return Error("invalid CLI profiles configuration or unknown profile") }
+        if profile.found {
+            site = ifx profile_name != "" then positional[0] else positional[1]
+            login = TextUntilNul(profile.login[:])
+            if (explicit & cast(u32)64) == cast(u32)0 { options.exclude = TextUntilNul(profile.exclude[:]) }
+        } else { site = positional[0]; login = positional[1] }
+        if !copy { copy = profile.copy }
+        clear_ms = profile.clear_ms
+        if clear_after != "" {
+            clear_ms = DurationMilliseconds(clear_after)
+            if clear_ms < 0 { return Error("invalid --clear-after duration") }
+        }
+        if vault_path == "" && !prompt && count != 3 { vault_path = TextUntilNul(profile.vault[:]) }
+    } else {
+        if profile_name != "" || vault_path != "" || clear_after != "" { return Error("profiles and vaults require the Linux CLI") }
+        if copy && !no_copy { return Error("--copy is not available on Plan 9") }
+        site = positional[0]; login = positional[1]
+    }
+    if vault_path != "" && (prompt || count == 3) { return Error("--vault cannot be combined with --prompt or MASTER_PASSWORD") }
+    if prompt && count == 3 { return Error("MASTER_PASSWORD cannot be supplied together with --prompt") }
     master: [1024]u8
+    defer { ClearBytes(master[:]) }
     if count == 3 {
         if !CopyText(positional[2], master[:]) { return Error("master password is too long") }
     } else {
-        name: [32]u8
-        CopyCString("LESSPASS_MASTER_PASSWORD", name[:])
-        environment: *u8 = GetEnv(*name[0])
-        if !prompt && environment != null {
-            if !CopyText(TextFromCString(environment), master[:]) { return Error("master password is too long") }
-        } else {
-            if !ReadMaster(master[:]) { return Error("missing master password") }
+        unlocked: bool
+        #if !#defined(PLAN9_BUILD) {
+            if vault_path != "" {
+                if !DecryptVault(vault_path, master[:]) { return Error("cannot unlock vault: wrong passphrase, unreadable or corrupted vault") }
+                unlocked = true
+            }
+        }
+        if !unlocked {
+            name: [32]u8
+            CopyCString("LESSPASS_MASTER_PASSWORD", name[:])
+            environment: *u8 = GetEnv(*name[0])
+            if !prompt && environment != null {
+                if !CopyText(TextFromCString(environment), master[:]) { return Error("master password is too long") }
+            } else {
+                #if !#defined(PLAN9_BUILD) {
+                    if !ReadSecret(master[:], "Master password: ") { return Error("missing master password") }
+                } else {
+                    if !ReadMaster(master[:]) { return Error("missing master password") }
+                }
+            }
         }
     }
-    generated := PassGenerate(positional[0], positional[1], TextUntilNul(master[:]), options)
-    for position: 0..1023 { master[position] = cast(u8)0 }
+    generated := PassGenerate(site, login, TextUntilNul(master[:]), options)
+    defer { ClearBytes(generated.password[:]) }
+    ClearBytes(master[:])
     if !generated.valid {
         Print(2, "pass: "); Print(2, generated.error); Print(2, "\n"); return 1
     }
+    #if !#defined(PLAN9_BUILD) {
+        if copy && !no_copy {
+            if !CopyPassword(TextView(generated.password[0:generated.length]), clear_ms) {
+                return Error("clipboard unavailable; install xclip or use --no-copy")
+            }
+            Print(2, "Password copied to the clipboard.\n"); return 0
+        }
+    }
     Print(1, TextView(generated.password[0:generated.length])); Print(1, "\n")
-    for position: 0..35 { generated.password[position] = cast(u8)0 }
     return 0
 }

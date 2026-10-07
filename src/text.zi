@@ -1,6 +1,11 @@
 #import "c_string"
 #import "text_buffer"
 
+ClearBytes :: (bytes: []u8) {
+    at: s32 = 0
+    while at < cast(s32)bytes.count { bytes[at] = cast(u8)0; at += 1 }
+}
+
 CopyText :: (value: string, output: []u8) -> bool {
     if output.count == 0 { return false }
     if value.count >= output.count { return false }

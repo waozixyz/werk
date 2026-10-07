@@ -34,6 +34,7 @@ make cli
 
 ```text
 pass [OPTIONS] SITE LOGIN [MASTER_PASSWORD]
+pass [OPTIONS] PROFILE SITE
 ```
 
 The default password has 16 characters and includes lowercase letters,
@@ -51,7 +52,20 @@ pass --length 24 --counter 2 example.com alice
 pass --no-symbols --exclude '0O1Il' example.com alice
 ```
 
-The CLI is stateless. The app adds clipboard clearing, profiles, settings,
+The Linux CLI also reads saved identities from
+`$XDG_CONFIG_HOME/pass/profiles.json` (or `~/.config/pass/profiles.json`).
+`pass w example.com` and `pass --profile w example.com` use the saved login
+and generation options. Existing OpenSSL-encrypted vaults are unlocked with
+a hidden `Vault passphrase:` prompt. A configured vault takes precedence over
+`LESSPASS_MASTER_PASSWORD`; `--prompt` bypasses it. Explicit flags override
+profile defaults. Profiles and vaults are read without changing them.
+
+`--copy` or a profile's `copy` setting copies through `xclip` on X11;
+`--clear-after 90s` releases that clipboard selection after the given time
+without erasing a later copy from another application. Use `--no-copy` to
+print the generated password instead.
+
+The app adds clipboard clearing, profiles, settings,
 master-password masking, and Android device authentication. Profiles and
 settings keep their existing storage formats. A master password saved by the
 old Android host must be saved again with the new host; generation does not
