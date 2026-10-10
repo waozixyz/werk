@@ -50,6 +50,21 @@ HostFingerprintPath :: () -> string {
         return TextUntilNul(fingerprint_path[:])
     }
 }
+logo_path: [2048]u8;
+#program_export
+HostLogoPath :: () -> string {
+    base := HostFingerprintPath()
+    after := base.count
+    while after > 0 && base[after - 1] != cast(u8)47 { after -= 1 }
+    CopyCString(base, logo_path[:])
+    #if #defined(PLAN9_BUILD) {
+        CopyCString("icon.bit", logo_path[after:])
+        return TextUntilNul(logo_path[:])
+    } else {
+        CopyCString("icon.png", logo_path[after:])
+        return TextUntilNul(logo_path[:])
+    }
+}
 #if !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) && !#defined(PLAN9_BUILD) {
     LinuxTheme :: #import "SystemThemeLinux";
     Desktop :: #import "Desktop";

@@ -1,39 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" shape-rendering="crispEdges">
-  <rect width="64" height="64" fill="none"/>
-
-  <rect x="10" y="8" width="44" height="48" fill="#1b3942"/>
-  <rect x="8" y="10" width="48" height="44" fill="#1b3942"/>
-  <rect x="12" y="12" width="40" height="40" fill="#8fcfc8"/>
-  <rect x="12" y="12" width="40" height="8" fill="#b9e5dc"/>
-  <rect x="12" y="44" width="40" height="8" fill="#5aa59f"/>
-  <rect x="16" y="16" width="32" height="32" fill="#6ebdb6"/>
-
-  <rect x="22" y="24" width="20" height="22" fill="#14262d"/>
-  <rect x="20" y="26" width="24" height="18" fill="#14262d"/>
-  <rect x="24" y="26" width="18" height="16" fill="#f3e7c0"/>
-  <rect x="22" y="28" width="20" height="16" fill="#d6c48d"/>
-  <rect x="24" y="28" width="16" height="12" fill="#f7edcf"/>
-  <rect x="28" y="32" width="8" height="4" fill="#17303a"/>
-  <rect x="30" y="36" width="4" height="6" fill="#17303a"/>
-
-  <rect x="24" y="16" width="16" height="4" fill="#14262d"/>
-  <rect x="22" y="20" width="4" height="8" fill="#14262d"/>
-  <rect x="38" y="20" width="4" height="8" fill="#14262d"/>
-  <rect x="26" y="18" width="12" height="4" fill="#e9f2ed"/>
-  <rect x="24" y="22" width="4" height="6" fill="#e9f2ed"/>
-  <rect x="36" y="22" width="4" height="6" fill="#b8c5bf"/>
-
-  <rect x="38" y="38" width="16" height="4" fill="#14262d"/>
-  <rect x="50" y="34" width="6" height="6" fill="#14262d"/>
-  <rect x="52" y="32" width="4" height="4" fill="#14262d"/>
-  <rect x="40" y="40" width="14" height="4" fill="#f0bd52"/>
-  <rect x="52" y="36" width="4" height="4" fill="#f0bd52"/>
-  <rect x="44" y="44" width="4" height="4" fill="#f0bd52"/>
-  <rect x="48" y="44" width="4" height="4" fill="#f0bd52"/>
-  <rect x="42" y="38" width="10" height="2" fill="#ffe28a"/>
-  <rect x="54" y="34" width="2" height="2" fill="#ffe28a"/>
-
-  <rect x="14" y="14" width="6" height="4" fill="#e4f2e9"/>
-  <rect x="14" y="46" width="10" height="2" fill="#407f7b"/>
-  <rect x="44" y="18" width="4" height="4" fill="#4a918c"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Pass — password asterisk with keyhole</title>
+  <g fill="#8254ff">
+    <rect x="218" y="48" width="76" height="130" rx="38"/>
+    <rect x="218" y="48" width="76" height="130" rx="38" transform="rotate(60 256 256)"/>
+    <rect x="218" y="48" width="76" height="130" rx="38" transform="rotate(120 256 256)"/>
+    <rect x="218" y="48" width="76" height="130" rx="38" transform="rotate(180 256 256)"/>
+    <rect x="218" y="48" width="76" height="130" rx="38" transform="rotate(240 256 256)"/>
+    <rect x="218" y="48" width="76" height="130" rx="38" transform="rotate(300 256 256)"/>
+    <path d="M256 214a32 32 0 0 0-17 59l-8 35h50l-8-35a32 32 0 0 0-17-59Z"/>
+  </g>
 </svg>

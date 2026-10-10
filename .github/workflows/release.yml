@@ -73,7 +73,7 @@ jobs:
         run: |
           name="pass-gui-linux-${{ matrix.arch }}"
           mkdir -p "build/release/$name"
-          cp build/pass-gui LICENSE README.md assets/app/fingerprint.png assets/fonts/emoji-OFL.txt "build/release/$name/"
+          cp build/pass-gui LICENSE README.md assets/app/icon.png assets/app/fingerprint.png assets/fonts/emoji-OFL.txt "build/release/$name/"
           tar -C build/release -czf "build/release/$name.tar.gz" "$name"
           make package-deb
       - name: Package AppImage

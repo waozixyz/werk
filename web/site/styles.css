@@ -67,3 +67,5 @@
   .example-fields > div { grid-template-columns: 1fr; gap: 6px; }
   .features-grid { gap: 28px 22px; }
 }
+
+.brand .pass-logo { width: 36px; height: 36px; object-fit: contain; margin-right: 8px; }

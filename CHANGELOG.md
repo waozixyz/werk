@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.10] - 2026-10-05
+
+- Introduce the purple password asterisk and keyhole logo across Pass, website icons, Android launchers, and app listings.
+
 ## [0.2.9] - 2026-09-05
 
 - Keep bottom navigation, password controls, and dialog icons readable with

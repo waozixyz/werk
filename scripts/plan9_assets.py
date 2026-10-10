@@ -17,3 +17,10 @@ for index in range(0, len(pixels), 4):
 header = f'{"r8g8b8a8":>11} {0:11} {0:11} {image.width:11} {image.height:11} '
 (target / "fingerprint.bit").write_bytes(header.encode("ascii") + data)
 print(f"Plan 9 fingerprint: {image.width}x{image.height}, alpha preserved")
+
+image = Image.open(root / "assets/app/icon.png").convert("RGBA")
+header = f"{'r8g8b8a8':>11} {0:>11} {0:>11} {image.width:>11} {image.height:>11} "
+data = bytearray()
+for red, green, blue, alpha in image.getdata():
+    data.extend((alpha, blue * alpha // 255, green * alpha // 255, red * alpha // 255))
+(target / "icon.bit").write_bytes(header.encode("ascii") + data)
