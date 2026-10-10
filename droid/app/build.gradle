@@ -42,8 +42,8 @@ android {
         applicationId 'xyz.waozi.pass'
         minSdk 21
         targetSdk 36
-        versionCode 10
-        versionName "0.2.9"
+        versionCode 11
+        versionName "0.2.10"
         // Default to the two realistic phone targets; override with
         // -Pabi=x86_64 etc. for emulator builds.
         def abis = project.findProperty('abi') ?: 'armeabi-v7a,arm64-v8a'
@@ -101,6 +101,7 @@ tasks.named('preBuild').configure { dependsOn prepareFonts }
 android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/appAssets'))
 def prepareImages = tasks.register('prepareImages', Copy) {
     from('../../assets/app/fingerprint.png')
+    from('../../assets/app/icon.png')
     into layout.buildDirectory.dir('generated/appAssets')
 }
 tasks.named('preBuild').configure { dependsOn prepareImages }

@@ -62,12 +62,12 @@ build/generated/browser/.complete: $(SOURCES) $(LIBRARY_SOURCES) ziran.toml zira
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target=c -o $(@D) src/browser.zi
 	touch $@
-build/web-app/index.js: build/generated/browser/.complete assets/app/fingerprint.png
+build/web-app/index.js: build/generated/browser/.complete assets/app/fingerprint.png assets/app/icon.png
 	mkdir -p $(@D)
 	$(WEB_CC) -O2 -Wno-parentheses-equality -I$(ZIRAN_ROOT)/include -iquote build/generated/browser build/generated/browser/*.c \
 		--js-library $(ZIRAN_ROOT)/web/ziran_web.js -sEXPORTED_RUNTIME_METHODS=FS,IDBFS -lidbfs.js \
 		-sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=16777216 -sASYNCIFY_STACK_SIZE=1048576 -sENVIRONMENT=web \
-		--embed-file $(KRYON_DIR)/assets/fonts/LiberationSans-Regular.ttf@/kryon-font.ttf --embed-file assets/app/fingerprint.png@/fingerprint.png -o $@
+		--embed-file $(KRYON_DIR)/assets/fonts/LiberationSans-Regular.ttf@/kryon-font.ttf --embed-file assets/app/fingerprint.png@/fingerprint.png --embed-file assets/app/icon.png@/icon.png -o $@
 build/web-app/index.html: build/web-app/index.js web/site/app/index.html
 	cp web/site/app/index.html $@
 build/generated/worker/.complete: src/service_worker.zi ziran.toml ziran.lock
@@ -128,6 +128,7 @@ install-gui: gui
 	cp packaging/linux/xyz.waozi.pass.desktop $(DATA_DIR)/applications/xyz.waozi.pass.desktop
 	cp assets/app/icon.png $(DATA_DIR)/icons/hicolor/512x512/apps/pass.png
 	cp assets/app/fingerprint.png $(DATA_DIR)/pass/fingerprint.png
+	cp assets/app/icon.png $(DATA_DIR)/pass/icon.png
 	cp assets/fonts/emoji-OFL.txt $(DATA_DIR)/pass/emoji-OFL.txt
 uninstall-cli:
 	rm -f $(BIN_DIR)/pass

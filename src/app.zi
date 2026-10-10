@@ -20,6 +20,7 @@ HostKeyboard :: (visible: bool) #foreign host;
 HostDark :: () -> bool #foreign host;
 HostPalette :: () -> SystemPalette #foreign host;
 HostFingerprintPath :: () -> string #foreign host;
+HostLogoPath :: () -> string #foreign host;
 HostOpenFullApp :: () #foreign host;
 
 FieldState :: struct {
@@ -424,7 +425,11 @@ Frame :: (session: Session, viewport: Rectangle) -> s32 {
         End(session)
     }
     if mini {
-        Label(session, "Pass", viewport.x + pad, viewport.y + 18.0, width - 56.0, 20)
+        logo: ImageProps
+        logo.asset_path = HostLogoPath(); logo.alt_text = "Pass"
+        logo.bounds = Rectangle.{viewport.x + pad, viewport.y + 10.0, 36.0, 36.0}
+        Image(session, logo)
+        Label(session, "Pass", viewport.x + pad + 44.0, viewport.y + 18.0, width - 100.0, 20)
         if ExpandButton(session, Rectangle.{viewport.x + viewport.width - pad - 40.0, viewport.y + 10.0, 40.0, 40.0}) { focused = 0; HostOpenFullApp() }
         Label(session, Status(), viewport.x + pad, viewport.y + viewport.height - 28.0, width, 12)
     } else {

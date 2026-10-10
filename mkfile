@@ -29,3 +29,4 @@ install:V: pass-gui pass
 	cp pass /$objtype/bin/pass
 	mkdir -p /sys/lib/pass
 	cp build/plan9/assets/fingerprint.bit /sys/lib/pass/fingerprint.bit
+	cp build/plan9/assets/icon.bit /sys/lib/pass/icon.bit
