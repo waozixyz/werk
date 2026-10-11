@@ -3,5 +3,8 @@ cmake
 pkg-config
 libsdl2-dev
 libcairo2-dev
+libfreetype6-dev
+libfontconfig1-dev
+libpango1.0-dev
 xvfb
 xauth

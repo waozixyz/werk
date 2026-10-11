@@ -6,14 +6,18 @@ work="$root/build/gui-smoke"
 mkdir -p "$work"
 mkdir -p "$work/light" "$work/dark"
 # Read only disposable fixture settings, never the user's saved app data.
-printf '1\n' > "$work/light/.kryon_pass_theme_mode.txt"
-printf '2\n' > "$work/dark/.kryon_pass_theme_mode.txt"
+printf '1' > "$work/light/.kryon_pass_theme_mode.txt"
+printf '2' > "$work/dark/.kryon_pass_theme_mode.txt"
 cd "$work/light"
-env -u DISPLAY -u WAYLAND_DISPLAY xvfb-run -a -e /dev/stderr \
+env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS xvfb-run -a -e /dev/stderr \
     env KRYON_CAPTURE_PATH="$work/pass.png" "$root/build/pass-gui"
 test -s "$work/pass.png"
 cd "$work/dark"
-env -u DISPLAY -u WAYLAND_DISPLAY xvfb-run -a -e /dev/stderr \
+env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS xvfb-run -a -e /dev/stderr \
     env KRYON_CAPTURE_PATH="$work/pass-dark.png" "$root/build/pass-gui"
 test -s "$work/pass-dark.png"
+if cmp -s "$work/pass.png" "$work/pass-dark.png"; then
+    echo 'Pass light and dark themes rendered the same frame' >&2
+    exit 1
+fi
 echo 'Ziran desktop: light and dark frames rendered on private Xvfb displays'

@@ -82,8 +82,9 @@ compiler outputs under `build/`. Shell, Python, and Gradle files orchestrate
 builds, packaging, and tests.
 
 Dependencies and the compiler are pinned in `ziran.lock`. Desktop builds need
-SDL2 and Cairo development packages; browser builds need Emscripten; Android
-builds need JDK 21 and the SDK/NDK versions in `droid/app/build.gradle`.
+SDL2, Cairo, FreeType, Fontconfig, and Pango development packages; browser builds
+need Emscripten; Android builds need JDK 21 and the SDK/NDK versions in
+`droid/app/build.gradle`.
 
 ```sh
 make test           # native core/CLI, independent reference, portable runtime
