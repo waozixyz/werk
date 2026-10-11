@@ -1,6 +1,6 @@
 // Exercise the real generated app in a private headless browser.
 import {spawn} from 'node:child_process';
-import {readFile, writeFile, mkdir, mkdtemp} from 'node:fs/promises';
+import {readFile, writeFile, mkdir, mkdtemp, rm} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {resolve, join, extname} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -30,7 +30,8 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const url=process.env.PASS_WEB_TEST_URL || `http://127.0.0.1:${server.address().port}/app/`;
-const env={...process.env};delete env.DISPLAY;delete env.WAYLAND_DISPLAY;
+const env={...process.env};
+for(const key of ['DISPLAY','WAYLAND_DISPLAY','XAUTHORITY','DBUS_SESSION_BUS_ADDRESS'])delete env[key];
 const browser=spawn(process.env.PASS_WEB_SMOKE_BROWSER||'chromium',['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--no-first-run','--remote-debugging-port=0','--user-data-dir='+profile,'--window-size=720,740','about:blank'],{env,detached:true,stdio:['ignore','ignore','pipe']});
 let socket, diagnostics='';browser.stderr.on('data',data=>diagnostics=(diagnostics+data).slice(-4000));
 try {
@@ -79,6 +80,17 @@ try {
   async function click(x,y){await command('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});await command('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});await delay(70);await command('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});await delay(120);}
   async function type(text){for(const char of text){await command('Input.dispatchKeyEvent',{type:'rawKeyDown',key:char,code:char===' '?'Space':undefined});await command('Input.dispatchKeyEvent',{type:'char',key:char,text:char,unmodifiedText:char});await command('Input.dispatchKeyEvent',{type:'keyUp',key:char});await delay(25);}await delay(200);}
   const dims=await evaluate('({width:innerWidth,height:innerHeight})');
+  async function cursor(x,y,expected){
+    await command('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+    await waitFor(`getComputedStyle(document.querySelector("canvas")).cursor===${JSON.stringify(expected)}`);
+  }
+  await cursor(400,520,'default');
+  await cursor(120,dims.height-35,'pointer');
+  await cursor(90,55,'text');
+  await cursor(dims.width-175,259,'pointer');
+  await cursor(dims.width-54,259,'pointer');
+  await cursor(dims.width-114,259,'default');
+  await cursor(dims.width-175,309,'not-allowed');
   await click(90,55);await type('example.com');
   await click(90,130);await type('alice');await click(90,205);await type('test master');
   // This expected password comes from the independent LessPass reference.
@@ -153,8 +165,9 @@ try {
     if(exceptions.length)throw Error(name+': browser exceptions '+JSON.stringify(exceptions));
     await command('Page.removeScriptToEvaluateOnNewDocument',{identifier:script.identifier});
   }
-  console.log('Ziran browser: stale-loader upgrade, cached immutable assets after replacement, rendering, input, expected password, clipboard copy/clear/preservation, profiles, offline reload and denied/missing-storage canvas rendering/generation pass');
+  console.log('Ziran browser: pointer/text/default/disabled cursors, stale-loader upgrade, cached immutable assets after replacement, rendering, input, expected password, clipboard copy/clear/preservation, profiles, offline reload and denied/missing-storage canvas rendering/generation pass');
 } finally {
   if(socket)socket.close();try{process.kill(-browser.pid,'SIGTERM');}catch{}
   await new Promise(resolve=>{if(browser.exitCode!==null||browser.signalCode!==null)resolve();else browser.once('exit',resolve);});server.close();
+  await rm(profile,{recursive:true,force:true});
 }
