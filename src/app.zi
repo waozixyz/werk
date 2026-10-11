@@ -1,13 +1,12 @@
-using UI :: #import "Widgets";
+using UI :: #import "kryon/Widgets";
 #import "runtime"
 #import "pass_core"
 #import "text"
 #import "text_buffer"
-#import "number_text"
-#import "Theme"
-#import "SystemTheme"
+#import "kryon/Theme"
+#import "kryon/SystemTheme"
 #import "theme"
-#import "ScrollDevice"
+#import "kryon/ScrollDevice"
 #import "utf8"
 #import "mini"
 Fullscreen :: #import "mingcute/mingcute_regular_fullscreen_2";
@@ -46,7 +45,6 @@ modifiers: s32;
 emoji: [32]u8;
 theme_signature: s32 = -1;
 palette: Palette;
-number_buffer: [32]u8;
 
 Label :: (session: Session, value: string, x: float32, y: float32, width: float32, font: s32) {
     props: TextProps
@@ -166,7 +164,6 @@ Integer :: (session: Session, id: s32, label: string, value: s32, low: s32, high
     props.key = cast(u64)id; props.id = id; props.label = label
     props.bounds = Rectangle.{x + width - 150.0, y, 150.0, 38.0}
     props.value = value; props.min = low; props.max = high; props.step = 1
-    props.value_text = FormatInteger(cast(s64)value, number_buffer[:])
     return Spinbox(session, props).value
 }
 
@@ -341,6 +338,7 @@ ApplyTheme :: () {
     system: SystemPalette
     system.dark = dark; system.background = palette.background; system.text = palette.text
     system.base = palette.surface; system.selected = accents[runtime.settings.theme_id]
+    system.border = palette.border
     system.selected_text = OnColor(system.selected)
     system.danger = palette.danger; system.success = palette.success; system.warning = palette.warning
     if runtime.settings.theme_source == 1 {
@@ -359,7 +357,7 @@ ApplyTheme :: () {
         system.selected = palette.accent
         system.selected_text = palette.on_accent
     }
-    InstallTheme(system, !paper && runtime.settings.theme_style == 2, paper)
+    SystemPaletteInstall(system, !paper && runtime.settings.theme_style == 2)
 }
 
 #program_export

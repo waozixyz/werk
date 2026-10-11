@@ -4,9 +4,9 @@
 #import "c_string"
 #import "byte_text_linux"
 #import "mini"
-Desktop :: #import "Desktop";
-using UI :: #import "Widgets";
-#import "Frame"
+Desktop :: #import "kryon/Desktop";
+using UI :: #import "kryon/Widgets";
+#import "kryon/Frame"
 
 sdl :: #system_library "SDL2";
 SetTitle :: (window: *void, title: *u8) #foreign sdl "SDL_SetWindowTitle";
@@ -28,6 +28,7 @@ DrawDesktop :: (session: Session) -> bool {
     if BeginFrame(session, cast(u64)1, viewport) != FrameStatus.FrameOk { Report("Pass: could not begin frame\n"); return false }
     if Frame(session, viewport) != 0 { TreeCancel(session); Report("Pass: could not compose frame\n"); return false }
     if EndFrame(session) != FrameStatus.FrameOk { Report("Pass: could not paint frame\n"); return false }
+    unused Desktop.DesktopCursor(session)
     ok := Desktop.EndDesktopFrame()
     if !ok { Report("Pass: could not present frame\n") }
     return ok

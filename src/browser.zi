@@ -2,9 +2,9 @@
 #import "host"
 #import "runtime"
 #import "mini"
-Browser :: #import "Canvas";
-using UI :: #import "Widgets";
-#import "Frame"
+Browser :: #import "kryon/Canvas";
+using UI :: #import "kryon/Widgets";
+#import "kryon/Frame"
 
 #program_export
 main :: () -> s32 {
@@ -31,6 +31,7 @@ main :: () -> s32 {
         ok = BeginFrame(session, cast(u64)1, Browser.CanvasViewport()) == FrameStatus.FrameOk
         if ok { ok = Frame(session, Browser.CanvasViewport()) == 0 }
         if ok { ok = EndFrame(session) == FrameStatus.FrameOk }
+        if ok { Browser.CanvasCursor(session) }
         ok = Browser.EndCanvasFrame() && ok
     }
     Shutdown(); CloseSession(session); Browser.CloseCanvas()

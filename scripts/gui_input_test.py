@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exercise the real desktop app and clipboard on the harness's private Xvfb."""
 from pathlib import Path
+import ctypes
+import hashlib
 import os
 import subprocess
 import tempfile
@@ -18,6 +20,37 @@ environment.pop("WAYLAND_DISPLAY", None)
 environment["DISPLAY"] = private_display
 app = None
 window = None
+
+# Observe the actual OS cursor on this harness's private display.
+class CursorImage(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_short), ("y", ctypes.c_short),
+                ("width", ctypes.c_ushort), ("height", ctypes.c_ushort),
+                ("xhot", ctypes.c_ushort), ("yhot", ctypes.c_ushort),
+                ("serial", ctypes.c_ulong), ("pixels", ctypes.POINTER(ctypes.c_ulong))]
+
+xlib = ctypes.CDLL("libX11.so.6")
+xfixes = ctypes.CDLL("libXfixes.so.3")
+xlib.XOpenDisplay.argtypes = [ctypes.c_char_p]
+xlib.XOpenDisplay.restype = ctypes.c_void_p
+xlib.XCloseDisplay.argtypes = [ctypes.c_void_p]
+xlib.XFree.argtypes = [ctypes.c_void_p]
+xfixes.XFixesGetCursorImage.argtypes = [ctypes.c_void_p]
+xfixes.XFixesGetCursorImage.restype = ctypes.POINTER(CursorImage)
+cursor_display = xlib.XOpenDisplay(private_display.encode())
+assert cursor_display, "Could not open the harness's private cursor display"
+
+def cursor_at(x, y):
+    command("xdotool", "mousemove", "--window", window, str(x), str(y))
+    time.sleep(0.2)
+    captured = xfixes.XFixesGetCursorImage(cursor_display)
+    assert captured, "Could not read the private display cursor"
+    try:
+        data = captured.contents
+        pixels = bytes().join(int(data.pixels[i]).to_bytes(8, "little")
+                              for i in range(data.width * data.height))
+        return data.width, data.height, data.xhot, data.yhot, hashlib.sha256(pixels).digest()
+    finally:
+        xlib.XFree(captured)
 
 def command(*args):
     return subprocess.check_output(args, env=environment, text=True, timeout=10)
@@ -61,6 +94,18 @@ def type_text(value):
 
 try:
     start()
+    arrow = cursor_at(400, 520)
+    hand = cursor_at(170, 565)
+    text_cursor = cursor_at(90, 55)
+    assert hand != arrow and text_cursor not in (arrow, hand), "Buttons and fields did not select hand/text cursors"
+    assert cursor_at(785, 259) == hand, "Length decrement did not use the standard button cursor"
+    assert cursor_at(908, 259) == hand, "Length increment did not use the standard button cursor"
+    assert cursor_at(847, 259) == arrow, "Numeric display incorrectly advertised text editing"
+    assert cursor_at(785, 309) not in (arrow, hand, text_cursor), "Counter minimum did not disable decrement"
+    assert cursor_at(400, 520) == arrow, "Cursor did not reset when leaving controls"
+    # The integrated buttons still step once and preserve generation settings.
+    click(908, 259)
+    click(785, 259)
     click(90, 55); type_text("example.com")
     click(90, 130); type_text("alice")
     click(90, 205); type_text("test master")
@@ -84,7 +129,7 @@ try:
     click(480, 565)
     click(700, 216)  # Delete a profile loaded from disk after restart.
     assert profiles.read_text() == "", "Reloaded profile could not be deleted"
-    print("Ziran desktop: typing, expected password, clipboard, profiles, restart and deletion pass")
+    print("Ziran desktop: native hand/text/default/disabled cursors, number steps, typing, expected password, clipboard, profiles, restart and deletion pass")
 except BaseException:
     if app and app.poll() is None and window:
         subprocess.run(["xwd", "-silent", "-id", window, "-out", str(output / "failure.xwd")],
@@ -93,3 +138,4 @@ except BaseException:
 finally:
     stop()
     fixture_context.cleanup()
+    xlib.XCloseDisplay(cursor_display)
