@@ -21,6 +21,7 @@ all: cli gui
 native: all
 
 build/generated/cli/.complete: $(SOURCES) ziran.toml ziran.lock
+	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --target=c --entry cli:main -o $(@D) src/cli.zi
 	touch $@
@@ -30,11 +31,12 @@ cli: build/pass
 	cp build/pass pass
 
 build/generated/desktop/.complete: $(SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
+	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --target=c --entry desktop:main -o $(@D) src/desktop.zi
 	touch $@
-build/pass-gui: build/generated/desktop/.complete
-	$(CC) $(CFLAGS) -Ibuild/generated/desktop build/generated/desktop/*.c $(shell pkg-config --libs sdl2 cairo freetype2) -lm -o $@
+build/pass-gui: build/generated/desktop/.complete Makefile
+	$(CC) $(CFLAGS) -Ibuild/generated/desktop build/generated/desktop/*.c $(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo) -lm -o $@
 gui: build/pass-gui
 run: gui
 	./build/pass-gui
@@ -59,6 +61,7 @@ gui-input-test: gui
 	sh scripts/gui_input_test.sh
 
 build/generated/browser/.complete: $(SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
+	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target=c -o $(@D) src/browser.zi
 	touch $@
@@ -71,6 +74,7 @@ build/web-app/index.js: build/generated/browser/.complete assets/app/fingerprint
 build/web-app/index.html: build/web-app/index.js web/site/app/index.html
 	cp web/site/app/index.html $@
 build/generated/worker/.complete: src/service_worker.zi ziran.toml ziran.lock
+	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --target=c -o $(@D) src/service_worker.zi
 	touch $@

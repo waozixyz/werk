@@ -10,7 +10,8 @@ assert os.environ.get("PASS_TEST_PRIVATE_DISPLAY") == "1", "Run scripts/gui_inpu
 root = Path(__file__).resolve().parents[1]
 output = root / "build/gui-input"
 output.mkdir(parents=True, exist_ok=True)
-fixture = Path(tempfile.mkdtemp(prefix="profile-", dir=output))
+fixture_context = tempfile.TemporaryDirectory(prefix="profile-", dir=output)
+fixture = Path(fixture_context.name)
 environment = dict(os.environ)
 private_display = environment.pop("DISPLAY")
 environment.pop("WAYLAND_DISPLAY", None)
@@ -23,6 +24,7 @@ def command(*args):
 
 def start():
     global app, window
+    window = None
     app = subprocess.Popen([str(root / "build/pass-gui")], cwd=fixture, env=environment)
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
@@ -84,8 +86,10 @@ try:
     assert profiles.read_text() == "", "Reloaded profile could not be deleted"
     print("Ziran desktop: typing, expected password, clipboard, profiles, restart and deletion pass")
 except BaseException:
-    subprocess.run(["xwd", "-silent", "-root", "-out", str(output / "failure.xwd")],
-                   env=environment, timeout=5, check=False)
+    if app and app.poll() is None and window:
+        subprocess.run(["xwd", "-silent", "-id", window, "-out", str(output / "failure.xwd")],
+                       env=environment, timeout=5, check=False)
     raise
 finally:
     stop()
+    fixture_context.cleanup()
