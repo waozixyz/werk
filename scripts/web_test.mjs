@@ -55,7 +55,7 @@ try {
       return draw.apply(this,args);
     };
   `});
-  const painted='(()=>{const c=document.querySelector("canvas");if(!c)return false;const p=c.getContext("2d").getImageData(50,innerHeight-35,1,1).data;return p[3]===255&&p[1]<130&&window.__passDrawCount>0})()';
+  const painted='(()=>{const c=document.querySelector("canvas");if(!c)return false;const w=Math.min(innerWidth-36,480),x=Math.round((innerWidth-w)/2+20);const p=c.getContext("2d").getImageData(x,innerHeight-35,1,1).data;return p[3]===255&&p[1]<130&&window.__passDrawCount>0})()';
   await command('Browser.grantPermissions',{origin:new URL(url).origin,permissions:['clipboardReadWrite','clipboardSanitizedWrite']});
   if(!process.env.PASS_WEB_TEST_URL) {
     // Seed the four-hour HTTP cache and the previous worker cache in the same
@@ -80,35 +80,40 @@ try {
   async function click(x,y){await command('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});await command('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});await delay(70);await command('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});await delay(120);}
   async function type(text){for(const char of text){await command('Input.dispatchKeyEvent',{type:'rawKeyDown',key:char,code:char===' '?'Space':undefined});await command('Input.dispatchKeyEvent',{type:'char',key:char,text:char,unmodifiedText:char});await command('Input.dispatchKeyEvent',{type:'keyUp',key:char});await delay(25);}await delay(200);}
   const dims=await evaluate('({width:innerWidth,height:innerHeight})');
+  const panel=Math.min(dims.width-36,480),left=(dims.width-panel)/2,right=left+panel-20;
+  const fieldX=left+72,actionX=left+102;
   async function cursor(x,y,expected){
     await command('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
     await waitFor(`getComputedStyle(document.querySelector("canvas")).cursor===${JSON.stringify(expected)}`);
   }
-  await cursor(400,520,'default');
-  await cursor(120,dims.height-35,'pointer');
-  await cursor(90,55,'text');
-  await cursor(dims.width-175,259,'pointer');
-  await cursor(dims.width-54,259,'pointer');
-  await cursor(dims.width-114,259,'default');
-  await cursor(dims.width-175,309,'not-allowed');
-  await click(90,55);await type('example.com');
-  await click(90,130);await type('alice');await click(90,205);await type('test master');
+  await cursor(left-20,55,'default');
+  await cursor(left+panel/6,dims.height-35,'pointer');
+  await cursor(fieldX,55,'text');
+  await cursor(right+20,55,'default');
+  await cursor(right-137,259,'pointer');
+  await cursor(right-14,259,'pointer');
+  await cursor(right-75,259,'default');
+  await cursor(right-137,309,'not-allowed');
+  const wideShot=await command('Page.captureScreenshot',{format:'png'});
+  await writeFile(join(output,'pass-wide.png'),Buffer.from(wideShot.data,'base64'));
+  await click(fieldX,55);await type('example.com');
+  await click(fieldX,130);await type('alice');await click(fieldX,205);await type('test master');
   // This expected password comes from the independent LessPass reference.
   const expected='dEeEDu7/b27L#r<&';
-  const offset=Math.max(0,800-(dims.height-110));
-  await command('Input.dispatchMouseEvent',{type:'mouseWheel',x:120,y:300,deltaX:0,deltaY:10000});await delay(250);
-  await click(120,535-offset);await delay(500);
+  const offset=Math.max(0,682-(dims.height-110));
+  await command('Input.dispatchMouseEvent',{type:'mouseWheel',x:actionX,y:300,deltaX:0,deltaY:10000});await delay(250);
+  await click(actionX,535-offset);await delay(500);
   // Generate scrolls to the password. Copy must reach the real clipboard.
-  await click(120,690-offset);
+  await click(actionX,690-offset);
   await waitFor(`navigator.clipboard.readText().then(text=>text===${JSON.stringify(expected)})`);
   await waitFor('navigator.clipboard.readText().then(text=>text==="")');
-  await click(120,690-offset);
+  await click(actionX,690-offset);
   await waitFor(`navigator.clipboard.readText().then(text=>text===${JSON.stringify(expected)})`);
   await evaluate('navigator.clipboard.writeText("Another app test")');
   await delay(1400);
   if(await evaluate('navigator.clipboard.readText()')!=='Another app test')throw Error('Clipboard timer erased text copied elsewhere');
   await click(dims.width/2,dims.height-35); // Profiles tab
-  await click(90,55);await type('Browser test');await click(120,105);
+  await click(fieldX,55);await type('Browser test');await click(actionX,105);
   await waitFor('Module.FS.analyzePath("/pass-data/profiles.tsv").exists');
   const profiles=await evaluate('Module.FS.readFile("/pass-data/profiles.tsv",{encoding:"utf8"})');
   if(!profiles.includes('Browser test\texample.com\talice\t'))throw Error('Saved profile does not match input: '+profiles);
@@ -147,17 +152,17 @@ try {
     await evaluate('navigator.clipboard.writeText("Storage test sentinel")');
     const frames=await evaluate('window.__passDrawCount');await delay(120);
     if(await evaluate('window.__passDrawCount')<=frames)throw Error(name+': drawing stopped');
-    await click(90,mini?100:55);await type('example.com');
-    await click(90,mini?176:130);await type('alice');
-    await click(90,mini?252:205);await type('test master');
+    await click(fieldX,mini?100:55);await type('example.com');
+    await click(fieldX,mini?176:130);await type('alice');
+    await click(fieldX,mini?252:205);await type('test master');
     const h=await evaluate('innerHeight');
-    const scroll=Math.max(0,(mini?474:800)-(h-(mini?92:110)));
-    await command('Input.dispatchMouseEvent',{type:'mouseWheel',x:120,y:300,deltaX:0,deltaY:10000});await delay(250);
-    await click(120,(mini?338:535)-scroll);await delay(500);
-    await click(120,(mini?490:690)-scroll);
+    const scroll=Math.max(0,(mini?458:682)-(h-(mini?92:110)));
+    await command('Input.dispatchMouseEvent',{type:'mouseWheel',x:actionX,y:300,deltaX:0,deltaY:10000});await delay(250);
+    await click(actionX,(mini?338:535)-scroll);await delay(500);
+    await click(actionX,(mini?490:690)-scroll);
     await waitFor(`navigator.clipboard.readText().then(text=>text===${JSON.stringify(expected)})`);
     if(!mini){
-      await click(dims.width/2,h-35);await click(90,55);await type('Cannot persist');await click(120,105);
+      await click(dims.width/2,h-35);await click(fieldX,55);await type('Cannot persist');await click(actionX,105);
       if(await evaluate('Module.FS.analyzePath("/pass-data/profiles.tsv").exists'))throw Error(name+': unavailable storage accepted a profile save');
     }
     const shot=await command('Page.captureScreenshot',{format:'png'});

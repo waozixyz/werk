@@ -2,9 +2,9 @@
   "format": 1,
   "packages": [
     {
-      "commit": "03bb6a120f8a0037cab1711e33b49171eb2356d0",
+      "commit": "204c57c1d5181c2c86c9c8df1333fcea1fe2aaf9",
       "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "id": "p3cb93dfba001aea6",
+      "id": "p2feb33830c5e9662",
       "name": "kryon",
       "ref": "master",
       "url": "https://github.com/kryonlabs/kryon.git"
@@ -28,7 +28,7 @@
     }
   ],
   "root": {
-    "dependencies": {"kryon": "p3cb93dfba001aea6", "mingcute": "p56788fa3dab3e73a"},
+    "dependencies": {"kryon": "p2feb33830c5e9662", "mingcute": "p56788fa3dab3e73a"},
     "name": "Pass"
   },
   "toolchain": {

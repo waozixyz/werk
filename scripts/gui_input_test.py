@@ -92,44 +92,67 @@ def type_text(value):
     command("xdotool", "type", "--window", window, "--delay", "30", value)
     time.sleep(0.2)
 
+def dimensions():
+    values = dict(line.split("=", 1) for line in command("xdotool", "getwindowgeometry", "--shell", window).splitlines())
+    return int(values["WIDTH"]), int(values["HEIGHT"])
+
+def form_bounds():
+    width, height = dimensions()
+    panel = min(width - 36, 480)
+    left = (width - panel) / 2
+    scrollbar = 10 if height - 110 < 648 else 0
+    return left, panel, left + panel - 10 - scrollbar, height
+
 try:
     start()
-    arrow = cursor_at(400, 520)
-    hand = cursor_at(170, 565)
-    text_cursor = cursor_at(90, 55)
+    assert dimensions() == (420, 760), "Pass did not open at its compact desktop size"
+    left, panel, right, height = form_bounds()
+    arrow = cursor_at(410, 520)
+    hand = cursor_at(round(left + panel / 6), height - 35)
+    text_cursor = cursor_at(round(left + 72), 55)
     assert hand != arrow and text_cursor not in (arrow, hand), "Buttons and fields did not select hand/text cursors"
-    assert cursor_at(785, 259) == hand, "Length decrement did not use the standard button cursor"
-    assert cursor_at(908, 259) == hand, "Length increment did not use the standard button cursor"
-    assert cursor_at(847, 259) == arrow, "Numeric display incorrectly advertised text editing"
-    assert cursor_at(785, 309) not in (arrow, hand, text_cursor), "Counter minimum did not disable decrement"
-    assert cursor_at(400, 520) == arrow, "Cursor did not reset when leaving controls"
+    assert cursor_at(round(right - 137), 259) == hand, "Length decrement did not use the standard button cursor"
+    assert cursor_at(round(right - 14), 259) == hand, "Length increment did not use the standard button cursor"
+    assert cursor_at(round(right - 75), 259) == arrow, "Numeric display incorrectly advertised text editing"
+    assert cursor_at(round(right - 137), 309) not in (arrow, hand, text_cursor), "Counter minimum did not disable decrement"
+    assert cursor_at(410, 520) == arrow, "Cursor did not reset when leaving controls"
+    command("xdotool", "windowsize", "--sync", window, "960", "600")
+    time.sleep(0.3)
+    assert dimensions() == (960, 600)
+    left, panel, right, height = form_bounds()
+    assert cursor_at(round(left - 20), 55) == arrow, "Wide-window inputs exceeded the centered maximum width"
+    assert cursor_at(round(left + 72), 55) == text_cursor, "Centered fields stopped accepting text after resizing"
+    assert cursor_at(round(right + 20), 55) == arrow, "Wide-window inputs exceeded their right boundary"
+    command("import", "-window", window, str(output / "pass-wide.png"))
     # The integrated buttons still step once and preserve generation settings.
-    click(908, 259)
-    click(785, 259)
-    click(90, 55); type_text("example.com")
-    click(90, 130); type_text("alice")
-    click(90, 205); type_text("test master")
-    command("xdotool", "mousemove", "--window", window, "120", "400",
+    click(round(right - 14), 259)
+    click(round(right - 137), 259)
+    click(round(left + 72), 55); type_text("example.com")
+    click(round(left + 72), 130); type_text("alice")
+    click(round(left + 72), 205); type_text("test master")
+    command("xdotool", "mousemove", "--window", window, str(round(left + 102)), "400",
             "click", "--repeat", "20", "--delay", "40", "5")
     time.sleep(0.3)
-    click(120, 225)  # Generate at the end of the scrolled form.
-    click(120, 380)  # Copy the generated password.
+    overflow = max(0, 682 - (height - 110))
+    click(round(left + 102), 535 - overflow)  # Generate after the visible fingerprint row.
+    click(round(left + 102), 690 - overflow)  # Copy the generated password.
     # Independently derived by scripts/lesspass_compat_test.py.
     expected = "dEeEDu7/b27L#r<&"
     actual = command("xclip", "-selection", "clipboard", "-out")
     assert actual == expected, f"Desktop generation/copy mismatch: {actual!r}"
     click(480, 565)
-    click(90, 55); type_text("Desktop test")
-    click(120, 105)
+    click(round(left + 72), 55); type_text("Desktop test")
+    click(round(left + 102), 105)
     saved = "Desktop test\texample.com\talice\t16\t1\t1\t1\t1\t1\t\n"
     profiles = fixture / "profiles.tsv"
     assert profiles.read_text() == saved
     assert "test master" not in profiles.read_text()
     stop(); start()
-    click(480, 565)
-    click(700, 216)  # Delete a profile loaded from disk after restart.
+    left, panel, right, height = form_bounds()
+    click(210, height - 35)
+    click(round(right - 50), 216)  # Delete a profile loaded from disk after restart.
     assert profiles.read_text() == "", "Reloaded profile could not be deleted"
-    print("Ziran desktop: native hand/text/default/disabled cursors, number steps, typing, expected password, clipboard, profiles, restart and deletion pass")
+    print("Ziran desktop: compact default window, capped centered wide layout, native cursors, number steps, typing, expected password, clipboard, profiles, restart and deletion pass")
 except BaseException:
     if app and app.poll() is None and window:
         subprocess.run(["xwd", "-silent", "-id", window, "-out", str(output / "failure.xwd")],

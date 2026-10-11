@@ -1,8 +1,8 @@
 #import "c_string"
 #import "text_buffer"
 #import "byte_text_linux"
-using UI :: #import "Widgets";
-#import "SystemTheme"
+using UI :: #import "kryon/Widgets";
+#import "kryon/SystemTheme"
 #import "mini"
 fingerprint_path: [2048]u8;
 #if !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) && !#defined(PLAN9_BUILD) {
@@ -66,8 +66,10 @@ HostLogoPath :: () -> string {
     }
 }
 #if !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) && !#defined(PLAN9_BUILD) {
-    LinuxTheme :: #import "SystemThemeLinux";
-    Desktop :: #import "Desktop";
+    LinuxTheme :: #import "kryon/SystemThemeLinux";
+    Desktop :: #import "kryon/Desktop";
+    DesktopWindowWidth :: 420
+    DesktopWindowHeight :: 760
     host_palette: SystemPalette;
     theme_loaded: bool;
     theme_read_at: float64;
@@ -76,7 +78,7 @@ HostLogoPath :: () -> string {
     #program_export
     HostOpenFullApp :: () {
         SetMiniMode(false)
-        Desktop.ResizeDesktop(960, 600)
+        Desktop.ResizeDesktop(DesktopWindowWidth, DesktopWindowHeight)
     }
 }
 

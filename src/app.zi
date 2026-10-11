@@ -7,6 +7,7 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/SystemTheme"
 #import "theme"
 #import "kryon/ScrollDevice"
+Scrolling :: #import "kryon/scroll";
 #import "utf8"
 #import "mini"
 Fullscreen :: #import "mingcute/mingcute_regular_fullscreen_2";
@@ -390,8 +391,8 @@ Frame :: (session: Session, viewport: Rectangle) -> s32 {
     background.key = cast(u64)1; background.bounds = viewport; background.fill = ColorFromPacked(palette.background)
     Box(session, background)
     pad: float32 = 18.0
-    width := viewport.width - pad * 2.0
-    if width < 80.0 { width = 80.0 }
+    width := cast(float32)Scrolling.ScrollPageContentWidthFor(cast(s32)viewport.width, 480, 0, cast(s32)pad)
+    left := viewport.x + (viewport.width - width) * 0.5
     // Mini mode has a header with the expand button instead of the bottom
     // tabs, and only the generator.
     mini := MiniMode()
@@ -399,19 +400,15 @@ Frame :: (session: Session, viewport: Rectangle) -> s32 {
     top: float32 = ifx mini then 56.0 else 12.0
     height := viewport.height - (ifx mini then 92.0 else 110.0)
     if height < 60.0 { height = 60.0 }
-    content_height: s32 = 800
-    if mini {
-        // Fields, Generate, and the password; the master field grows by its
-        // fingerprint row and unlock button when they show.
-        content_height = 440
-        if runtime.settings.show_fingerprint && master[0] != cast(u8)0 { content_height += 34 }
-        if HasSavedMaster() { content_height += 48 }
-    }
+    // Measure through the bottom of Copy, including only visible master rows.
+    content_height: s32 = ifx mini then 424 else 648
+    if runtime.settings.show_fingerprint && master[0] != cast(u8)0 { content_height += 34 }
+    if HasSavedMaster() { content_height += 48 }
     if view == 1 { content_height = 180 + runtime.profile_count * 102 }
     if view == 2 { content_height = 1060 }
     props: ScrollProps
     props.key = cast(u64)(10 + view)
-    props.bounds = Rectangle.{viewport.x + pad, viewport.y + top, width, height}
+    props.bounds = Rectangle.{left, viewport.y + top, width, height}
     props.content_height = content_height; props.scroll_offset = scroll_offsets[view]
     props.scale = 1.0
     scroll := Scroll(session, props)
@@ -425,19 +422,19 @@ Frame :: (session: Session, viewport: Rectangle) -> s32 {
     if mini {
         logo: ImageProps
         logo.asset_path = HostLogoPath(); logo.alt_text = "Pass"
-        logo.bounds = Rectangle.{viewport.x + pad, viewport.y + 10.0, 36.0, 36.0}
+        logo.bounds = Rectangle.{left, viewport.y + 10.0, 36.0, 36.0}
         Image(session, logo)
-        Label(session, "Pass", viewport.x + pad + 44.0, viewport.y + 18.0, width - 100.0, 20)
-        if ExpandButton(session, Rectangle.{viewport.x + viewport.width - pad - 40.0, viewport.y + 10.0, 40.0, 40.0}) { focused = 0; HostOpenFullApp() }
-        Label(session, Status(), viewport.x + pad, viewport.y + viewport.height - 28.0, width, 12)
+        Label(session, "Pass", left + 44.0, viewport.y + 18.0, width - 100.0, 20)
+        if ExpandButton(session, Rectangle.{left + width - 40.0, viewport.y + 10.0, 40.0, 40.0}) { focused = 0; HostOpenFullApp() }
+        Label(session, Status(), left, viewport.y + viewport.height - 28.0, width, 12)
     } else {
-        Label(session, Status(), viewport.x + pad, viewport.y + viewport.height - 88.0, width, 12)
+        Label(session, Status(), left, viewport.y + viewport.height - 88.0, width, 12)
     }
     labels: [3]string = .{"Generate", "Profiles", "Settings"}
     if !mini {
         for index: 0..2 {
             index32 := cast(s32)index
-            if Action(session, 700 + index32, labels[index], Rectangle.{viewport.x + pad + cast(float32)index * width / 3.0, viewport.y + viewport.height - 58.0, width / 3.0 - 4.0, 46.0}, view == index32, false) { view = index32; focused = 0 }
+            if Action(session, 700 + index32, labels[index], Rectangle.{left + cast(float32)index * width / 3.0, viewport.y + viewport.height - 58.0, width / 3.0 - 4.0, 46.0}, view == index32, false) { view = index32; focused = 0 }
         }
     }
     #if #defined(ANDROID_BUILD) {

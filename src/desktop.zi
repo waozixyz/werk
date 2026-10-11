@@ -40,8 +40,8 @@ main :: (argc: s32, argv: **u8) -> s32 {
     count: s32 = 0
     while count < argc && count < 16 { args[count] = TextFromCString(argv[count]); count += 1 }
     SetMiniMode(MiniArgument(args[0:count]))
-    // Mini mode is a phone-sized window; expanding it grows to the full size.
-    opened := ifx MiniMode() then Desktop.OpenDesktopSized(400, 640) else Desktop.OpenDesktop()
+    // Both modes open at a phone-like size and stay resizable.
+    opened := ifx MiniMode() then Desktop.OpenDesktopSized(400, 640) else Desktop.OpenDesktopSized(DesktopWindowWidth, DesktopWindowHeight)
     if !opened { Desktop.CloseDesktop(); Report("Pass: could not open desktop\n"); return 1 }
     title: [5]u8
     CopyCString("Pass", title[:])
