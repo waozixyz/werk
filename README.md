@@ -85,12 +85,13 @@ Dependencies and the compiler are pinned in `ziran.lock`. Desktop builds need
 SDL2, Cairo, FreeType, Fontconfig, and Pango development packages; browser builds
 need Emscripten; Android builds need JDK 21 and the SDK/NDK versions in
 `droid/app/build.gradle`.
+Desktop input and resize checks also use Xvfb, xdotool, xclip, and ImageMagick.
 
 ```sh
 make test           # native core/CLI, independent reference, portable runtime
 make gui            # build/pass-gui
 make gui-smoke      # private Xvfb display
-make gui-input-test # typing, Generate/Copy, profiles and restart on private Xvfb
+make gui-input-test # compact/wide layout, cursors, input, profiles and restart on private Xvfb
 make site           # build/site: browser app and generated offline worker
 make web-smoke      # private headless Chromium
 make android-debug  # ARM32, ARM64 and universal APKs
