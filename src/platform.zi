@@ -1,6 +1,6 @@
-// Where Werkzeug keeps its files, and the clock, clipboard, keyboard and
+// Where Werk keeps its files, and the clock, clipboard, keyboard and
 // secret storage its apps use, on the desktop and on Android. Every file
-// Werkzeug writes is private (0600 in 0700 folders).
+// Werk writes is private (0600 in 0700 folders).
 #import "std/file"
 #import "std/date_time_linux"
 #import "std/date_parse"
@@ -46,7 +46,7 @@ EnvironmentText :: (name: string) -> string {
     return TextFromCString(value)
 }
 
-// $XDG_<kind>_HOME/werkzeug, or ~/<fallback>/werkzeug.
+// $XDG_<kind>_HOME/werk, or ~/<fallback>/werk.
 UserRoot :: (output: []u8, variable: string, fallback: string) -> string {
     base := EnvironmentText(variable)
     folder: [PATH_LIMIT]u8
@@ -57,10 +57,10 @@ UserRoot :: (output: []u8, variable: string, fallback: string) -> string {
         }
         base = PathJoin(folder[:], home, fallback)
     }
-    return PathJoin(output, base, "werkzeug")
+    return PathJoin(output, base, "werk")
 }
 
-// Werkzeug's private data. On Android it is the app's internal folder,
+// Werk's private data. On Android it is the app's internal folder,
 // where Pass kept its files.
 #program_export
 DataRoot :: () -> string {
@@ -73,7 +73,7 @@ DataRoot :: () -> string {
         } else #if #defined(PLATFORM_WEB) {
             unused CopyCString(BROWSER_DATA, data_root[:])
         } else {
-            override := EnvironmentText("WERKZEUG_DATA")
+            override := EnvironmentText("WERK_DATA")
             if override != "" {
                 unused CopyCString(override, data_root[:])
             } else {
@@ -90,7 +90,7 @@ CacheRoot :: () -> string {
         #if #defined(ANDROID_BUILD) {
             unused PathJoin(cache_root[:], DataRoot(), "cache")
         } else #if #defined(PLATFORM_WEB) {
-            unused CopyCString("/tmp/werkzeug-cache", cache_root[:])
+            unused CopyCString("/tmp/werk-cache", cache_root[:])
         } else {
             unused UserRoot(cache_root[:], "XDG_CACHE_HOME", ".cache")
         }
@@ -98,9 +98,9 @@ CacheRoot :: () -> string {
     return TextUntilNul(cache_root[:])
 }
 
-// Werkzeug's own files: lib/werkzeug beside an installed executable's
-// prefix, ~/.local/lib/werkzeug for a user installation, or the folder of
-// the executable in a build. WERKZEUG_ASSETS overrides them. On Android
+// Werk's own files: lib/werk beside an installed executable's
+// prefix, ~/.local/lib/werk for a user installation, or the folder of
+// the executable in a build. WERK_ASSETS overrides them. On Android
 // they are the APK's assets, read by relative path; the browser build
 // embeds them at the root of its file system.
 #program_export
@@ -111,7 +111,7 @@ AssetsRoot :: () -> string {
     if assets_root[0] != cast(u8)0 {
         return TextUntilNul(assets_root[:])
     }
-    override := EnvironmentText("WERKZEUG_ASSETS")
+    override := EnvironmentText("WERK_ASSETS")
     if override != "" {
         unused CopyCString(override, assets_root[:])
         return TextUntilNul(assets_root[:])
@@ -130,8 +130,8 @@ AssetsRoot :: () -> string {
     base := TextView(executable[0:folder - 1])
     installed: [PATH_LIMIT]u8
     user: [PATH_LIMIT]u8
-    candidates: [3]string = .[PathJoin(installed[:], base, "../lib/werkzeug"),
-    PathJoin(user[:], EnvironmentText("HOME"), ".local/lib/werkzeug"), base]
+    candidates: [3]string = .[PathJoin(installed[:], base, "../lib/werk"),
+    PathJoin(user[:], EnvironmentText("HOME"), ".local/lib/werk"), base]
     for index: 0..2 {
         apps: [PATH_LIMIT]u8
         if candidates[index] != "" && DirectoryExists(PathJoin(apps[:], candidates[index], "apps")) {
@@ -143,7 +143,7 @@ AssetsRoot :: () -> string {
     return TextUntilNul(assets_root[:])
 }
 
-// The path of one of Werkzeug's own files.
+// The path of one of Werk's own files.
 AssetPath :: (output: []u8, name: string) -> string {
     #if #defined(ANDROID_BUILD) {
         unused CopyCString(name, output)

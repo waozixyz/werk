@@ -1,6 +1,6 @@
 [package]
 tool = "kryon"
-name = "Werkzeug"
+name = "Werk"
 entry = "src/desktop.zi"
 module_roots = ["src", "shared", "apps/pass"]
 
@@ -13,7 +13,7 @@ git = "https://github.com/kryonlabs/kryon.git"
 ref = "master"
 
 [install]
-bin = "werkzeug"
+bin = "werk"
 
 [tool.kryon]
 default_profile = "desktop"

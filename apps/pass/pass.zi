@@ -22,7 +22,7 @@
 #import "tree"
 #import "text_buffer"
 #import "utf8"
-#import "werkzeug_app"
+#import "werk_app"
 #import "app_protocol"
 #import "pass_core"
 #import "pass_state"

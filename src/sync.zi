@@ -22,12 +22,13 @@ Auth :: #import "daochi_client/auth";
 #import "records"
 
 SYNC_APP :: "auth"
+// Registered under Werk's former name; see ACCOUNT_APP.
 SYNC_COLLECTION :: "private.werkzeug.v1.auth"
 SYNC_UPLOAD_LIMIT :: 100
 SYNC_BODY_LIMIT :: 524288
 SYNC_OUTPUT_LIMIT :: 1048576
 // Changes reach the server shortly after they are made, and other
-// devices' changes arrive at least this often while Werkzeug is open.
+// devices' changes arrive at least this often while Werk is open.
 SYNC_INTERVAL :: 300.0
 SYNC_DELAY :: 2.0
 

@@ -1,6 +1,6 @@
 #import "sha256"
-#if #defined(WERKZEUG_APP) {
-    #import "werkzeug_app"
+#if #defined(WERK_APP) {
+    #import "werk_app"
 }
 
 PassOptions :: struct {
@@ -45,14 +45,14 @@ master_emoji_codepoints: [64]s32 = .[
 ];
 
 
-// Whether the last DeriveKey failed; only the Werkzeug host can refuse.
+// Whether the last DeriveKey failed; only the Werk host can refuse.
 derive_failed: bool;
 
 DeriveKey :: (password: string, salt: string) -> [32]u8 {
     derive_failed = false
-    // Inside Werkzeug the host derives the key natively; the portable
+    // Inside Werk the host derives the key natively; the portable
     // interpreter would take minutes for 100,000 rounds.
-    #if #defined(WERKZEUG_APP) {
+    #if #defined(WERK_APP) {
         output: [32]u8
         derive_failed = !AppPbkdf2Sha256(password, salt, 100000, output[:])
         return output

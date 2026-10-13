@@ -94,7 +94,7 @@ AndroidWidgetCall :: (context: *void, module: *u8, function: *u8,
     return 1
 }
 
-// Werkzeug's own fields follow the editor in two steps. Before a focused
+// Werk's own fields follow the editor in two steps. Before a focused
 // field draws, typing there replaces the text in buffer and the caret moves
 // where the editor has it, so the field never sends back a caret from
 // before the edit, which would put the next letter in the wrong place.

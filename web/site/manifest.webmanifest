@@ -1,6 +1,6 @@
 {
-  "name": "Werkzeug",
-  "short_name": "Werkzeug",
+  "name": "Werk",
+  "short_name": "Werk",
   "description": "Small private tools: passwords, two-factor codes, a calculator and a clock.",
   "start_url": "/app/",
   "scope": "/app/",

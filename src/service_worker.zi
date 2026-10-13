@@ -2,7 +2,7 @@
 // WebAssembly program. Emscripten supplies only the generated JS loader.
 #import "web"
 
-CacheName :: "werkzeug-v1";
+CacheName :: "werk-v1";
 FetchJob :: struct {
     active: bool
     immutable: bool

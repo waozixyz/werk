@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "slug": "pass",
-  "name": "Pass",
-  "summary": "Deterministic password generator with CLI, desktop, Android, and browser builds.",
+  "slug": "werk",
+  "name": "Werk",
+  "summary": "Small private tools: passwords, two-factor codes, a calculator and a clock, for Android, desktop and the browser.",
   "repository": {
     "platform": "github",
-    "url": "https://github.com/waozixyz/pass",
+    "url": "https://github.com/waozixyz/werk",
     "owner": "waozixyz",
-    "name": "pass"
+    "name": "werk"
   },
   "homepage": "https://pass.waozi.xyz",
   "banner": "showcase/banner.png",

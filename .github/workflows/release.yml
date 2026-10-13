@@ -71,9 +71,9 @@ jobs:
       - run: make gui
       - name: Package GUI tarball and Debian package
         run: |
-          name="werkzeug-linux-${{ matrix.arch }}"
+          name="werk-linux-${{ matrix.arch }}"
           mkdir -p "build/release/$name"
-          cp -R build/werkzeug build/apps build/pfp.png LICENSE README.md assets/app/icon.png "build/release/$name/"
+          cp -R build/werk build/apps build/pfp.png LICENSE README.md assets/app/icon.png "build/release/$name/"
           tar -C build/release -czf "build/release/$name.tar.gz" "$name"
           make package-deb
       - name: Package AppImage
@@ -90,7 +90,7 @@ jobs:
         with:
           name: gui-linux-${{ matrix.arch }}
           path: |
-            build/release/werkzeug-linux-${{ matrix.arch }}.tar.gz
+            build/release/werk-linux-${{ matrix.arch }}.tar.gz
             build/release/*.deb
             build/release/*.AppImage
           if-no-files-found: error
@@ -161,19 +161,19 @@ jobs:
             --stacktrace
           VERSION=$(sed -n '1p' VERSION)
           mkdir -p build/release
-          cp droid/app/build/outputs/apk/release/app-universal-release.apk build/release/werkzeug-android.apk
-          cp droid/app/build/outputs/apk/release/app-arm64-v8a-release.apk build/release/werkzeug-android-arm64-v8a.apk
-          cp droid/app/build/outputs/apk/release/app-armeabi-v7a-release.apk build/release/werkzeug-android-armeabi-v7a.apk
-          cp droid/app/build/outputs/apk/release/app-universal-release.apk "build/release/werkzeug-$VERSION.apk"
-          cp droid/app/build/outputs/apk/release/app-arm64-v8a-release.apk "build/release/werkzeug-$VERSION-arm64-v8a.apk"
-          cp droid/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "build/release/werkzeug-$VERSION-armeabi-v7a.apk"
-          python3 scripts/android_apk_check.py build/release/werkzeug-android*.apk
-          test -s build/release/werkzeug-android.apk
-          test -s build/release/werkzeug-android-arm64-v8a.apk
-          test -s build/release/werkzeug-android-armeabi-v7a.apk
-          test -s "build/release/werkzeug-$VERSION.apk"
-          test -s "build/release/werkzeug-$VERSION-arm64-v8a.apk"
-          test -s "build/release/werkzeug-$VERSION-armeabi-v7a.apk"
+          cp droid/app/build/outputs/apk/release/app-universal-release.apk build/release/werk-android.apk
+          cp droid/app/build/outputs/apk/release/app-arm64-v8a-release.apk build/release/werk-android-arm64-v8a.apk
+          cp droid/app/build/outputs/apk/release/app-armeabi-v7a-release.apk build/release/werk-android-armeabi-v7a.apk
+          cp droid/app/build/outputs/apk/release/app-universal-release.apk "build/release/werk-$VERSION.apk"
+          cp droid/app/build/outputs/apk/release/app-arm64-v8a-release.apk "build/release/werk-$VERSION-arm64-v8a.apk"
+          cp droid/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "build/release/werk-$VERSION-armeabi-v7a.apk"
+          python3 scripts/android_apk_check.py build/release/werk-android*.apk
+          test -s build/release/werk-android.apk
+          test -s build/release/werk-android-arm64-v8a.apk
+          test -s build/release/werk-android-armeabi-v7a.apk
+          test -s "build/release/werk-$VERSION.apk"
+          test -s "build/release/werk-$VERSION-arm64-v8a.apk"
+          test -s "build/release/werk-$VERSION-armeabi-v7a.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -198,26 +198,26 @@ jobs:
         run: |
           set -euo pipefail
           cd build/site
-          zip -qr ../werkzeug-web.zip .
+          zip -qr ../werk-web.zip .
 
-          mkdir -p ../werkzeug-html5
-          cp app/index.html ../werkzeug-html5/
-          cp app/index.js ../werkzeug-html5/
-          cp app/index.wasm ../werkzeug-html5/
-          cp app/sw.js ../werkzeug-html5/
-          cp app/emoji-OFL.txt ../werkzeug-html5/
-          cp manifest.webmanifest ../werkzeug-html5/
-          cp -R icons ../werkzeug-html5/icons
+          mkdir -p ../werk-html5
+          cp app/index.html ../werk-html5/
+          cp app/index.js ../werk-html5/
+          cp app/index.wasm ../werk-html5/
+          cp app/sw.js ../werk-html5/
+          cp app/emoji-OFL.txt ../werk-html5/
+          cp manifest.webmanifest ../werk-html5/
+          cp -R icons ../werk-html5/icons
           sed -i \
             -e 's#href="/manifest.webmanifest"#href="manifest.webmanifest"#g' \
             -e 's#href="/icons/#href="icons/#g' \
             -e 's#src="/icons/#src="icons/#g' \
-            ../werkzeug-html5/index.html
+            ../werk-html5/index.html
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          root = Path("../werkzeug-html5")
+          root = Path("../werk-html5")
           manifest = json.loads((root / "manifest.webmanifest").read_text())
           manifest["start_url"] = "."
           manifest["scope"] = "."
@@ -226,14 +226,14 @@ jobs:
           (root / "manifest.webmanifest").write_text(json.dumps(manifest, indent=2) + "\n")
 
           PY
-          cd ../werkzeug-html5
-          zip -qr ../werkzeug-html5.zip .
+          cd ../werk-html5
+          zip -qr ../werk-html5.zip .
       - uses: actions/upload-artifact@v4
         with:
           name: web
           path: |
-            build/werkzeug-web.zip
-            build/werkzeug-html5.zip
+            build/werk-web.zip
+            build/werk-html5.zip
           if-no-files-found: error
 
   publish:
@@ -281,11 +281,11 @@ jobs:
           channels=()
           for img in build/artifacts/*.AppImage; do
             [ -e "$img" ] || continue
-            arch=$(basename "$img" | sed -n 's/^werkzeug-.*-\([^-]*\)\.AppImage$/\1/p')
+            arch=$(basename "$img" | sed -n 's/^werk-.*-\([^-]*\)\.AppImage$/\1/p')
             channels+=("--channel" "appimage-$(arch_name "$arch")=$img")
           done
           DEB="$(find build/artifacts -maxdepth 1 -name '*.deb' -print -quit || true)"
-          TAR="$(find build/artifacts -maxdepth 1 -name 'werkzeug-linux-*.tar.gz' -print -quit || true)"
+          TAR="$(find build/artifacts -maxdepth 1 -name 'werk-linux-*.tar.gz' -print -quit || true)"
           [ -n "$DEB" ] && channels+=("--channel" "deb=$DEB")
           [ -n "$TAR" ] && channels+=("--channel" "tarball=$TAR")
           if [ ${#channels[@]} -eq 0 ]; then
@@ -370,9 +370,9 @@ jobs:
           set -euo pipefail
           VERSION="$(sed -n '1p' VERSION)"
 
-          html5_zip="build/artifacts/werkzeug-html5.zip"
-          android_apk="build/artifacts/werkzeug-android.apk"
-          linux_appimage="build/artifacts/werkzeug-$VERSION-x86_64.AppImage"
+          html5_zip="build/artifacts/werk-html5.zip"
+          android_apk="build/artifacts/werk-android.apk"
+          linux_appimage="build/artifacts/werk-$VERSION-x86_64.AppImage"
 
           test -f "$html5_zip"
           test -f "$android_apk"
@@ -385,7 +385,7 @@ jobs:
             log_file="$(mktemp)"
 
             while [ "$attempt" -le 6 ]; do
-              if butler push "$target" "waozi/pass:$channel" --userversion "$VERSION" 2>&1 | tee "$log_file"; then
+              if butler push "$target" "waozi/werk:$channel" --userversion "$VERSION" 2>&1 | tee "$log_file"; then
                 rm -f "$log_file"
                 return 0
               fi

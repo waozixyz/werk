@@ -17,8 +17,8 @@ MONOCYPHER_SOURCES = $(MONOCYPHER_DIR)/src/monocypher.c $(MONOCYPHER_DIR)/src/op
 CC ?= cc
 BIN_DIR ?= $(HOME)/bin
 DATA_DIR ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)
-# The tool bundles and Werkzeug's other files.
-LIB_DIR ?= $(HOME)/.local/lib/werkzeug
+# The tool bundles and Werk's other files.
+LIB_DIR ?= $(HOME)/.local/lib/werk
 WEB_CC ?= $(if $(wildcard $(HOME)/emsdk/upstream/emscripten/emcc),$(HOME)/emsdk/upstream/emscripten/emcc,emcc)
 SOURCES := $(wildcard src/*.zi shared/*.zi apps/*/*.zi)
 LIBRARY_SOURCES = $(wildcard $(KRYON_DIR)/src/ui/*.zi $(KRYON_DIR)/src/ui/*/module.zi $(KRYON_DIR)/src/kss/*.zi $(KRYON_DIR)/src/backend/*.zi $(KRYON_DIR)/src/backend/*/module.zi $(ZIRAN_ROOT)/std/*.zi)
@@ -40,7 +40,7 @@ build/pass: build/generated/cli/.complete
 cli: build/pass
 	cp build/pass pass
 
-# Each app is its own bundle; Werkzeug runs them in one window.
+# Each app is its own bundle; Werk runs them in one window.
 APPS := pass auth calculator clock
 APP_BUNDLES := $(APPS:%=build/apps/%.zib)
 SHARED_SOURCES := $(wildcard shared/*.zi)
@@ -49,7 +49,7 @@ apps: $(APP_BUNDLES)
 .SECONDEXPANSION:
 build/apps/%.zib: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES) ziran.lock
 	mkdir -p $(@D)
-	$(ZIRAN) bundle --root . --module-path apps/$* $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERKZEUG_APP \
+	$(ZIRAN) bundle --root . --module-path apps/$* $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERK_APP \
 		$(if $(wildcard apps/$*/assets),--asset-dir assets=apps/$*/assets) --entry $*:Main -o $@ apps/$*/$*.zi
 
 # The portable bundle runtime the host links, built from the locked Ziran.
@@ -64,15 +64,15 @@ build/generated/desktop/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBR
 build/liboqs/lib/liboqs.a: ziran.lock
 	cmake -S $(LIBOQS_DIR) -B build/liboqs $(LIBOQS_FLAGS) > /dev/null
 	cmake --build build/liboqs --target oqs > /dev/null
-build/werkzeug: build/generated/desktop/.complete build/ziran/libziran.a build/liboqs/lib/liboqs.a Makefile
+build/werk: build/generated/desktop/.complete build/ziran/libziran.a build/liboqs/lib/liboqs.a Makefile
 	$(CC) $(CFLAGS) -Ibuild/generated/desktop -I$(MONOCYPHER_DIR)/src -I$(MONOCYPHER_DIR)/src/optional \
 		build/generated/desktop/*.c $(MONOCYPHER_SOURCES) build/ziran/libziran.a build/liboqs/lib/liboqs.a \
 		$(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo) -l:libcurl.so.4 -lm -lpthread -o $@
 build/pfp.png: $(KRYON_DIR)/icons/pfp.png
 	cp $< $@
-gui: build/werkzeug build/pfp.png apps
+gui: build/werk build/pfp.png apps
 run: gui
-	./build/werkzeug
+	./build/werk
 
 source-check:
 	python3 scripts/source_check.py
@@ -91,7 +91,7 @@ test: source-check core-test pass-state-test app-logic-test cli-test lesspass-co
 gui-smoke: gui
 	sh scripts/gui_smoke.sh
 gui-test: gui
-	sh scripts/werkzeug_gui_test.sh
+	sh scripts/werk_gui_test.sh
 	sh scripts/migration_test.sh
 
 # The bundle runtime for the browser, built from the locked Ziran.
@@ -131,19 +131,19 @@ web-smoke: site
 
 # CMake emits JNI and foreign ABI types separately for each Android ABI.
 android-debug: apps
-	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
+	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
 	mkdir -p build
-	cp droid/app/build/outputs/apk/debug/app-universal-debug.apk build/werkzeug-android-debug.apk
-	python3 scripts/android_apk_check.py build/werkzeug-android-debug.apk
-	cp droid/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk build/werkzeug-android-arm64-v8a-debug.apk
-	cp droid/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk build/werkzeug-android-armeabi-v7a-debug.apk
+	cp droid/app/build/outputs/apk/debug/app-universal-debug.apk build/werk-android-debug.apk
+	python3 scripts/android_apk_check.py build/werk-android-debug.apk
+	cp droid/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk build/werk-android-arm64-v8a-debug.apk
+	cp droid/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk build/werk-android-armeabi-v7a-debug.apk
 android-emulator: apps
-	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=x86_64 $(GRADLE_ARGS)
+	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=x86_64 $(GRADLE_ARGS)
 	mkdir -p build
-	cp droid/app/build/outputs/apk/debug/app-debug.apk build/werkzeug-android-emulator.apk
-	python3 scripts/android_apk_check.py build/werkzeug-android-emulator.apk
+	cp droid/app/build/outputs/apk/debug/app-debug.apk build/werk-android-emulator.apk
+	python3 scripts/android_apk_check.py build/werk-android-emulator.apk
 android-release: apps
-	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
+	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
 android-smoke:
 	bash scripts/android_smoke.sh
 android-input-test:
@@ -164,15 +164,15 @@ install-cli: cli
 	install -m 0755 pass $(BIN_DIR)/pass
 install-gui: gui
 	mkdir -p $(BIN_DIR) $(LIB_DIR)/apps $(DATA_DIR)/applications $(DATA_DIR)/icons/hicolor/512x512/apps
-	install -m 0755 build/werkzeug $(BIN_DIR)/werkzeug
+	install -m 0755 build/werk $(BIN_DIR)/werk
 	install -m 0644 $(APP_BUNDLES) $(LIB_DIR)/apps/
 	install -m 0644 build/pfp.png $(LIB_DIR)/pfp.png
-	cp packaging/linux/xyz.waozi.werkzeug.desktop $(DATA_DIR)/applications/xyz.waozi.werkzeug.desktop
-	cp assets/app/icon.png $(DATA_DIR)/icons/hicolor/512x512/apps/werkzeug.png
+	cp packaging/linux/xyz.waozi.werk.desktop $(DATA_DIR)/applications/xyz.waozi.werk.desktop
+	cp assets/app/icon.png $(DATA_DIR)/icons/hicolor/512x512/apps/werk.png
 uninstall-cli:
 	rm -f $(BIN_DIR)/pass
 uninstall-gui:
-	rm -f $(BIN_DIR)/werkzeug $(DATA_DIR)/applications/xyz.waozi.werkzeug.desktop $(DATA_DIR)/icons/hicolor/512x512/apps/werkzeug.png
+	rm -f $(BIN_DIR)/werk $(DATA_DIR)/applications/xyz.waozi.werk.desktop $(DATA_DIR)/icons/hicolor/512x512/apps/werk.png
 	rm -rf $(LIB_DIR)
 package-deb: gui
 	./scripts/package-deb.sh

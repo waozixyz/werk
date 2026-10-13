@@ -1,5 +1,5 @@
 // Auth: two-factor sign-in codes. Each account is a synced record holding
-// its otpauth link, so it follows the owner's Werkzeug account to their
+// its otpauth link, so it follows the owner's Werk account to their
 // other devices; secrets are never shown again after adding.
 #import "session"
 #import "geometry"
@@ -17,7 +17,7 @@
 #import "tree"
 #import "text_buffer"
 #import "number_text"
-#import "werkzeug_app"
+#import "werk_app"
 #import "app_protocol"
 #import "totp"
 #import "sha256"

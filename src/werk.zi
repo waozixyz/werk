@@ -1,4 +1,4 @@
-// Werkzeug's own screens: the home screen of apps, the profile, and the bar
+// Werk's own screens: the home screen of apps, the profile, and the bar
 // above the app that is open.
 #import "std/byte_text_linux"
 #import "std/text_buffer"
@@ -34,7 +34,7 @@ FieldState :: struct {
 
 screen: s32;
 open_app: s32 = -1;
-// One app on its own, without Werkzeug's bar, as in a page that embeds it.
+// One app on its own, without Werk's bar, as in a page that embeds it.
 mini: bool;
 name_field: FieldState;
 code_field: FieldState;
@@ -52,7 +52,7 @@ profile_height: float32;
 typed: [256]u8;
 keyboard_wanted: bool;
 
-WerkzeugStart :: () {
+WerkStart :: () {
     MigratePassData()
     LoadProfile()
     LoadApps()
@@ -63,7 +63,7 @@ WerkzeugStart :: () {
 
 // Opens an app by id at start, such as from the page address. In mini mode
 // it fills the window and there is no way home.
-WerkzeugOpen :: (id: string, alone: bool) -> bool {
+WerkOpen :: (id: string, alone: bool) -> bool {
     index: s32 = 0
     while index < AppCount() {
         if AppId(index) == id {
@@ -78,7 +78,7 @@ WerkzeugOpen :: (id: string, alone: bool) -> bool {
 }
 
 // Whether the touch keyboard should show.
-WerkzeugKeyboard :: () -> bool {
+WerkKeyboard :: () -> bool {
     return keyboard_wanted
 }
 
@@ -111,7 +111,7 @@ OpenHome :: () {
 
 TopBar :: (session: Session, viewport: Rectangle) {
     bar := Rectangle.{viewport.x, viewport.y, viewport.width, BAR_HEIGHT}
-    title := "Werkzeug"
+    title := "Werk"
     left := bar.x + 16.0
     if screen != SCREEN_HOME {
         back := ButtonProps.{.key = cast(u64)10, .id = 10, .label = "Home",
@@ -550,7 +550,7 @@ AppScreen :: (session: Session, area: Rectangle, key: s32, modifiers: s32, input
 }
 
 #program_export
-WerkzeugFrame :: (session: Session, viewport: Rectangle) -> s32 {
+WerkFrame :: (session: Session, viewport: Rectangle) -> s32 {
     ApplyTheme()
     ClipboardTick()
     #if !#defined(PLATFORM_WEB) {
