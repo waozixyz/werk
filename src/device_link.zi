@@ -1,0 +1,450 @@
+// Connects another device to the account. The connected device shows a
+// 12-character code; the new device enters it. They swap X25519 keys
+// through the Daochi server's link mailbox, and the connected device sends
+// the account and vault keys sealed with a key derived from the exchange
+// and the code. Without the code, the server cannot open or replace them.
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/c_string"
+#import "std/json_scan"
+#import "std/net_http"
+#import "kryon/http_transfer"
+#import "daochi_client/keys"
+#import "platform"
+#import "sync_keys"
+#import "account"
+#import "sync"
+
+LINK_CODE_SIZE :: 12
+// The code's alphabet leaves out I, L, O and U, which read as other letters.
+LINK_ALPHABET :: "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+LINK_SECONDS :: 600.0
+LINK_POLL_SECONDS :: 2.0
+LINK_DATA_LIMIT :: 16384
+// version, vault key, ML-DSA-44 public and private keys, then the server.
+LINK_PAYLOAD_LIMIT :: 4200
+
+LinkPhase :: enum {
+    LinkIdle :: 0
+    LinkShowing :: 1
+    LinkJoining :: 2
+    LinkDone :: 3
+    LinkFailed :: 4
+}
+
+// The request in flight: 1 the new device's key, 2 waiting for the answer,
+// 3 the answer, 4 closing.
+link_phase: LinkPhase;
+link_step: s32;
+link_code: [16]u8;
+link_id: [33]u8;
+link_secret: [32]u8;
+link_public: [32]u8;
+link_expires: float64;
+link_next: float64;
+link_transfer: HttpTransfer;
+link_waiting: bool;
+link_body: [17408]u8;
+link_output: [17408]u8;
+link_status: [96]u8;
+
+LinkPhaseNow :: () -> LinkPhase {
+    return link_phase
+}
+
+LinkStatus :: () -> string {
+    return TextUntilNul(link_status[:])
+}
+
+// The code as it is shown, in three groups of four.
+LinkCodeText :: (output: []u8) -> string {
+    code := TextUntilNul(link_code[:])
+    if code.count != LINK_CODE_SIZE || output.count < 15 {
+        return ""
+    }
+    used: s64 = 0
+    index: s64 = 0
+    while index < LINK_CODE_SIZE {
+        if index == 4 || index == 8 {
+            output[used] = cast(u8)45
+            used += 1
+        }
+        output[used] = code[index]
+        used += 1
+        index += 1
+    }
+    output[used] = cast(u8)0
+    return TextView(output[0:used])
+}
+
+LinkReset :: () {
+    if link_waiting {
+        HttpTransferCancel(*link_transfer)
+    }
+    link_waiting = false
+    Wipe(link_secret[:])
+    Wipe(link_code[:])
+    link_step = 0
+}
+
+LinkFail :: (text: string) {
+    LinkReset()
+    link_phase = LinkPhase.LinkFailed
+    unused CopyCString(text, link_status[:])
+}
+
+LinkCancel :: () {
+    LinkReset()
+    link_phase = LinkPhase.LinkIdle
+    link_status[0] = cast(u8)0
+}
+
+// The mailbox id the code names: the server never learns the code itself.
+SetLinkId :: () {
+    digest: [16]u8
+    message: [64]u8
+    parts: [2]string = .["werkzeug-link-id-1\n", TextUntilNul(link_code[:])]
+    used := Append(message[:], 0, parts[:])
+    unused Blake2b(TextView(message[0:used]), digest[:])
+    unused HexOf(digest[:], link_id[:])
+}
+
+NewKeys :: () {
+    RandomFill(link_secret[:])
+    unused X25519Public(link_secret[:], link_public[:])
+}
+
+AddBytes :: (message: []u8, used: s64, bytes: []u8) -> s64 {
+    index: s64 = 0
+    while index < bytes.count && used < message.count {
+        message[used] = bytes[index]
+        used += 1
+        index += 1
+    }
+    return used
+}
+
+AddText :: (message: []u8, used: s64, text: string) -> s64 {
+    index: s64 = 0
+    while index < text.count && used < message.count {
+        message[used] = text[index]
+        used += 1
+        index += 1
+    }
+    return used
+}
+
+// Both devices derive the same key from the exchange and the code.
+LinkKey :: (their_public: []u8, shower_public: []u8, joiner_public: []u8, key: []u8) -> bool {
+    shared: [32]u8
+    if !X25519Shared(link_secret[:], their_public, shared[:]) {
+        return false
+    }
+    message: [160]u8
+    used := AddText(message[:], 0, "werkzeug-link-key-1\n")
+    used = AddBytes(message[:], used, shared[:])
+    used = AddBytes(message[:], used, shower_public)
+    used = AddBytes(message[:], used, joiner_public)
+    used = AddText(message[:], used, TextUntilNul(link_code[:]))
+    unused Blake2b(TextView(message[0:used]), key)
+    Wipe(shared[:])
+    Wipe(message[:])
+    return true
+}
+
+PutJson :: (parts: []string) -> string {
+    used := Append(link_body[:], 0, parts)
+    if used < 0 {
+        return ""
+    }
+    link_body[used] = cast(u8)0
+    return TextView(link_body[0:used])
+}
+
+// Sends one mailbox request; the answer arrives through LinkFrame.
+LinkRequest :: (path: string, body: string) -> bool {
+    url: [320]u8
+    parts: [2]string = .[AccountServerOrDefault(), path]
+    used := Append(url[:], 0, parts[:])
+    if used < 0 || body == "" {
+        return false
+    }
+    request := HttpRequest.{.method = "POST", .url = TextView(url[0:used]), .content_type = "application/json",
+        .accept = "application/json", .body = body}
+    link_waiting = HttpTransferStart(*link_transfer, request, link_output[:], 20000)
+    return link_waiting
+}
+
+AccountServerOrDefault :: () -> string {
+    return ifx AccountReady() then AccountServer() else DefaultServer()
+}
+
+GetSlot :: (slot: string) -> bool {
+    parts: [5]string = .["{\"id\":\"", TextUntilNul(link_id[:]), "\",\"slot\":\"", slot, "\"}"]
+    return LinkRequest("/api/v1/link/get", PutJson(parts[:]))
+}
+
+PutSlot :: (slot: string, data: string) -> bool {
+    parts: [7]string = .["{\"id\":\"", TextUntilNul(link_id[:]), "\",\"slot\":\"", slot, "\",\"data\":\"", data, "\"}"]
+    return LinkRequest("/api/v1/link/put", PutJson(parts[:]))
+}
+
+CloseLink :: () -> bool {
+    parts: [3]string = .["{\"id\":\"", TextUntilNul(link_id[:]), "\"}"]
+    return LinkRequest("/api/v1/link/close", PutJson(parts[:]))
+}
+
+// On the connected device: shows a new code and waits for the new device.
+LinkShow :: () {
+    if !AccountReady() {
+        return
+    }
+    LinkReset()
+    random: [LINK_CODE_SIZE]u8
+    RandomFill(random[:])
+    for index: 0..LINK_CODE_SIZE - 1 {
+        link_code[index] = LINK_ALPHABET[cast(s64)(random[index] & cast(u8)31)]
+    }
+    link_code[LINK_CODE_SIZE] = cast(u8)0
+    Wipe(random[:])
+    SetLinkId()
+    NewKeys()
+    link_phase = LinkPhase.LinkShowing
+    link_step = 2
+    link_expires = WallClock() + LINK_SECONDS
+    link_next = WallClock()
+    unused CopyCString("Waiting for the other device", link_status[:])
+}
+
+// The code as typed: letters in any case; spaces and dashes are ignored.
+NormalizeCode :: (typed: string) -> bool {
+    used: s64 = 0
+    index: s64 = 0
+    while index < typed.count {
+        byte := typed[index]
+        if byte >= cast(u8)97 && byte <= cast(u8)122 {
+            byte -= cast(u8)32
+        }
+        if byte == cast(u8)79 {
+            byte = cast(u8)48
+        }
+        if byte == cast(u8)73 || byte == cast(u8)76 {
+            byte = cast(u8)49
+        }
+        if byte != cast(u8)32 && byte != cast(u8)45 {
+            valid := false
+            for at: 0..31 {
+                if LINK_ALPHABET[at] == byte {
+                    valid = true
+                }
+            }
+            if !valid || used >= LINK_CODE_SIZE {
+                return false
+            }
+            link_code[used] = byte
+            used += 1
+        }
+        index += 1
+    }
+    link_code[used] = cast(u8)0
+    return used == LINK_CODE_SIZE
+}
+
+// On the new device: sends its key to the device that shows the code.
+LinkJoin :: (typed: string) {
+    if AccountReady() {
+        return
+    }
+    LinkReset()
+    if !NormalizeCode(typed) {
+        LinkFail("The code has 12 letters and digits")
+        return
+    }
+    SetLinkId()
+    NewKeys()
+    hex: [65]u8
+    link_phase = LinkPhase.LinkJoining
+    link_step = 1
+    link_expires = WallClock() + LINK_SECONDS
+    unused CopyCString("Connecting", link_status[:])
+    if !PutSlot("request", HexOf(link_public[:], hex[:])) {
+        LinkFail("Could not reach the server")
+    }
+}
+
+// The account the new device receives, sealed for it.
+SendAccount :: (joiner_public: []u8) -> bool {
+    key: [32]u8
+    if !LinkKey(joiner_public, link_public[:], joiner_public, key[:]) {
+        return false
+    }
+    payload: [LINK_PAYLOAD_LIMIT]u8
+    public_key: [AccountPublicKeyBytes]u8
+    private_key: [AccountPrivateKeyBytes]u8
+    payload[0] = cast(u8)1
+    used: s64 = 1
+    vault := AccountVault()
+    for index: 0..31 {
+        payload[used] = vault[index]
+        used += 1
+    }
+    ok := BytesOfHex(TextUntilNul(account.keys.public_key_hex[:]), public_key[:]) == AccountPublicKeyBytes &&
+    BytesOfHex(TextUntilNul(account.keys.private_key_hex[:]), private_key[:]) == AccountPrivateKeyBytes
+    server := AccountServer()
+    if ok && used + AccountPublicKeyBytes + AccountPrivateKeyBytes + server.count <= LINK_PAYLOAD_LIMIT {
+        for index: 0..AccountPublicKeyBytes - 1 {
+            payload[used] = public_key[index]
+            used += 1
+        }
+        for index: 0..AccountPrivateKeyBytes - 1 {
+            payload[used] = private_key[index]
+            used += 1
+        }
+        for index: 0..server.count - 1 {
+            payload[used] = server[index]
+            used += 1
+        }
+    } else {
+        ok = false
+    }
+    sealed: [LINK_PAYLOAD_LIMIT + 64]u8
+    size := ifx ok then Seal(key[:], TextUntilNul(link_id[:]), TextView(payload[0:used]), sealed[:]) else -1
+    Wipe(payload[:])
+    Wipe(private_key[:])
+    Wipe(key[:])
+    if size < 0 {
+        return false
+    }
+    data: [LINK_DATA_LIMIT]u8
+    public_hex: [65]u8
+    sealed_hex: [LINK_DATA_LIMIT]u8
+    parts: [2]string = .[HexOf(link_public[:], public_hex[:]), HexOf(sealed[0:size], sealed_hex[:])]
+    data_used := Append(data[:], 0, parts[:])
+    Wipe(sealed[:])
+    return data_used > 0 && PutSlot("response", TextView(data[0:data_used]))
+}
+
+// The sealed account from the connected device, opened and joined.
+ReceiveAccount :: (data: string) -> bool {
+    if data.count < 64 + (NONCE_SIZE + MAC_SIZE) * 2 {
+        return false
+    }
+    shower_public: [32]u8
+    if BytesOfHex(data[0:64], shower_public[:]) != 32 {
+        return false
+    }
+    key: [32]u8
+    if !LinkKey(shower_public[:], shower_public[:], link_public[:], key[:]) {
+        return false
+    }
+    sealed: [LINK_PAYLOAD_LIMIT + 64]u8
+    size := BytesOfHex(data[64:data.count], sealed[:])
+    payload: [LINK_PAYLOAD_LIMIT + 1]u8
+    count := ifx size < 0 then -1 else Open(key[:], TextUntilNul(link_id[:]), sealed[0:size], payload[:])
+    Wipe(key[:])
+    joined := false
+    minimum := 1 + 32 + AccountPublicKeyBytes + AccountPrivateKeyBytes
+    if count > minimum && payload[0] == cast(u8)1 {
+        public_hex: [ACCOUNT_PUBLIC_KEY_HEX_SIZE]u8
+        private_hex: [ACCOUNT_PRIVATE_KEY_HEX_SIZE]u8
+        at: s64 = 33
+        public_text := HexOf(payload[at:at + AccountPublicKeyBytes], public_hex[:])
+        at += AccountPublicKeyBytes
+        private_text := HexOf(payload[at:at + AccountPrivateKeyBytes], private_hex[:])
+        at += AccountPrivateKeyBytes
+        joined = JoinAccount(TextView(payload[at:count]), public_text, private_text, payload[1:33])
+        Wipe(private_hex[:])
+    }
+    Wipe(payload[:])
+    return joined
+}
+
+LinkData :: (output: []u8) -> string {
+    text := TextUntilNul(link_output[:])
+    if ReadStringText(text, FieldAt(text, 0, "data"), output) < 0 {
+        return ""
+    }
+    return TextUntilNul(output)
+}
+
+// Advances the connection; call once per frame.
+LinkFrame :: () {
+    if link_phase != LinkPhase.LinkShowing && link_phase != LinkPhase.LinkJoining {
+        return
+    }
+    now := WallClock()
+    if now > link_expires && link_step != 4 {
+        LinkFail("The code expired. Start again.")
+        return
+    }
+    if !link_waiting {
+        // Waiting for the other device: ask again every few seconds.
+        if link_step == 2 && now >= link_next {
+            link_next = now + LINK_POLL_SECONDS
+            if !GetSlot(ifx link_phase == LinkPhase.LinkShowing then "request" else "response") {
+                LinkFail("Could not reach the server")
+            }
+        }
+        return
+    }
+    status: s32
+    state := HttpTransferPoll(*link_transfer, *status)
+    if state < 0 {
+        return
+    }
+    link_waiting = false
+    if state == 0 || (status != 200 && !(link_step == 2 && status == 404)) {
+        if link_step == 4 {
+            link_phase = LinkPhase.LinkDone
+            return
+        }
+        LinkFail(ifx status == 0 then "Could not reach the server" else "The server refused the connection")
+        return
+    }
+    if link_step == 1 {
+        link_step = 2
+        link_next = now + LINK_POLL_SECONDS
+        return
+    }
+    if link_step == 2 && status == 404 {
+        return
+    }
+    if link_step == 2 && link_phase == LinkPhase.LinkShowing {
+        data: [96]u8
+        joiner_public: [32]u8
+        if BytesOfHex(LinkData(data[:]), joiner_public[:]) != 32 {
+            LinkFail("The other device sent a damaged key")
+            return
+        }
+        link_step = 3
+        if !SendAccount(joiner_public[:]) {
+            LinkFail("Could not send the account")
+        }
+        return
+    }
+    if link_step == 2 {
+        data: [LINK_DATA_LIMIT + 1]u8
+        if !ReceiveAccount(LinkData(data[:])) {
+            Wipe(data[:])
+            LinkFail("Could not connect. Check the code and try again.")
+            return
+        }
+        Wipe(data[:])
+        unused CopyCString("Connected", link_status[:])
+        link_step = 4
+        if !CloseLink() {
+            link_phase = LinkPhase.LinkDone
+        }
+        SyncNow()
+        return
+    }
+    if link_step == 3 {
+        // The new device opens the account; the mailbox expires by itself.
+        Wipe(link_secret[:])
+        unused CopyCString("Connected the other device", link_status[:])
+        link_phase = LinkPhase.LinkDone
+        link_step = 0
+        return
+    }
+    link_phase = LinkPhase.LinkDone
+}

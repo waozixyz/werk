@@ -25,3 +25,21 @@ host = "src/desktop.zi"
 [dependencies.mingcute]
 git = "https://github.com/kryonlabs/mingcute.git"
 ref = "master"
+
+[dependencies.daochi_client]
+git = "https://github.com/ziranlang/daochi-client.git"
+ref = "master"
+
+[dependencies.oqs]
+git = "https://github.com/ziranlang/oqs.git"
+ref = "master"
+
+[dependencies.liboqs]
+git = "https://github.com/open-quantum-safe/liboqs.git"
+ref = "main"
+source = true
+
+[dependencies.monocypher]
+git = "https://github.com/LoupVaillant/Monocypher.git"
+ref = "master"
+source = true

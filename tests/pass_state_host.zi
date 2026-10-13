@@ -93,3 +93,25 @@ AppLocalOffsetHost :: () -> s32 { return 0 }
 AppAssetPathHost :: (name: string) -> string { return "" }
 #program_export
 AppPbkdf2Sha256Host :: (password: string, salt: string, iterations: s32) -> string { return "" }
+
+// Pass keeps no synced records.
+#program_export
+RecordListHost :: (output: []u8) -> s32 {
+    return -1
+}
+#program_export
+RecordReadHost :: (id: string, output: []u8) -> s32 {
+    return -1
+}
+#program_export
+RecordWriteHost :: (id: string, value: string) -> bool {
+    return false
+}
+#program_export
+RecordRemoveHost :: (id: string) -> bool {
+    return false
+}
+#program_export
+RecordsVersionHost :: () -> s32 {
+    return 0
+}

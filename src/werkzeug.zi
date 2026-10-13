@@ -13,6 +13,11 @@ using UI :: #import "kryon/Widgets";
 #if #defined(ANDROID_BUILD) {
     #import "android_fields"
 }
+#if !#defined(PLATFORM_WEB) {
+    #import "account"
+    #import "sync"
+    #import "device_link"
+}
 Back :: #import "mingcute/mingcute_regular_left";
 
 SCREEN_HOME :: 0
@@ -32,6 +37,10 @@ open_app: s32 = -1;
 // One app on its own, without Werkzeug's bar, as in a page that embeds it.
 mini: bool;
 name_field: FieldState;
+code_field: FieldState;
+code_text: [32]u8;
+// Stop syncing was tapped once; a second tap forgets the account here.
+forget_pending: bool;
 choosing_picture: bool;
 profile_scroll: s32;
 typed: [256]u8;
@@ -41,6 +50,9 @@ WerkzeugStart :: () {
     MigratePassData()
     LoadProfile()
     LoadApps()
+    #if !#defined(PLATFORM_WEB) {
+        LoadAccount()
+    }
 }
 
 // Opens an app by id at start, such as from the page address. In mini mode
@@ -82,6 +94,8 @@ Action :: (session: Session, id: s32, label: string, bounds: Rectangle, selected
 OpenHome :: () {
     if screen == SCREEN_PROFILE {
         name_field.focused = false
+        code_field.focused = false
+        forget_pending = false
         unused SaveProfile()
     }
     screen = SCREEN_HOME
@@ -248,7 +262,7 @@ ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput) {
         width = 480.0
     }
     left := area.x + (area.width - width) * 0.5
-    content_height: s32 = 620
+    content_height: s32 = 620 + 300
     if choosing_picture {
         content_height += cast(s32)((PROFILE_PICTURES + 5) / 6) * 56 + 16
     }
@@ -332,7 +346,138 @@ ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput) {
         profile.material = false
         unused SaveProfile()
     }
+    y += 64.0
+    SyncSection(session, x, y, width, input)
     End(session)
+}
+
+Note :: (session: Session, key: u64, text: string, x: float32, y: float32, width: float32) {
+    Text(session, TextProps.{.key = key, .bounds = Rectangle.{x, y, width, 40.0}, .text = text, .font = 14,
+            .wrap = TextWrap.TextWrapAuto})
+}
+
+CodeText :: () -> string {
+    return TextUntilNul(code_text[:])
+}
+
+CodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput, buffer: []u8) {
+    edit: TextFieldEdit
+    focused := false
+    finished := false
+    {
+        props := TextFieldProps.{.key = cast(u64)31, .focus_id = 31, .bounds = bounds,
+            .label = "Code", .placeholder = "Code from your other device", .value = CodeText(),
+            .cursor = code_field.cursor, .anchor = code_field.anchor, .scroll_x = code_field.scroll_x,
+            .focused = code_field.focused, .max_bytes = 20, .max_codepoints = 20}
+        if code_field.focused {
+            props.input = input
+        }
+        #if #defined(ANDROID_BUILD) {
+            if code_field.focused {
+                props.input = TextFieldInput.{}
+            }
+        }
+        result := TextField(session, props)
+        code_field.cursor = result.cursor
+        code_field.anchor = result.anchor
+        code_field.scroll_x = result.scroll_x
+        focused = result.focused
+        finished = result.escaped || result.committed
+        edit = result.edit
+    }
+    ApplyEdit(buffer, edit)
+    #if #defined(ANDROID_BUILD) {
+        if focused {
+            AndroidFieldSync(31, buffer, code_field.cursor, code_field.anchor)
+        }
+    }
+    code_field.focused = focused && !finished
+}
+
+// The account that syncs Auth: create one, connect to one, or connect
+// another device to it.
+SyncSection :: (session: Session, x: float32, y: float32, width: float32, input: TextFieldInput) {
+    Heading(session, cast(u64)46, "Sync", x, y, width)
+    y += 32.0
+    #if #defined(PLATFORM_WEB) {
+        Note(session, cast(u64)47, "Sync Auth between your devices in the desktop and Android apps.", x, y, width)
+    } else {
+        half := (width - 8.0) / 2.0
+        phase := LinkPhaseNow()
+        if !AccountReady() {
+            Note(session, cast(u64)47,
+                "Keep Auth's accounts on all your devices. They are encrypted here; the server never sees them.",
+                x, y, width)
+            y += 48.0
+            if phase == LinkPhase.LinkJoining {
+                Label(session, cast(u64)48, LinkStatus(), Rectangle.{x, y, width, 20.0}, 14)
+                if Action(session, 72, "Cancel", Rectangle.{x, y + 28.0, width, 40.0}, false) {
+                    LinkCancel()
+                }
+                return
+            }
+            if Action(session, 70, "Create account", Rectangle.{x, y, width, 40.0}, false) {
+                if !CreateAccount() {
+                    Label(session, cast(u64)48, "Could not create the account", Rectangle.{x, y + 104.0, width, 20.0}, 14)
+                } else {
+                    SyncNow()
+                }
+            }
+            y += 56.0
+            Label(session, cast(u64)49, "Or connect to the account on another device:", Rectangle.{x, y, width, 20.0}, 14)
+            y += 24.0
+            CodeField(session, Rectangle.{x, y, width - 120.0, 40.0}, input, code_text[:])
+            if Action(session, 71, "Connect", Rectangle.{x + width - 112.0, y, 112.0, 40.0}, false) {
+                code_field.focused = false
+                LinkJoin(TextUntilNul(code_text[:]))
+            }
+            y += 48.0
+            if phase == LinkPhase.LinkFailed {
+                Label(session, cast(u64)48, LinkStatus(), Rectangle.{x, y, width, 20.0}, 14)
+            }
+            return
+        }
+        status := ifx SyncStatus() == "" then "Sync is on" else SyncStatus()
+        Label(session, cast(u64)47, status, Rectangle.{x, y, width, 20.0}, 14)
+        y += 28.0
+        if Action(session, 73, "Sync now", Rectangle.{x, y, half, 40.0}, false) {
+            SyncNow()
+        }
+        if Action(session, 74, "Connect a device", Rectangle.{x + half + 8.0, y, half, 40.0},
+            phase == LinkPhase.LinkShowing) {
+            if phase == LinkPhase.LinkShowing {
+                LinkCancel()
+            } else {
+                LinkShow()
+            }
+        }
+        y += 56.0
+        if phase == LinkPhase.LinkShowing {
+            shown: [16]u8
+            Text(session, TextProps.{.key = cast(u64)75, .bounds = Rectangle.{x, y, width, 40.0},
+                    .text = LinkCodeText(shown[:]), .font = 28, .align = TextAlign.TextAlignCenter})
+            y += 48.0
+            Note(session, cast(u64)76,
+                "On your other device, open Profile, then Sync, and enter this code. It works for 10 minutes.",
+                x, y, width)
+            y += 48.0
+        } else if phase != LinkPhase.LinkIdle {
+            Label(session, cast(u64)76, LinkStatus(), Rectangle.{x, y, width, 20.0}, 14)
+            y += 28.0
+        }
+        if Action(session, 77, ifx forget_pending then "Tap again to stop syncing here" else "Stop syncing on this device",
+            Rectangle.{x, y, width, 40.0}, false) {
+            if forget_pending {
+                CancelSyncNow()
+                LinkCancel()
+                ForgetSync()
+                unused ForgetAccount()
+                forget_pending = false
+            } else {
+                forget_pending = true
+            }
+        }
+    }
 }
 
 AppScreen :: (session: Session, area: Rectangle, key: s32, modifiers: s32, input: TextFieldInput) {
@@ -357,6 +502,10 @@ AppScreen :: (session: Session, area: Rectangle, key: s32, modifiers: s32, input
 WerkzeugFrame :: (session: Session, viewport: Rectangle) -> s32 {
     ApplyTheme()
     ClipboardTick()
+    #if !#defined(PLATFORM_WEB) {
+        SyncFrame()
+        LinkFrame()
+    }
     key := KeyboardTake(session)
     modifiers := KeyboardModifiers(session)
     text := TypedTextTake(session, typed[:])
@@ -377,7 +526,7 @@ WerkzeugFrame :: (session: Session, viewport: Rectangle) -> s32 {
         Home(session, content)
     } else if screen == SCREEN_PROFILE {
         ProfileScreen(session, content, input)
-        keyboard_wanted = name_field.focused
+        keyboard_wanted = name_field.focused || code_field.focused
     } else if screen == SCREEN_APP && open_app >= 0 {
         AppScreen(session, content, key, modifiers, input)
     }

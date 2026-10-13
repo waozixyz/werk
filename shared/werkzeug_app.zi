@@ -38,6 +38,17 @@ AppPbkdf2Sha256Host :: (password: string, salt: string, iterations: s32) -> stri
 ReadStoreHost :: (name: string, output: []u8) -> s32 #foreign host_api;
 WriteStoreHost :: (name: string, value: string) -> bool #foreign host_api;
 
+// Synced records: small values that follow the owner's account to their
+// other devices. An id holds letters, digits, '-', '.' and '_'; a value is
+// one line of at most 1024 bytes. RecordList writes the ids, one per line;
+// RecordList and RecordRead return the byte count, or -1.
+RecordListHost :: (output: []u8) -> s32 #foreign host_api;
+RecordReadHost :: (id: string, output: []u8) -> s32 #foreign host_api;
+RecordWriteHost :: (id: string, value: string) -> bool #foreign host_api;
+RecordRemoveHost :: (id: string) -> bool #foreign host_api;
+// Changes whenever records arrived from another device.
+RecordsVersionHost :: () -> s32 #foreign host_api;
+
 // Copies text. After clear_seconds the host clears it again, unless
 // another application replaced it.
 ClipboardCopyHost :: (value: string, clear_seconds: s32) -> bool #foreign host_api;
@@ -133,6 +144,31 @@ ReadStore :: (name: string, output: []u8) -> s32 {
 #program_export
 WriteStore :: (name: string, value: string) -> bool {
     return WriteStoreHost(name, value)
+}
+
+#program_export
+RecordList :: (output: []u8) -> s32 {
+    return RecordListHost(output)
+}
+
+#program_export
+RecordRead :: (id: string, output: []u8) -> s32 {
+    return RecordReadHost(id, output)
+}
+
+#program_export
+RecordWrite :: (id: string, value: string) -> bool {
+    return RecordWriteHost(id, value)
+}
+
+#program_export
+RecordRemove :: (id: string) -> bool {
+    return RecordRemoveHost(id)
+}
+
+#program_export
+RecordsVersion :: () -> s32 {
+    return RecordsVersionHost()
 }
 
 #program_export

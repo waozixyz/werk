@@ -7,6 +7,13 @@ ZIRAN_ROOT = $(shell $(ZIRAN) pkg path ziran $(LOCK_FLAGS))
 KRYON_DIR = $(shell $(ZIRAN) pkg path kryon $(LOCK_FLAGS))
 RAYLIB_DIR = $(shell $(ZIRAN) pkg path raylib $(LOCK_FLAGS))/src
 MINGCUTE_DIR = $(shell $(ZIRAN) pkg path mingcute $(LOCK_FLAGS))
+# Account sync: ML-DSA-44 account keys from liboqs, and Ed25519, X25519,
+# BLAKE2b and XChaCha20-Poly1305 from Monocypher.
+LIBOQS_DIR = $(shell $(ZIRAN) pkg path liboqs $(LOCK_FLAGS))
+MONOCYPHER_DIR = $(shell $(ZIRAN) pkg path monocypher $(LOCK_FLAGS))
+LIBOQS_FLAGS := -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=OFF -DOQS_BUILD_ONLY_LIB=ON \
+	-DOQS_USE_OPENSSL=OFF -DOQS_DIST_BUILD=OFF -DOQS_OPT_TARGET=generic -DOQS_MINIMAL_BUILD=SIG_ml_dsa_44
+MONOCYPHER_SOURCES = $(MONOCYPHER_DIR)/src/monocypher.c $(MONOCYPHER_DIR)/src/optional/monocypher-ed25519.c
 CC ?= cc
 BIN_DIR ?= $(HOME)/bin
 DATA_DIR ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)
@@ -54,8 +61,13 @@ build/generated/desktop/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBR
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --target=c --entry desktop:main -o $(@D) src/desktop.zi
 	touch $@
-build/werkzeug: build/generated/desktop/.complete build/ziran/libziran.a Makefile
-	$(CC) $(CFLAGS) -Ibuild/generated/desktop build/generated/desktop/*.c build/ziran/libziran.a $(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo) -lm -lpthread -o $@
+build/liboqs/lib/liboqs.a: ziran.lock
+	cmake -S $(LIBOQS_DIR) -B build/liboqs $(LIBOQS_FLAGS) > /dev/null
+	cmake --build build/liboqs --target oqs > /dev/null
+build/werkzeug: build/generated/desktop/.complete build/ziran/libziran.a build/liboqs/lib/liboqs.a Makefile
+	$(CC) $(CFLAGS) -Ibuild/generated/desktop -I$(MONOCYPHER_DIR)/src -I$(MONOCYPHER_DIR)/src/optional \
+		build/generated/desktop/*.c $(MONOCYPHER_SOURCES) build/ziran/libziran.a build/liboqs/lib/liboqs.a \
+		$(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo) -l:libcurl.so.4 -lm -lpthread -o $@
 build/pfp.png: $(KRYON_DIR)/icons/pfp.png
 	cp $< $@
 gui: build/werkzeug build/pfp.png apps
@@ -119,19 +131,19 @@ web-smoke: site
 
 # CMake emits JNI and foreign ABI types separately for each Android ABI.
 android-debug: apps
-	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" ./gradlew assembleDebug -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
+	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
 	mkdir -p build
 	cp droid/app/build/outputs/apk/debug/app-universal-debug.apk build/werkzeug-android-debug.apk
 	python3 scripts/android_apk_check.py build/werkzeug-android-debug.apk
 	cp droid/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk build/werkzeug-android-arm64-v8a-debug.apk
 	cp droid/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk build/werkzeug-android-armeabi-v7a-debug.apk
 android-emulator: apps
-	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" ./gradlew assembleDebug -Pabi=x86_64 $(GRADLE_ARGS)
+	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=x86_64 $(GRADLE_ARGS)
 	mkdir -p build
 	cp droid/app/build/outputs/apk/debug/app-debug.apk build/werkzeug-android-emulator.apk
 	python3 scripts/android_apk_check.py build/werkzeug-android-emulator.apk
 android-release: apps
-	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
+	cd droid && env WERKZEUG_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
 android-smoke:
 	bash scripts/android_smoke.sh
 android-input-test:

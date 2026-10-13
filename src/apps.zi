@@ -15,6 +15,10 @@ using UI :: #import "kryon/Widgets";
 #import "platform"
 #import "files"
 #import "sha256"
+#import "records"
+#if !#defined(PLATFORM_WEB) {
+    #import "sync"
+}
 #if #defined(ANDROID_BUILD) {
     #import "android_fields"
 }
@@ -89,12 +93,13 @@ ModuleIs :: (value: string, name: string) -> bool {
 }
 
 AppFunction :: (function: string) -> bool {
-    names: [20]string = .["AppPbkdf2Sha256Host", "AppModeHost", "AppDescribeHost", "AppSessionHost", "AppBoundsHost",
+    names: [25]string = .["AppPbkdf2Sha256Host", "AppModeHost", "AppDescribeHost", "AppSessionHost", "AppBoundsHost",
     "AppDarkHost", "AppKeyHost", "AppModifiersHost", "AppFieldInputHost", "AppKeyboardHost",
     "AppNowHost", "AppLocalOffsetHost", "AppAssetPathHost", "ReadStoreHost", "WriteStoreHost",
     "ClipboardCopyHost", "SecureAvailableHost", "SecureSavedHost", "SecureRequestHost",
-    "SecureForgetHost"]
-    for index: 0..19 {
+    "SecureForgetHost", "RecordListHost", "RecordReadHost", "RecordWriteHost", "RecordRemoveHost",
+    "RecordsVersionHost"]
+    for index: 0..24 {
         if function == names[index] {
             return true
         }
@@ -208,6 +213,62 @@ ReadStoreCall :: (app: *App, arguments: *HostValue, result: *HostValue) -> s32 {
     return 1
 }
 
+// Text of count bytes and its NUL into the app's buffer, as from C.
+ReturnBytes :: (output: HostValue, bytes: []u8, count: s32, result: *HostValue) -> s32 {
+    if output.kind != cast(s32)HostSlice || (output.length > cast(usize)0 && output.elements == null) {
+        return 0
+    }
+    index: s64 = 0
+    while count >= 0 && index <= cast(s64)count && index < cast(s64)output.length && index < bytes.count {
+        output.elements[index].bits = cast(u64)bytes[index]
+        output.elements[index].integer = cast(s64)bytes[index]
+        index += 1
+    }
+    result.* = HostScalar("s32", cast(s64)count)
+    return 1
+}
+
+RecordCall :: (app: *App, name: string, arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    app_id := TextUntilNul(app.id[:])
+    now := cast(s64)(WallClock() * 1000.0)
+    if name == "RecordListHost" && count == 1 {
+        limit := cast(s64)arguments[0].length
+        used := RecordIds(app_id, store_bytes[0:ifx limit > APP_STORE_LIMIT then APP_STORE_LIMIT else limit])
+        return ReturnBytes(arguments[0], store_bytes[:], used, result)
+    }
+    if name == "RecordReadHost" && count == 2 {
+        limit := cast(s64)arguments[1].length
+        used := RecordValue(app_id, ArgumentText(arguments[0]),
+            store_bytes[0:ifx limit > APP_STORE_LIMIT then APP_STORE_LIMIT else limit])
+        return ReturnBytes(arguments[1], store_bytes[:], used, result)
+    }
+    if name == "RecordWriteHost" && count == 2 {
+        saved := RecordPut(app_id, ArgumentText(arguments[0]), ArgumentText(arguments[1]), now)
+        #if !#defined(PLATFORM_WEB) {
+            if saved {
+                SyncSoon()
+            }
+        }
+        ReturnBool(result, saved)
+        return 1
+    }
+    if name == "RecordRemoveHost" && count == 1 {
+        removed := RecordDelete(app_id, ArgumentText(arguments[0]), now)
+        #if !#defined(PLATFORM_WEB) {
+            if removed {
+                SyncSoon()
+            }
+        }
+        ReturnBool(result, removed)
+        return 1
+    }
+    if name == "RecordsVersionHost" {
+        result.* = HostScalar("s32", cast(s64)RecordsVersion(app_id))
+        return 1
+    }
+    return 0
+}
+
 // A secret the device unlocked is copied into the app's buffer, then wiped.
 SecurePollCall :: (arguments: *HostValue, result: *HostValue) -> s32 {
     output := arguments[0]
@@ -256,6 +317,9 @@ AppCall :: (context: *void, module: *u8, function: *u8,
     }
     if name == "ReadStoreHost" && count == 2 {
         return ReadStoreCall(app, arguments, result)
+    }
+    if name.count > 6 && name[0:6] == "Record" {
+        return RecordCall(app, name, arguments, count, result)
     }
     if name == "WriteStoreHost" && count == 2 {
         path_bytes: [PATH_LIMIT]u8

@@ -6,6 +6,7 @@
 - Add Auth for two-factor sign-in codes from otpauth links or secret keys; copied codes clear after 30 seconds.
 - Add Calculator, and Clock with a stopwatch.
 - Add a profile with your name, a picture and the appearance every tool shares.
+- Sync Auth's accounts between your devices from Profile → Sync: create an account, then connect another device with a 12-character code. Accounts are encrypted on the device; the server never sees them.
 - Keep your Pass profiles, settings, theme and saved master password when updating.
 - On Android, keep every screen clear of the navigation bar and the keyboard.
 - Use Inbe's font, Noto Sans, in the browser and on phones older than Android 10.

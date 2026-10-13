@@ -1,0 +1,174 @@
+// Two Werkzeug devices against a local Daochi node: one creates the account
+// and an Auth record, the other connects with the shown code and receives
+// it; a removal then reaches the second device too. scripts/sync_e2e_test.sh
+// runs each step in its own process with its own WERKZEUG_DATA.
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/file"
+#import "std/timer_linux"
+#import "platform"
+#import "account"
+#import "records"
+#import "sync"
+#import "device_link"
+
+RECORD_ID :: "e2e0000000000000000000000000000a"
+// RFC 6238's test key; never a real secret.
+RECORD_LINK :: "otpauth://totp/Test:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Test"
+
+c :: #system_library "c";
+WriteRaw :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign c "write";
+
+Say :: (text: string) {
+    line: [256]u8
+    if text.count > 0 && CopyCString(text, line[:]) {
+        unused WriteRaw(1, *line[0], cast(usize)text.count)
+    }
+    newline: [1]u8 = .[cast(u8)10]
+    unused WriteRaw(1, *newline[0], 1)
+}
+
+Now :: () -> s64 {
+    return cast(s64)(WallClock() * 1000.0)
+}
+
+// Runs sync frames until the sync finished; true when it succeeded.
+SyncUntilDone :: () -> bool {
+    SyncNow()
+    rounds: s32 = 0
+    while SyncRunning() && rounds < 1200 {
+        SyncFrame()
+        unused SleepMilliseconds(50)
+        rounds += 1
+    }
+    Say(SyncStatus())
+    return SyncStatus() == "Synced"
+}
+
+Create :: () -> s32 {
+    LoadAccount()
+    if AccountReady() || !CreateAccount() {
+        Say("could not create the account")
+        return 1
+    }
+    if !RecordPut("auth", RECORD_ID, RECORD_LINK, Now()) {
+        Say("could not write the record")
+        return 1
+    }
+    return ifx SyncUntilDone() then 0 else 1
+}
+
+Show :: (code_path: string) -> s32 {
+    LoadAccount()
+    if !AccountReady() {
+        Say("no account to show")
+        return 1
+    }
+    LinkShow()
+    shown: [16]u8
+    if !WriteEntireFile(code_path, LinkCodeText(shown[:])) {
+        return 1
+    }
+    rounds: s32 = 0
+    while (LinkPhaseNow() == LinkPhase.LinkShowing) && rounds < 2400 {
+        LinkFrame()
+        unused SleepMilliseconds(50)
+        rounds += 1
+    }
+    Say(LinkStatus())
+    return ifx LinkPhaseNow() == LinkPhase.LinkDone then 0 else 1
+}
+
+Join :: (code_path: string) -> s32 {
+    LoadAccount()
+    if AccountReady() {
+        Say("this device already has an account")
+        return 1
+    }
+    rounds: s32 = 0
+    code, found := ReadEntireFile(code_path)
+    while (!found || code.count < 14) && rounds < 600 {
+        unused SleepMilliseconds(100)
+        code, found = ReadEntireFile(code_path)
+        rounds += 1
+    }
+    LinkJoin(code)
+    rounds = 0
+    while LinkPhaseNow() == LinkPhase.LinkJoining && rounds < 2400 {
+        LinkFrame()
+        unused SleepMilliseconds(50)
+        rounds += 1
+    }
+    // Closing the mailbox finishes the connection.
+    while link_step == 4 && LinkPhaseNow() == LinkPhase.LinkJoining && rounds < 2600 {
+        LinkFrame()
+        unused SleepMilliseconds(50)
+        rounds += 1
+    }
+    Say(LinkStatus())
+    if !AccountReady() {
+        return 1
+    }
+    return Check(true)
+}
+
+// Syncs, then checks whether the record is there.
+Check :: (present: bool) -> s32 {
+    LoadAccount()
+    CancelSyncNow()
+    if !SyncUntilDone() {
+        return 1
+    }
+    value: [256]u8
+    count := RecordValue("auth", RECORD_ID, value[:])
+    if present {
+        if count < 0 || TextUntilNul(value[:]) != RECORD_LINK {
+            Say("the record did not arrive")
+            return 1
+        }
+        Say("the record arrived")
+        return 0
+    }
+    if count >= 0 {
+        Say("the removal did not arrive")
+        return 1
+    }
+    Say("the removal arrived")
+    return 0
+}
+
+Remove :: () -> s32 {
+    LoadAccount()
+    if !RecordDelete("auth", RECORD_ID, Now()) {
+        Say("could not remove the record")
+        return 1
+    }
+    return ifx SyncUntilDone() then 0 else 1
+}
+
+#program_export
+main :: (argc: s32, argv: **u8) -> s32 {
+    if argc < 2 {
+        Say("usage: sync_e2e create|show FILE|join FILE|remove|absent")
+        return 2
+    }
+    mode := TextFromCString(argv[1])
+    path := ifx argc >= 3 then TextFromCString(argv[2]) else ""
+    if mode == "create" {
+        return Create()
+    }
+    if mode == "show" {
+        return Show(path)
+    }
+    if mode == "join" {
+        return Join(path)
+    }
+    if mode == "remove" {
+        return Remove()
+    }
+    if mode == "absent" {
+        return Check(false)
+    }
+    return 2
+}
