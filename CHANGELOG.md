@@ -7,6 +7,8 @@
 - Add Calculator, and Clock with a stopwatch.
 - Add a profile with your name, a picture and the appearance every tool shares.
 - Keep your Pass profiles, settings, theme and saved master password when updating.
+- On Android, keep every screen clear of the navigation bar and the keyboard.
+- Use Inbe's font, Noto Sans, in the browser and on phones older than Android 10.
 
 ## [0.2.10] - 2026-10-05
 
