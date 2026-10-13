@@ -30,12 +30,12 @@ def shot(name):
 def alive():
     if not shell("pidof", package, check=False).strip():
         details = adb("logcat", "-d", "-b", "crash").stdout.decode()
-        raise AssertionError("Werk stopped in the private emulator:\n" + details[-6000:])
+        raise AssertionError("Werkzeug stopped in the private emulator:\n" + details[-6000:])
     activities = shell("dumpsys", "activity", "activities")
     # mResumedActivity before Android 13, ResumedActivity from then on.
     resumed = next((line for line in activities.splitlines()
                     if line.strip().startswith(("mResumedActivity:", "ResumedActivity:"))), "")
-    assert package in resumed, f"Werk activity closed or lost foreground: {resumed}"
+    assert package in resumed, f"Werkzeug activity closed or lost foreground: {resumed}"
 
 def tap(x, y):
     shell("input", "tap", str(x), str(y)); time.sleep(0.25)
@@ -44,7 +44,7 @@ def type_text(text):
     shell("input", "text", text.replace(" ", "%s")); time.sleep(0.3)
 
 def system_bars(height):
-    """The app's first and last rows in pixels: Werk keeps its content
+    """The app's first and last rows in pixels: Werkzeug keeps its content
     between the status bar and the navigation bar."""
     dump = shell("dumpsys", "window")
     status = re.search(r"type=statusBars frame=\[0,0\]\[\d+,(\d+)\]", dump)
@@ -65,7 +65,7 @@ try:
     width, height = map(int, size.split("x"))
     zoom = width / 390
     top, bottom = system_bars(height)
-    # Pass's tile on the home screen, then Pass below Werk's 56-unit bar.
+    # Pass's tile on the home screen, then Pass below Werkzeug's 56-unit bar.
     tap(int(127 * zoom), top + int(132 * zoom)); time.sleep(0.5); alive(); shot("pass")
     bar = 56
     tap(int(90 * zoom), top + int((55 + bar) * zoom)); type_text("example.com")
@@ -107,7 +107,7 @@ try:
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected
     assert shell("run-as", package, "stat", "-c", "%a", "files/apps/pass/profiles.tsv").strip() == "600"
     shot("persisted")
-    # Profile's name is one of Werk's own fields. Each letter must land
+    # Profile's name is one of Werkzeug's own fields. Each letter must land
     # after the last, at the caret the keyboard reports.
     tap(int(28 * zoom), top + int(28 * zoom)); time.sleep(0.5)
     tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.8); alive()
@@ -118,7 +118,7 @@ try:
     tap(int(28 * zoom), top + int(28 * zoom)); time.sleep(0.5); alive()
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "name=Ada Lovelace\n" in settings, f"Profile name typed out of order: {settings!r}"
-    print("Werk Android: home, Pass keyboard, masked master, profiles, generation, restart and profile name pass")
+    print("Werkzeug Android: home, Pass keyboard, masked master, profiles, generation, restart and profile name pass")
 except BaseException:
     shot("failure")
     raise

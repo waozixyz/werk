@@ -1,4 +1,4 @@
-// Werk's own screens: the home screen of apps, the profile, and the bar
+// Werkzeug's own screens: the home screen of apps, the profile, and the bar
 // above the app that is open.
 #import "std/byte_text_linux"
 #import "std/text_buffer"
@@ -34,7 +34,7 @@ FieldState :: struct {
 
 screen: s32;
 open_app: s32 = -1;
-// One app on its own, without Werk's bar, as in a page that embeds it.
+// One app on its own, without Werkzeug's bar, as in a page that embeds it.
 mini: bool;
 name_field: FieldState;
 code_field: FieldState;
@@ -111,7 +111,7 @@ OpenHome :: () {
 
 TopBar :: (session: Session, viewport: Rectangle) {
     bar := Rectangle.{viewport.x, viewport.y, viewport.width, BAR_HEIGHT}
-    title := "Werk"
+    title := "Werkzeug"
     left := bar.x + 16.0
     if screen != SCREEN_HOME {
         back := ButtonProps.{.key = cast(u64)10, .id = 10, .label = "Home",

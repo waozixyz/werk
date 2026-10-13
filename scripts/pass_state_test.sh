@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pass's settings, profiles and secure master against a mock Werk host,
+# Pass's settings, profiles and secure master against a mock Werkzeug host,
 # natively and as a portable bundle.
 set -eu
 ziran=${1:?pass the ziran command}

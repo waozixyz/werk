@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs the Werk GUI test on its own private Xvfb display, never the
+# Runs the Werkzeug GUI test on its own private Xvfb display, never the
 # developer's desktop.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

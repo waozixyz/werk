@@ -1,4 +1,4 @@
-// The Daochi account that syncs Werk between the owner's devices. The
+// The Daochi account that syncs Werkzeug between the owner's devices. The
 // private account/keys.txt holds the account's ML-DSA key, this device's
 // Ed25519 seed and the vault key that encrypts every record; the server
 // stores only ciphertext. Devices share the account and vault keys only
@@ -17,8 +17,8 @@
 #import "sync_keys"
 
 ACCOUNT_SERVER :: "https://api.waozi.xyz"
-// Werk's former name stays in its Daochi identifiers: the app is registered
-// under it and linked devices sign their records with it.
+// Daochi identifiers keep the full name, werkzeug, where files use werk: the
+// app is registered under it and linked devices sign their records with it.
 ACCOUNT_APP :: "werkzeug"
 ACCOUNT_FILE_LIMIT :: 12288
 

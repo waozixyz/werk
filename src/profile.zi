@@ -1,4 +1,4 @@
-// The Werk profile: a name and picture, and the appearance every app
+// The Werkzeug profile: a name and picture, and the appearance every app
 // shares. It lives in the private profile/settings.txt file.
 #import "std/byte_text_linux"
 #import "std/c_string"

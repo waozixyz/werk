@@ -1,6 +1,6 @@
-# Werk repository rules
+# Werkzeug repository rules
 
-Werk (formerly Pass) is a public repository. Read `~/Projects/AGENTS.md`
+Werkzeug (formerly Pass) is a public repository. Read `~/Projects/AGENTS.md`
 first.
 
 ## Tools are separate apps
@@ -26,7 +26,7 @@ first.
 - Keep Pass's on-disk formats and the Android package `xyz.waozi.pass`:
   existing installations update in place and keep their saved master
   password. `src/migrate.zi` moves Pass's old files once; keep it.
-- Every file Werk writes is private (0600 in 0700 folders).
+- Every file Werkzeug writes is private (0600 in 0700 folders).
 
 ## Platforms and tests
 

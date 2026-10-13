@@ -1,5 +1,5 @@
 // Brings the settings and profiles Pass saved before it became part of
-// Werk into the Pass app's own folder, once, and its theme into the
+// Werkzeug into the Pass app's own folder, once, and its theme into the
 // profile. The old files are left in place.
 #import "std/file"
 #import "std/c_string"

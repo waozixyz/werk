@@ -19,7 +19,7 @@ cp "$root/packaging/linux/xyz.waozi.werk.desktop" "$appdir/usr/share/application
 cp "$root/packaging/linux/xyz.waozi.werk.appdata.xml" "$appdir/usr/share/metainfo/xyz.waozi.werk.appdata.xml"
 cp "$root/assets/app/icon.png" "$appdir/usr/share/icons/hicolor/512x512/apps/werk.png"
 cp "$root/assets/app/icon.png" "$root/build/package/appimage/werk.png"
-rm -f "$root"/Werk-*.AppImage "$root"/werk-*.AppImage
+rm -f "$root"/Werkzeug-*.AppImage "$root"/werk-*.AppImage
 ARCH="$arch" "$linuxdeploy" --appdir "$appdir" --desktop-file "$root/packaging/linux/xyz.waozi.werk.desktop" \
 	--icon-file "$root/build/package/appimage/werk.png" --output appimage
 image=$(find "$root" -maxdepth 1 -type f -name '*.AppImage' -print | head -n 1)

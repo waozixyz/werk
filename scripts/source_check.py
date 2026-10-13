@@ -25,4 +25,4 @@ import re
 permissions = set(re.findall(r'uses-permission android:name="([^"]+)"', manifest))
 assert permissions <= {"android.permission.USE_BIOMETRIC", "android.permission.USE_FINGERPRINT",
                        "android.permission.INTERNET"}, permissions
-print("All maintained Werk application implementations are Ziran")
+print("All maintained Werkzeug application implementations are Ziran")
