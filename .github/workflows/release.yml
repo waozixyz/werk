@@ -202,14 +202,11 @@ jobs:
           cd build/site
           zip -qr ../werk-web.zip .
 
+          # The whole app folder: its page loads content-hashed script and
+          # Wasm names, and the service worker caches the files in assets.json.
           mkdir -p ../werk-html5
-          cp app/index.html ../werk-html5/
-          cp app/index.js ../werk-html5/
-          cp app/index.wasm ../werk-html5/
-          cp app/sw.js ../werk-html5/
-          cp app/emoji-OFL.txt ../werk-html5/
-          cp manifest.webmanifest ../werk-html5/
-          cp -R icons ../werk-html5/icons
+          cp -R app/. ../werk-html5/
+          cp -R icons/. ../werk-html5/icons/
           sed -i \
             -e 's#href="/manifest.webmanifest"#href="manifest.webmanifest"#g' \
             -e 's#href="/icons/#href="icons/#g' \

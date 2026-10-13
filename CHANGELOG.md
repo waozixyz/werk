@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1] - 2026-10-13
+
+- Fix the web version on itch.io, which opened to a blank page.
+
 ## [0.3.0] - 2026-10-13
 
 - Pass is now Werkzeug: a home screen of small private tools, each its own app and all preinstalled.

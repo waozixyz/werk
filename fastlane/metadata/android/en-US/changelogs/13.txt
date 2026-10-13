@@ -1,0 +1,1 @@
+- Fix the web version on itch.io, which opened to a blank page.
