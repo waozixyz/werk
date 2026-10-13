@@ -50,7 +50,7 @@ jobs:
           node-version: '22'
       - name: Test browser input, storage, and offline launch
         env:
-          PASS_WEB_SMOKE_BROWSER: google-chrome
+          WERK_WEB_BROWSER: google-chrome
         run: make web-smoke
       - name: Verify generated site
         run: |

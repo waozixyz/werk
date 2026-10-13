@@ -50,8 +50,16 @@ try {
     await delay(100);
   }
   if (!port) throw Error('Chromium did not start: ' + diagnostics);
-  const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-  socket = new WebSocket(pages.find(page => page.type === 'page').webSocketDebuggerUrl);
+  // The DevTools port can open before Chromium registers its first tab.
+  let page;
+  const listed = Date.now() + 10000;
+  while (!page && Date.now() < listed) {
+    const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+    page = targets.find(target => target.type === 'page');
+    if (!page) await delay(100);
+  }
+  if (!page) throw Error('Chromium opened no page: ' + diagnostics);
+  socket = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((done, fail) => {
     socket.addEventListener('open', done, {once: true});
     socket.addEventListener('error', fail, {once: true});
