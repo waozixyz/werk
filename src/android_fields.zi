@@ -94,20 +94,27 @@ AndroidWidgetCall :: (context: *void, module: *u8, function: *u8,
     return 1
 }
 
-// Keeps one of Werkzeug's own fields in step with the editor: typing there
-// replaces the text in buffer, and the field's text is sent back.
-AndroidFieldSync :: (id: s32, buffer: []u8, cursor: s32, anchor: s32) {
+// Werkzeug's own fields follow the editor in two steps. Before a focused
+// field draws, typing there replaces the text in buffer and the caret moves
+// where the editor has it, so the field never sends back a caret from
+// before the edit, which would put the next letter in the wrong place.
+AndroidFieldRead :: (id: s32, buffer: []u8, cursor: *s32, anchor: *s32) {
     selection := AndroidTextRead(id, editor_text[:])
-    if selection.valid {
-        typed := TextUntilNul(editor_text[:])
-        if typed.count < buffer.count {
-            index: s64 = 0
-            while index < buffer.count {
-                buffer[index] = ifx index < typed.count then typed[index] else cast(u8)0
-                index += 1
-            }
-        }
+    typed := TextUntilNul(editor_text[:])
+    if !selection.valid || typed.count >= buffer.count {
+        return
     }
+    index: s64 = 0
+    while index < buffer.count {
+        buffer[index] = ifx index < typed.count then typed[index] else cast(u8)0
+        index += 1
+    }
+    cursor.* = selection.cursor
+    anchor.* = selection.anchor
+}
+
+// After it draws, the field's text and caret go back to the editor.
+AndroidFieldSubmit :: (id: s32, buffer: []u8, cursor: s32, anchor: s32) {
     AndroidTextSubmit(id, TextUntilNul(buffer), cursor, anchor, false)
     field_seen = true
 }
