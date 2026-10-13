@@ -1,6 +1,6 @@
-// Where Werk keeps its files, and the clock, clipboard, keyboard and
+// Where Werkzeug keeps its files, and the clock, clipboard, keyboard and
 // secret storage its apps use, on the desktop and on Android. Every file
-// Werk writes is private (0600 in 0700 folders).
+// Werkzeug writes is private (0600 in 0700 folders).
 #import "std/file"
 #import "std/date_time_linux"
 #import "std/date_parse"
@@ -60,7 +60,7 @@ UserRoot :: (output: []u8, variable: string, fallback: string) -> string {
     return PathJoin(output, base, "werk")
 }
 
-// Werk's private data. On Android it is the app's internal folder,
+// Werkzeug's private data. On Android it is the app's internal folder,
 // where Pass kept its files.
 #program_export
 DataRoot :: () -> string {
@@ -98,7 +98,7 @@ CacheRoot :: () -> string {
     return TextUntilNul(cache_root[:])
 }
 
-// Werk's own files: lib/werk beside an installed executable's
+// Werkzeug's own files: lib/werk beside an installed executable's
 // prefix, ~/.local/lib/werk for a user installation, or the folder of
 // the executable in a build. WERK_ASSETS overrides them. On Android
 // they are the APK's assets, read by relative path; the browser build
@@ -143,7 +143,7 @@ AssetsRoot :: () -> string {
     return TextUntilNul(assets_root[:])
 }
 
-// The path of one of Werk's own files.
+// The path of one of Werkzeug's own files.
 AssetPath :: (output: []u8, name: string) -> string {
     #if #defined(ANDROID_BUILD) {
         unused CopyCString(name, output)

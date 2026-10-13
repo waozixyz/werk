@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pass's saved settings, profiles and theme reach Werk on its first
+# Pass's saved settings, profiles and theme reach Werkzeug on its first
 # start; a disposable fixture folder stands in for the old working folder.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)

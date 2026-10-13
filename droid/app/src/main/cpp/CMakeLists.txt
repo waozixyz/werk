@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Werk C)
+project(Werkzeug C)
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.." ABSOLUTE)
 set(KRYON_DIR "$ENV{KRYON_DIR}" CACHE PATH "Locked Kryon source" FORCE)
 set(ZIRAN_ROOT "$ENV{ZIRAN_ROOT}" CACHE PATH "Locked Ziran toolchain" FORCE)
@@ -76,5 +76,5 @@ target_link_libraries(main oqs)
 kryon_android_app(main)
 target_link_libraries(main "${BUNDLE_RUNTIME_DIR}/libziran.a")
 target_link_options(main PRIVATE -Wl,--wrap=pthread_attr_init)
-# Werk has no handwritten native sources; every app translation unit above is
+# Werkzeug has no handwritten native sources; every app translation unit above is
 # generated from .zi for this ABI. raylib and the NDK own native_app_glue.

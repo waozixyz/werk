@@ -29,22 +29,22 @@ DrawDesktop :: (session: Session) -> bool {
     TreeSecondaryPointerUpdate(session, Desktop.PollSecondaryPointer())
     PointerWheelSend(session, pointer.x, pointer.y, Desktop.DesktopWheelMove())
     if BeginFrame(session, cast(u64)1, viewport) != FrameStatus.FrameOk {
-        Report("Werk: could not begin frame\n")
+        Report("Werkzeug: could not begin frame\n")
         return false
     }
     if WerkFrame(session, viewport) != 0 {
         TreeCancel(session)
-        Report("Werk: could not compose frame\n")
+        Report("Werkzeug: could not compose frame\n")
         return false
     }
     if EndFrame(session) != FrameStatus.FrameOk {
-        Report("Werk: could not paint frame\n")
+        Report("Werkzeug: could not paint frame\n")
         return false
     }
     unused Desktop.DesktopCursor(session)
     ok := Desktop.EndDesktopFrame()
     if !ok {
-        Report("Werk: could not present frame\n")
+        Report("Werkzeug: could not present frame\n")
     }
     return ok
 }
@@ -53,11 +53,11 @@ DrawDesktop :: (session: Session) -> bool {
 main :: (argc: s32, argv: **u8) -> s32 {
     if !Desktop.OpenDesktopSized(DESKTOP_WIDTH, DESKTOP_HEIGHT) {
         Desktop.CloseDesktop()
-        Report("Werk: could not open desktop\n")
+        Report("Werkzeug: could not open desktop\n")
         return 1
     }
     title: [16]u8
-    unused CopyCString("Werk", title[:])
+    unused CopyCString("Werkzeug", title[:])
     SetTitle(Desktop.window, *title[0])
     session := SessionOpen()
     if !SessionValid(session) {

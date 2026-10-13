@@ -17,7 +17,7 @@ MONOCYPHER_SOURCES = $(MONOCYPHER_DIR)/src/monocypher.c $(MONOCYPHER_DIR)/src/op
 CC ?= cc
 BIN_DIR ?= $(HOME)/bin
 DATA_DIR ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)
-# The tool bundles and Werk's other files.
+# The tool bundles and Werkzeug's other files.
 LIB_DIR ?= $(HOME)/.local/lib/werk
 WEB_CC ?= $(if $(wildcard $(HOME)/emsdk/upstream/emscripten/emcc),$(HOME)/emsdk/upstream/emscripten/emcc,emcc)
 SOURCES := $(wildcard src/*.zi shared/*.zi apps/*/*.zi)
@@ -40,7 +40,7 @@ build/pass: build/generated/cli/.complete
 cli: build/pass
 	cp build/pass pass
 
-# Each app is its own bundle; Werk runs them in one window.
+# Each app is its own bundle; Werkzeug runs them in one window.
 APPS := pass auth calculator clock
 APP_BUNDLES := $(APPS:%=build/apps/%.zib)
 SHARED_SOURCES := $(wildcard shared/*.zi)

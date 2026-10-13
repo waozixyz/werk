@@ -1,6 +1,6 @@
 [package]
 tool = "kryon"
-name = "Werk"
+name = "Werkzeug"
 entry = "src/desktop.zi"
 module_roots = ["src", "shared", "apps/pass"]
 

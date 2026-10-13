@@ -1,4 +1,4 @@
-// Two Werk devices against a local Daochi node: one creates the account
+// Two Werkzeug devices against a local Daochi node: one creates the account
 // and an Auth record, the other connects with the shown code and receives
 // it; a removal then reaches the second device too. scripts/sync_e2e_test.sh
 // runs each step in its own process with its own WERK_DATA.

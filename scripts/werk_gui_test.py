@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive Werk and its four apps on the harness's private Xvfb display.
+"""Drive Werkzeug and its four apps on the harness's private Xvfb display.
 
 Uses disposable data and cache folders and fixture secrets only. Run
 through scripts/werk_gui_test.sh, which starts the private display.
@@ -44,7 +44,7 @@ def start():
     app = subprocess.Popen([str(root / "build/werk")], env=environment)
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        assert app.poll() is None, "Werk exited before showing its window"
+        assert app.poll() is None, "Werkzeug exited before showing its window"
         found = subprocess.run(["xdotool", "search", "--onlyvisible", "--pid", str(app.pid)],
                                env=environment, capture_output=True, text=True)
         if found.returncode == 0:
@@ -53,7 +53,7 @@ def start():
             time.sleep(0.5)
             return
         time.sleep(0.1)
-    raise AssertionError("Werk did not show its window")
+    raise AssertionError("Werkzeug did not show its window")
 
 
 def stop():
@@ -172,6 +172,6 @@ try:
     assert "name=Fixture Person\n" in settings and "theme_mode=2\n" in settings, settings
     assert (data / "profile/settings.txt").stat().st_mode & 0o077 == 0
     stop()
-    print("Werk GUI test: home, Pass, Calculator, Clock, Auth and Profile ran on a private display")
+    print("Werkzeug GUI test: home, Pass, Calculator, Clock, Auth and Profile ran on a private display")
 finally:
     stop()

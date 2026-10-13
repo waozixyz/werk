@@ -4,7 +4,7 @@
   </a>
 </p>
 
-# Werk
+# Werkzeug
 
 Small private tools in one app. The home screen opens each one:
 
@@ -26,13 +26,13 @@ Small private tools in one app. The home screen opens each one:
 The profile holds your name, a picture and the appearance every tool shares:
 system, light or dark, an accent color and Material or Classic widgets.
 
-Werk was previously Pass. On its first start it moves Pass's saved
+Werkzeug was previously Pass. On its first start it moves Pass's saved
 profiles, settings and theme into the new layout; the Android app keeps
 Pass's package, so it updates in place and keeps a saved master password.
 
 ## Privacy
 
-Everything is computed on the device. Werk makes no network requests
+Everything is computed on the device. Werkzeug makes no network requests
 unless you turn on sync. Each tool keeps its own files, readable only by your
 user:
 

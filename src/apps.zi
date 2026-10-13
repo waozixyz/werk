@@ -1,4 +1,4 @@
-// Runs the Werk apps. Each app is its own bundle: the host checks every
+// Runs the Werkzeug apps. Each app is its own bundle: the host checks every
 // capability it asks for, answers its calls and draws its widgets into the
 // host's session. An app's files, assets and secret belong to it alone.
 #import "std/bundle_host"

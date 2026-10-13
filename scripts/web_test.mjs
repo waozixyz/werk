@@ -1,4 +1,4 @@
-// Exercise the built site's Werk app in a private headless browser with a
+// Exercise the built site's Werkzeug app in a private headless browser with a
 // disposable profile: the home screen, a tool opened by ?app=, Calculator
 // typing, and Pass alone by ?mini as embedding pages use it.
 import {spawn} from 'node:child_process';
@@ -108,7 +108,7 @@ try {
       await delay(200);
     }
     await screenshot(name + '-failure');
-    throw Error(`Werk did not draw ${query || 'home'}: ${exceptions.join(' ')} ${diagnostics}`);
+    throw Error(`Werkzeug did not draw ${query || 'home'}: ${exceptions.join(' ')} ${diagnostics}`);
   };
   const type = async text => {
     for (const character of text) {
@@ -126,7 +126,7 @@ try {
   await screenshot('calculator-typed');
   await open('?mini', 'pass-mini');
   if (exceptions.length) throw Error('Page exceptions: ' + exceptions.join(' '));
-  console.log('Werk web: home, Calculator and Pass in mini mode drew in a private headless browser');
+  console.log('Werkzeug web: home, Calculator and Pass in mini mode drew in a private headless browser');
 } finally {
   socket?.close();
   try {

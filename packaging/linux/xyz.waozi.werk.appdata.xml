@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>xyz.waozi.werk</id>
-  <name>Werk</name>
+  <name>Werkzeug</name>
   <summary>Passwords, two-factor codes, a calculator and a clock</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>BSD-3-Clause</project_license>
   <description>
-    <p>Werk holds small private tools: Pass derives repeatable passwords from a site, login, master password and settings without a password database; Auth shows two-factor sign-in codes; Calculator and Clock cover everyday sums and time. Everything stays on the device.</p>
+    <p>Werkzeug holds small private tools: Pass derives repeatable passwords from a site, login, master password and settings without a password database; Auth shows two-factor sign-in codes; Calculator and Clock cover everyday sums and time. Everything stays on the device.</p>
   </description>
   <launchable type="desktop-id">xyz.waozi.werk.desktop</launchable>
   <url type="homepage">https://github.com/waozixyz/werk</url>

@@ -63,7 +63,7 @@
   ],
   "root": {
     "dependencies": {"daochi_client": "p96e1f539ccb91af5", "kryon": "p0593ae746da1eed9", "liboqs": "pfb3df7cb222b1bdc", "mingcute": "p56788fa3dab3e73a", "monocypher": "p4266498010aa1745", "oqs": "p55635fc8976895a9"},
-    "name": "Werk"
+    "name": "Werkzeug"
   },
   "toolchain": {
     "commit": "201be1072cfb2ad59b4060f8579db36f6848b8cb",

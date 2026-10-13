@@ -1,5 +1,5 @@
 #!/bin/sh
-# Renders Werk's home screen in light and dark on private Xvfb displays,
+# Renders Werkzeug's home screen in light and dark on private Xvfb displays,
 # with disposable profiles, never the user's saved data.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -19,7 +19,7 @@ for mode in light dark; do
     test -s "$work/werk-$mode.png"
 done
 if cmp -s "$work/werk-light.png" "$work/werk-dark.png"; then
-    echo 'Werk light and dark themes rendered the same frame' >&2
+    echo 'Werkzeug light and dark themes rendered the same frame' >&2
     exit 1
 fi
-echo 'Werk desktop: light and dark home screens rendered on private Xvfb displays'
+echo 'Werkzeug desktop: light and dark home screens rendered on private Xvfb displays'

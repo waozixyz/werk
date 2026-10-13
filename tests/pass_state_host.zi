@@ -63,7 +63,7 @@ SecurePollHost :: (output: []u8) -> s32 {
     return status
 }
 
-// The rest of the Werk interface, which Pass's state does not use.
+// The rest of the Werkzeug interface, which Pass's state does not use.
 #import "session"
 #import "geometry"
 #import "text_input_props"

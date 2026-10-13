@@ -1,4 +1,4 @@
-// The interface between Werk and its apps. Every app is a separate
+// The interface between Werkzeug and its apps. Every app is a separate
 // bundle; the host answers these calls for the app that is running. Storage,
 // secure storage and assets are private to that app.
 #import "session"

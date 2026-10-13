@@ -1,4 +1,4 @@
-// What the host asks of a run of an app's Main, shared by Werk and its
+// What the host asks of a run of an app's Main, shared by Werkzeug and its
 // apps.
 APP_IDENTIFY :: 1
 APP_FRAME :: 2

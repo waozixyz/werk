@@ -1,4 +1,4 @@
-// Browser storage: Werk's files live in IndexedDB through Emscripten's
+// Browser storage: Werkzeug's files live in IndexedDB through Emscripten's
 // IDBFS, in the same /pass-data database Pass used, so Pass's saved
 // profiles and settings carry over. Without storage (private windows,
 // embedded previews) the tools still work; nothing is kept.

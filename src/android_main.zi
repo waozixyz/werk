@@ -21,7 +21,7 @@ WriteLog :: (priority: s32, tag: *u8, message: *u8) -> s32 #foreign log_library 
 Report :: (message: string) {
     tag: [16]u8
     text: [128]u8
-    if CopyCString("Werk", tag[:]) && CopyCString(message, text[:]) {
+    if CopyCString("Werkzeug", tag[:]) && CopyCString(message, text[:]) {
         unused WriteLog(6, *tag[0], *text[0])
     }
 }
@@ -46,7 +46,7 @@ main :: () -> s32 {
     thread_adapter: AttributeInit = NativeThreadAttributes
     unused thread_adapter
     title: [16]u8
-    unused CopyCString("Werk", title[:])
+    unused CopyCString("Werkzeug", title[:])
     InitWindow(0, 0, *title[0])
     if !IsWindowReady() {
         return 1

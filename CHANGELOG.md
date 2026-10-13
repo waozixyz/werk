@@ -2,7 +2,8 @@
 
 ## [0.3.0] - 2026-10-13
 
-- Pass is now Werk: a home screen of small private tools, each its own app and all preinstalled.
+- Pass is now Werkzeug: a home screen of small private tools, each its own app and all preinstalled.
+- A new logo: a wrench with a keyhole. The website moves to werk.waozi.xyz.
 - Add Auth for two-factor sign-in codes from otpauth links or secret keys; copied codes clear after 30 seconds.
 - Add Calculator, and Clock with a stopwatch.
 - Add a profile with your name, a picture and the appearance every tool shares.

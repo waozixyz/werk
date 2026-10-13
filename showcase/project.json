@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "slug": "werk",
-  "name": "Werk",
+  "name": "Werkzeug",
   "summary": "Small private tools: passwords, two-factor codes, a calculator and a clock, for Android, desktop and the browser.",
   "repository": {
     "platform": "github",
@@ -9,7 +9,7 @@
     "owner": "waozixyz",
     "name": "werk"
   },
-  "homepage": "https://pass.waozi.xyz",
+  "homepage": "https://werk.waozi.xyz",
   "banner": "showcase/banner.png",
   "tags": ["security", "passwords", "desktop", "mobile", "web"],
   "featured": true

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Account sync between two Werk devices through a local Daochi node:
+# Account sync between two Werkzeug devices through a local Daochi node:
 # create an account with an Auth record, connect a second device with the
 # shown code, receive the record there, then remove it and see the removal
 # arrive. Needs the Daochi checkout (DAOCHI_DIR) with its liboqs built.
@@ -72,4 +72,4 @@ if grep -a -q GEZDGNBVGY3TQOJQ "$work/daochi.db"* 2>/dev/null; then
     echo "the server stored a secret in plain text"
     exit 1
 fi
-echo 'Werk sync: account, connected device, record and removal through a local Daochi node'
+echo 'Werkzeug sync: account, connected device, record and removal through a local Daochi node'

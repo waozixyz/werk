@@ -31,7 +31,7 @@ Installed-Size: $installed
 Depends: libc6, libsdl2-2.0-0, libcairo2, libfreetype6, libfontconfig1, libpangocairo-1.0-0
 Section: utils
 Priority: optional
-Homepage: https://pass.waozi.xyz/
+Homepage: https://werk.waozi.xyz/
 Description: small private tools: passwords, two-factor codes, calculator, clock
  Pass derives repeatable passwords locally without a password database, Auth
  shows two-factor sign-in codes, and Calculator and Clock cover everyday sums
