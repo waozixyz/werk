@@ -138,6 +138,17 @@ Check :: (present: bool) -> s32 {
     return 0
 }
 
+// Writes the record into an account this device already has, such as one
+// it joined from a phone.
+Add :: () -> s32 {
+    LoadAccount()
+    if !AccountReady() || !RecordPut("auth", RECORD_ID, RECORD_LINK, Now()) {
+        Say("could not write the record")
+        return 1
+    }
+    return ifx SyncUntilDone() then 0 else 1
+}
+
 Remove :: () -> s32 {
     LoadAccount()
     if !RecordDelete("auth", RECORD_ID, Now()) {
@@ -150,7 +161,7 @@ Remove :: () -> s32 {
 #program_export
 main :: (argc: s32, argv: **u8) -> s32 {
     if argc < 2 {
-        Say("usage: sync_e2e create|show FILE|join FILE|remove|absent")
+        Say("usage: sync_e2e create|show FILE|join FILE|add|remove|present|absent")
         return 2
     }
     mode := TextFromCString(argv[1])
@@ -164,8 +175,14 @@ main :: (argc: s32, argv: **u8) -> s32 {
     if mode == "join" {
         return Join(path)
     }
+    if mode == "add" {
+        return Add()
+    }
     if mode == "remove" {
         return Remove()
+    }
+    if mode == "present" {
+        return Check(true)
     }
     if mode == "absent" {
         return Check(false)

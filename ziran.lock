@@ -44,9 +44,9 @@
       "url": "https://github.com/ziranlang/daochi-client.git"
     },
     {
-      "commit": "f850a3017a6f49f4a0710a206d26c8c9f6e47835",
+      "commit": "e52a91c1c49c1bca778b6b5bc514d4bbf34badf8",
       "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "id": "pca73dd1e93617769",
+      "id": "pa55772bd2eedfb49",
       "name": "kryon",
       "ref": "master",
       "url": "https://github.com/kryonlabs/kryon.git"
@@ -62,7 +62,7 @@
     }
   ],
   "root": {
-    "dependencies": {"daochi_client": "p96e1f539ccb91af5", "kryon": "pca73dd1e93617769", "liboqs": "pfb3df7cb222b1bdc", "mingcute": "p56788fa3dab3e73a", "monocypher": "p4266498010aa1745", "oqs": "p55635fc8976895a9"},
+    "dependencies": {"daochi_client": "p96e1f539ccb91af5", "kryon": "pa55772bd2eedfb49", "liboqs": "pfb3df7cb222b1bdc", "mingcute": "p56788fa3dab3e73a", "monocypher": "p4266498010aa1745", "oqs": "p55635fc8976895a9"},
     "name": "Werkzeug"
   },
   "toolchain": {

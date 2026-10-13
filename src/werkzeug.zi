@@ -221,6 +221,11 @@ ApplyEdit :: (buffer: []u8, edit: TextFieldEdit) {
 }
 
 NameField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
+    #if #defined(ANDROID_BUILD) {
+        if name_field.focused {
+            AndroidFieldRead(30, profile.name[:], *name_field.cursor, *name_field.anchor)
+        }
+    }
     props := TextFieldProps.{.key = cast(u64)30, .focus_id = 30, .bounds = bounds,
         .label = "Name", .placeholder = "Your name", .value = ProfileName(),
         .cursor = name_field.cursor, .anchor = name_field.anchor, .scroll_x = name_field.scroll_x,
@@ -241,7 +246,7 @@ NameField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
     name_field.scroll_x = result.scroll_x
     #if #defined(ANDROID_BUILD) {
         if result.focused {
-            AndroidFieldSync(30, profile.name[:], name_field.cursor, name_field.anchor)
+            AndroidFieldSubmit(30, profile.name[:], name_field.cursor, name_field.anchor)
         }
     }
     was_focused := name_field.focused
@@ -364,6 +369,11 @@ CodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput, buffer
     edit: TextFieldEdit
     focused := false
     finished := false
+    #if #defined(ANDROID_BUILD) {
+        if code_field.focused {
+            AndroidFieldRead(31, buffer, *code_field.cursor, *code_field.anchor)
+        }
+    }
     {
         props := TextFieldProps.{.key = cast(u64)31, .focus_id = 31, .bounds = bounds,
             .label = "Code", .placeholder = "Code from your other device", .value = CodeText(),
@@ -388,7 +398,7 @@ CodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput, buffer
     ApplyEdit(buffer, edit)
     #if #defined(ANDROID_BUILD) {
         if focused {
-            AndroidFieldSync(31, buffer, code_field.cursor, code_field.anchor)
+            AndroidFieldSubmit(31, buffer, code_field.cursor, code_field.anchor)
         }
     }
     code_field.focused = focused && !finished
