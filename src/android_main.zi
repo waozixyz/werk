@@ -1,10 +1,12 @@
 #import "werkzeug"
+#import "profile"
 #import "platform"
 #import "android"
 #import "android_input"
 #import "android_fields"
 #import "std/c_string"
 #import "AndroidSurface"
+#import "AndroidDevice"
 Render :: #import "Raylib";
 using UI :: #import "Widgets";
 #import "Frame"
@@ -54,10 +56,12 @@ main :: () -> s32 {
         return 1
     }
     SetTargetFPS(60)
-    // Android's own interface font; APK assets are not files the font
-    // loader can open.
-    if !Render.LoadSystemTypeface("sans-serif") || !Render.SelectTypeface("sans-serif") {
-        Report("Could not load the system font")
+    // Android's own interface font where Android names it (Android 10 and
+    // newer), otherwise the Noto Sans that Inbe uses, from the APK.
+    font := Render.LoadSystemTypeface("sans-serif") ||
+    Render.LoadTypefaceFile("sans-serif", "fonts/ui.ttf", null, 0)
+    if !font || !Render.SelectTypeface("sans-serif") {
+        Report("Could not load a font")
     }
     SetAndroidViewportPolicy(AndroidViewportPolicyResizeForIme())
     session := SessionOpen()
@@ -71,6 +75,8 @@ main :: () -> s32 {
         width: s32
         height: s32
         SyncAndroidSurfaceSize(*width, *height)
+        // Keeps the app clear of the navigation bar and the keyboard.
+        PollAndroidWindowInsets()
         zoom := cast(float32)width / 390.0
         if zoom < 1.0 {
             zoom = 1.0
@@ -91,6 +97,7 @@ main :: () -> s32 {
             codepoint = Render.RaylibTypedCodepoint()
         }
         Render.BeginRaylibFrame()
+        ClearAndroidFrame(viewport, ThemePalette().background, zoom)
         pointer := Render.PollPointer()
         TreePointerUpdate(session, pointer)
         TreeSecondaryPointerUpdate(session, Render.PollSecondaryPointer())

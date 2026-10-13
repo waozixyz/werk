@@ -91,7 +91,8 @@ android {
 // Bundle fonts without adding app or host Java code.
 def prepareFonts = tasks.register('prepareFonts', Copy) {
     into layout.buildDirectory.dir('generated/passAssets/fonts')
-    from("${System.getenv('KRYON_DIR')}/assets/fonts/LiberationSans-Regular.ttf") { rename { 'ui.ttf' } }
+    from('../../assets/fonts/NotoSans-Regular.ttf') { rename { 'ui.ttf' } }
+    from('../../assets/fonts/NotoSans-OFL.txt')
     from('../../assets/fonts/emoji.ttf')
     from('../../assets/fonts/emoji-OFL.txt')
 }

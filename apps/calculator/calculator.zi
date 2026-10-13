@@ -16,6 +16,7 @@
 #import "app_protocol"
 #import "arithmetic"
 Icon :: #import "mingcute_regular_counter";
+DeleteBack :: #import "mingcute_regular_delete_back";
 
 using ButtonTone;
 using ButtonEmphasis;
@@ -146,7 +147,7 @@ KeyAt :: (index: s32) -> Key {
     "7", "8", "9", "×",
     "4", "5", "6", "−",
     "1", "2", "3", "+",
-    "⌫", "0", ".", "="]
+    "Delete", "0", ".", "="]
     inputs: [KEYS]string = .["", "(", ")", "÷",
     "7", "8", "9", "×",
     "4", "5", "6", "-",
@@ -214,6 +215,11 @@ Draw :: () {
             .label = key.label,
             .tone = cast(ButtonTone)(ifx key.accent then ButtonToneAccent else ButtonToneNeutral),
             .emphasis = cast(ButtonEmphasis)(ifx key.accent then ButtonEmphasisFilled else ButtonEmphasisSoft)}
+        // Delete is an icon on a key as wide as the others.
+        if index == 16 {
+            props.icon_shape = DeleteBack.Shape
+            props.label = ""
+        }
         if Button(session, props) != 0 {
             Press(index)
         }

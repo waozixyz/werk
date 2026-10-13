@@ -92,13 +92,13 @@ build/generated/browser/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBR
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target=c -o $(@D) src/browser.zi
 	touch $@
-build/web-app/index.js: build/generated/browser/.complete build/web-runtime/libziran.a $(APP_BUNDLES) build/pfp.png assets/app/icon.png
+build/web-app/index.js: build/generated/browser/.complete build/web-runtime/libziran.a $(APP_BUNDLES) build/pfp.png assets/app/icon.png assets/fonts/NotoSans-Regular.ttf
 	mkdir -p $(@D)
 	$(WEB_CC) -O2 -Wno-parentheses-equality -I$(ZIRAN_ROOT)/include -iquote build/generated/browser build/generated/browser/*.c \
 		build/web-runtime/libziran.a \
 		--js-library $(ZIRAN_ROOT)/web/ziran_web.js -sEXPORTED_RUNTIME_METHODS=FS,IDBFS -lidbfs.js \
 		-sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=16777216 -sASYNCIFY_STACK_SIZE=1048576 -sENVIRONMENT=web \
-		--embed-file $(KRYON_DIR)/assets/fonts/LiberationSans-Regular.ttf@/kryon-font.ttf \
+		--embed-file assets/fonts/NotoSans-Regular.ttf@/kryon-font.ttf \
 		--embed-file build/apps@/apps --embed-file build/pfp.png@/pfp.png --embed-file assets/app/icon.png@/icon.png -o $@
 build/web-app/index.html: build/web-app/index.js web/site/app/index.html
 	cp web/site/app/index.html $@

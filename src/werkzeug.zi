@@ -105,11 +105,18 @@ TopBar :: (session: Session, viewport: Rectangle) {
         left = bar.x + 56.0
         title = ifx screen == SCREEN_APP then AppName(open_app) else "Profile"
     }
-    Label(session, cast(u64)11, title, Rectangle.{left, bar.y + 16.0, bar.width - left - 64.0, 26.0}, 20)
+    // The profile button names itself, with the picture beside the name.
+    profile_width: float32 = 0.0
     if screen == SCREEN_HOME {
-        avatar := ButtonProps.{.key = cast(u64)12, .id = 12, .label = "Profile",
-            .bounds = Rectangle.{bar.x + bar.width - 52.0, bar.y + 6.0, 44.0, 44.0},
-            .image = PictureImage(profile.picture, Rectangle.{}), .icon_only = true, .circle = true,
+        profile_width = 150.0
+    }
+    Label(session, cast(u64)11, title, Rectangle.{left, bar.y + 16.0,
+            bar.width - left - profile_width - 24.0, 26.0}, 20)
+    if screen == SCREEN_HOME {
+        avatar := ButtonProps.{.key = cast(u64)12, .id = 12,
+            .label = ifx ProfileName() == "" then "Profile" else ProfileName(),
+            .bounds = Rectangle.{bar.x + bar.width - profile_width - 8.0, bar.y + 8.0, profile_width, 40.0},
+            .image = PictureImage(profile.picture, Rectangle.{}),
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, avatar) != 0 {
             screen = SCREEN_PROFILE

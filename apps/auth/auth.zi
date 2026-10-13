@@ -288,7 +288,8 @@ Field :: (id: s32, label: string, placeholder: string, buffer: []u8, bounds: Rec
             .cursor = state.cursor, .anchor = state.anchor, .scroll_x = state.scroll_x,
             .focused = focused == id, .max_bytes = cast(s32)buffer.count - 1,
             .max_codepoints = cast(s32)buffer.count - 1, .secure = secure}
-        if secure {
+        // A secret shows as dots once typed; an empty field shows its hint.
+        if secure && buffer[0] != cast(u8)0 {
             props.display_value = "••••••••"
         }
         if focused == id {
