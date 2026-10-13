@@ -32,7 +32,7 @@ else
 fi
 sed -E -i "s/versionName \"[^\"]+\"/versionName \"$release_version\"/" "$gradle_file"
 sed -E -i "s/^([[:space:]]*)versionCode [0-9]+/\1versionCode $release_code/" "$gradle_file"
-metainfo=packaging/linux/xyz.waozi.pass.appdata.xml
+metainfo=packaging/linux/xyz.waozi.werkzeug.appdata.xml
 if ! grep -F "<release version=\"$release_version\"" "$metainfo" >/dev/null; then
 	sed -E -i "s#<releases>#<releases><release version=\"$release_version\" date=\"$release_date\"/>#" "$metainfo"
 fi

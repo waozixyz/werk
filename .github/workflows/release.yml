@@ -71,9 +71,9 @@ jobs:
       - run: make gui
       - name: Package GUI tarball and Debian package
         run: |
-          name="pass-gui-linux-${{ matrix.arch }}"
+          name="werkzeug-linux-${{ matrix.arch }}"
           mkdir -p "build/release/$name"
-          cp build/pass-gui LICENSE README.md assets/app/icon.png assets/app/fingerprint.png assets/fonts/emoji-OFL.txt "build/release/$name/"
+          cp -R build/werkzeug build/apps build/pfp.png LICENSE README.md assets/app/icon.png "build/release/$name/"
           tar -C build/release -czf "build/release/$name.tar.gz" "$name"
           make package-deb
       - name: Package AppImage
@@ -90,7 +90,7 @@ jobs:
         with:
           name: gui-linux-${{ matrix.arch }}
           path: |
-            build/release/pass-gui-linux-${{ matrix.arch }}.tar.gz
+            build/release/werkzeug-linux-${{ matrix.arch }}.tar.gz
             build/release/*.deb
             build/release/*.AppImage
           if-no-files-found: error
@@ -124,7 +124,7 @@ jobs:
           path: |
             droid/app/.cxx
             droid/app/build/intermediates/cxx
-          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('droid/app/src/main/cpp/CMakeLists.txt', 'droid/app/build.gradle', 'src/*.zi', 'pass_core.zi', 'ziran.lock') }}
+          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('droid/app/src/main/cpp/CMakeLists.txt', 'droid/app/build.gradle', 'src/*.zi', 'shared/*.zi', 'apps/*/*.zi', 'ziran.lock') }}
           restore-keys: |
             android-native-${{ runner.os }}-${{ runner.arch }}-
       - name: Install Android SDK components
@@ -161,19 +161,19 @@ jobs:
             --stacktrace
           VERSION=$(sed -n '1p' VERSION)
           mkdir -p build/release
-          cp droid/app/build/outputs/apk/release/app-universal-release.apk build/release/pass-android.apk
-          cp droid/app/build/outputs/apk/release/app-arm64-v8a-release.apk build/release/pass-android-arm64-v8a.apk
-          cp droid/app/build/outputs/apk/release/app-armeabi-v7a-release.apk build/release/pass-android-armeabi-v7a.apk
-          cp droid/app/build/outputs/apk/release/app-universal-release.apk "build/release/pass-$VERSION.apk"
-          cp droid/app/build/outputs/apk/release/app-arm64-v8a-release.apk "build/release/pass-$VERSION-arm64-v8a.apk"
-          cp droid/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "build/release/pass-$VERSION-armeabi-v7a.apk"
-          python3 scripts/android_apk_check.py build/release/pass-android*.apk
-          test -s build/release/pass-android.apk
-          test -s build/release/pass-android-arm64-v8a.apk
-          test -s build/release/pass-android-armeabi-v7a.apk
-          test -s "build/release/pass-$VERSION.apk"
-          test -s "build/release/pass-$VERSION-arm64-v8a.apk"
-          test -s "build/release/pass-$VERSION-armeabi-v7a.apk"
+          cp droid/app/build/outputs/apk/release/app-universal-release.apk build/release/werkzeug-android.apk
+          cp droid/app/build/outputs/apk/release/app-arm64-v8a-release.apk build/release/werkzeug-android-arm64-v8a.apk
+          cp droid/app/build/outputs/apk/release/app-armeabi-v7a-release.apk build/release/werkzeug-android-armeabi-v7a.apk
+          cp droid/app/build/outputs/apk/release/app-universal-release.apk "build/release/werkzeug-$VERSION.apk"
+          cp droid/app/build/outputs/apk/release/app-arm64-v8a-release.apk "build/release/werkzeug-$VERSION-arm64-v8a.apk"
+          cp droid/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "build/release/werkzeug-$VERSION-armeabi-v7a.apk"
+          python3 scripts/android_apk_check.py build/release/werkzeug-android*.apk
+          test -s build/release/werkzeug-android.apk
+          test -s build/release/werkzeug-android-arm64-v8a.apk
+          test -s build/release/werkzeug-android-armeabi-v7a.apk
+          test -s "build/release/werkzeug-$VERSION.apk"
+          test -s "build/release/werkzeug-$VERSION-arm64-v8a.apk"
+          test -s "build/release/werkzeug-$VERSION-armeabi-v7a.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -198,26 +198,26 @@ jobs:
         run: |
           set -euo pipefail
           cd build/site
-          zip -qr ../pass-web.zip .
+          zip -qr ../werkzeug-web.zip .
 
-          mkdir -p ../pass-html5
-          cp app/index.html ../pass-html5/
-          cp app/index.js ../pass-html5/
-          cp app/index.wasm ../pass-html5/
-          cp app/sw.js ../pass-html5/
-          cp app/emoji-OFL.txt ../pass-html5/
-          cp manifest.webmanifest ../pass-html5/
-          cp -R icons ../pass-html5/icons
+          mkdir -p ../werkzeug-html5
+          cp app/index.html ../werkzeug-html5/
+          cp app/index.js ../werkzeug-html5/
+          cp app/index.wasm ../werkzeug-html5/
+          cp app/sw.js ../werkzeug-html5/
+          cp app/emoji-OFL.txt ../werkzeug-html5/
+          cp manifest.webmanifest ../werkzeug-html5/
+          cp -R icons ../werkzeug-html5/icons
           sed -i \
             -e 's#href="/manifest.webmanifest"#href="manifest.webmanifest"#g' \
             -e 's#href="/icons/#href="icons/#g' \
             -e 's#src="/icons/#src="icons/#g' \
-            ../pass-html5/index.html
+            ../werkzeug-html5/index.html
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          root = Path("../pass-html5")
+          root = Path("../werkzeug-html5")
           manifest = json.loads((root / "manifest.webmanifest").read_text())
           manifest["start_url"] = "."
           manifest["scope"] = "."
@@ -226,14 +226,14 @@ jobs:
           (root / "manifest.webmanifest").write_text(json.dumps(manifest, indent=2) + "\n")
 
           PY
-          cd ../pass-html5
-          zip -qr ../pass-html5.zip .
+          cd ../werkzeug-html5
+          zip -qr ../werkzeug-html5.zip .
       - uses: actions/upload-artifact@v4
         with:
           name: web
           path: |
-            build/pass-web.zip
-            build/pass-html5.zip
+            build/werkzeug-web.zip
+            build/werkzeug-html5.zip
           if-no-files-found: error
 
   publish:
@@ -268,7 +268,7 @@ jobs:
           set -euo pipefail
           VERSION=$(sed -n '1p' VERSION)
           TAG="v$VERSION"
-          BASE="https://github.com/waozixyz/pass/releases/download/$TAG"
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
           # appcast channel names use dpkg arch naming (amd64/arm64);
           # the artifacts use uname -m naming (x86_64/aarch64)
           arch_name() {
@@ -281,11 +281,11 @@ jobs:
           channels=()
           for img in build/artifacts/*.AppImage; do
             [ -e "$img" ] || continue
-            arch=$(basename "$img" | sed -n 's/^pass-.*-\([^-]*\)\.AppImage$/\1/p')
+            arch=$(basename "$img" | sed -n 's/^werkzeug-.*-\([^-]*\)\.AppImage$/\1/p')
             channels+=("--channel" "appimage-$(arch_name "$arch")=$img")
           done
           DEB="$(find build/artifacts -maxdepth 1 -name '*.deb' -print -quit || true)"
-          TAR="$(find build/artifacts -maxdepth 1 -name 'pass-gui-linux-*.tar.gz' -print -quit || true)"
+          TAR="$(find build/artifacts -maxdepth 1 -name 'werkzeug-linux-*.tar.gz' -print -quit || true)"
           [ -n "$DEB" ] && channels+=("--channel" "deb=$DEB")
           [ -n "$TAR" ] && channels+=("--channel" "tarball=$TAR")
           if [ ${#channels[@]} -eq 0 ]; then
@@ -295,7 +295,7 @@ jobs:
           python3 scripts/make_appcast.py \
             --version "$VERSION" \
             --base-url "$BASE" \
-            --notes-url "https://github.com/waozixyz/pass/releases/tag/$TAG" \
+            --notes-url "https://github.com/${{ github.repository }}/releases/tag/$TAG" \
             --changelog CHANGELOG.md \
             --out build/artifacts/appcast.json \
             "${channels[@]}"
@@ -370,9 +370,9 @@ jobs:
           set -euo pipefail
           VERSION="$(sed -n '1p' VERSION)"
 
-          html5_zip="build/artifacts/pass-html5.zip"
-          android_apk="build/artifacts/pass-android.apk"
-          linux_appimage="build/artifacts/pass-$VERSION-x86_64.AppImage"
+          html5_zip="build/artifacts/werkzeug-html5.zip"
+          android_apk="build/artifacts/werkzeug-android.apk"
+          linux_appimage="build/artifacts/werkzeug-$VERSION-x86_64.AppImage"
 
           test -f "$html5_zip"
           test -f "$android_apk"

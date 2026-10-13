@@ -32,7 +32,7 @@
     "name": "Werkzeug"
   },
   "toolchain": {
-    "commit": "371e3f17c9d1c071dd8d4bd139db8ab461b60ae8",
+    "commit": "d233869fcb5ec84a78021a46b3f5a879353cb2c8",
     "ref": "master",
     "url": "https://github.com/ziranlang/ziran.git"
   }

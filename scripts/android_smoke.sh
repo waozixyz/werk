@@ -2,8 +2,8 @@
 set -euo pipefail
 
 root_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-apk="$root_dir/build/pass-android-debug.apk"
-package_name="${PASS_ANDROID_PACKAGE:-xyz.waozi.pass}"
+apk="$root_dir/build/werkzeug-android-debug.apk"
+package_name="${WERKZEUG_ANDROID_PACKAGE:-xyz.waozi.pass}"
 
 if [ ! -s "$apk" ]; then
   echo "android smoke: missing APK artifact: $apk" >&2
@@ -14,12 +14,12 @@ if ! command -v adb >/dev/null 2>&1; then
   exit 0
 fi
 
-device="${PASS_ANDROID_DEVICE:-}"
+device="${WERKZEUG_ANDROID_DEVICE:-}"
 if [ -z "$device" ]; then
   device=$(adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ && $2 == "device" { print $1; exit }')
 fi
 if [ -z "$device" ]; then
-  echo "android smoke: skipped, no private emulator; set PASS_ANDROID_DEVICE explicitly for a device" >&2
+  echo "android smoke: skipped, no private emulator; set WERKZEUG_ANDROID_DEVICE explicitly for a device" >&2
   exit 0
 fi
 

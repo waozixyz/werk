@@ -9,6 +9,10 @@ using UI :: #import "kryon/Widgets";
 #import "apps"
 #import "profile"
 #import "platform"
+#import "migrate"
+#if #defined(ANDROID_BUILD) {
+    #import "android_fields"
+}
 Back :: #import "mingcute/mingcute_regular_left";
 
 SCREEN_HOME :: 0
@@ -25,6 +29,8 @@ FieldState :: struct {
 
 screen: s32;
 open_app: s32 = -1;
+// One app on its own, without Werkzeug's bar, as in a page that embeds it.
+mini: bool;
 name_field: FieldState;
 choosing_picture: bool;
 profile_scroll: s32;
@@ -32,8 +38,25 @@ typed: [256]u8;
 keyboard_wanted: bool;
 
 WerkzeugStart :: () {
+    MigratePassData()
     LoadProfile()
     LoadApps()
+}
+
+// Opens an app by id at start, such as from the page address. In mini mode
+// it fills the window and there is no way home.
+WerkzeugOpen :: (id: string, alone: bool) -> bool {
+    index: s32 = 0
+    while index < AppCount() {
+        if AppId(index) == id {
+            open_app = index
+            screen = SCREEN_APP
+            mini = alone
+            return true
+        }
+        index += 1
+    }
+    return false
 }
 
 // Whether the touch keyboard should show.
@@ -184,11 +207,22 @@ NameField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
     if name_field.focused {
         props.input = input
     }
+    #if #defined(ANDROID_BUILD) {
+        // The input method edits the name through Android's EditText.
+        if name_field.focused {
+            props.input = TextFieldInput.{}
+        }
+    }
     result := TextField(session, props)
     ApplyEdit(profile.name[:], result.edit)
     name_field.cursor = result.cursor
     name_field.anchor = result.anchor
     name_field.scroll_x = result.scroll_x
+    #if #defined(ANDROID_BUILD) {
+        if result.focused {
+            AndroidFieldSync(30, profile.name[:], name_field.cursor, name_field.anchor)
+        }
+    }
     was_focused := name_field.focused
     name_field.focused = result.focused && !result.escaped
     if was_focused && (!name_field.focused || result.committed) {
@@ -327,8 +361,11 @@ WerkzeugFrame :: (session: Session, viewport: Rectangle) -> s32 {
         .fill = ColorFromPacked(ThemePalette().background)}
     Box(session, background)
     keyboard_wanted = false
-    TopBar(session, viewport)
-    content := Rectangle.{viewport.x, viewport.y + BAR_HEIGHT, viewport.width, viewport.height - BAR_HEIGHT}
+    content := viewport
+    if !mini {
+        TopBar(session, viewport)
+        content = Rectangle.{viewport.x, viewport.y + BAR_HEIGHT, viewport.width, viewport.height - BAR_HEIGHT}
+    }
     if screen == SCREEN_HOME {
         Home(session, content)
     } else if screen == SCREEN_PROFILE {

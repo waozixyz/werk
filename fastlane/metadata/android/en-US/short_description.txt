@@ -1,1 +1,1 @@
-Deterministic passwords from site, login, and one master password.
+Private tools: deterministic passwords, 2FA codes, calculator and clock.

@@ -1,9 +1,8 @@
 /downloads/pass-cli-linux-amd64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/pass-cli-linux-amd64.tar.gz 302
 /downloads/pass-cli-linux-arm64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/pass-cli-linux-arm64.tar.gz 302
-/downloads/pass-cli-darwin-amd64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/pass-cli-darwin-amd64.tar.gz 302
-/downloads/pass-cli-darwin-arm64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/pass-cli-darwin-arm64.tar.gz 302
-/downloads/pass-cli-windows-amd64.zip https://github.com/waozixyz/pass/releases/latest/download/pass-cli-windows-amd64.zip 302
-/downloads/pass-cli-windows-arm64.zip https://github.com/waozixyz/pass/releases/latest/download/pass-cli-windows-arm64.zip 302
-/downloads/pass-gui-linux-amd64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/pass-gui-linux-amd64.tar.gz 302
-/downloads/pass-gui-linux-arm64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/pass-gui-linux-arm64.tar.gz 302
-/downloads/pass-android.apk https://github.com/waozixyz/pass/releases/latest/download/pass-android.apk 302
+/downloads/werkzeug-linux-amd64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/werkzeug-linux-amd64.tar.gz 302
+/downloads/werkzeug-linux-arm64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/werkzeug-linux-arm64.tar.gz 302
+/downloads/pass-gui-linux-amd64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/werkzeug-linux-amd64.tar.gz 302
+/downloads/pass-gui-linux-arm64.tar.gz https://github.com/waozixyz/pass/releases/latest/download/werkzeug-linux-arm64.tar.gz 302
+/downloads/werkzeug-android.apk https://github.com/waozixyz/pass/releases/latest/download/werkzeug-android.apk 302
+/downloads/pass-android.apk https://github.com/waozixyz/pass/releases/latest/download/werkzeug-android.apk 302

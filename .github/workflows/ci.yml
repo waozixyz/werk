@@ -106,8 +106,11 @@ jobs:
         run: make package-deb
       - uses: actions/upload-artifact@v4
         with:
-          name: pass-gui-linux-${{ matrix.arch }}
-          path: build/pass-gui
+          name: werkzeug-linux-${{ matrix.arch }}
+          path: |
+            build/werkzeug
+            build/apps
+            build/pfp.png
           if-no-files-found: error
 
   build-android:
@@ -139,7 +142,7 @@ jobs:
           path: |
             droid/app/.cxx
             droid/app/build/intermediates/cxx
-          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/*.zi', 'droid/app/src/main/cpp/CMakeLists.txt', 'droid/app/build.gradle', 'pass_core.zi', 'ziran.lock') }}
+          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/*.zi', 'shared/*.zi', 'apps/*/*.zi', 'droid/app/src/main/cpp/CMakeLists.txt', 'droid/app/build.gradle', 'ziran.lock') }}
           restore-keys: |
             android-native-${{ runner.os }}-${{ runner.arch }}-
       - name: Install Android SDK components

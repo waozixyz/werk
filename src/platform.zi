@@ -1,5 +1,6 @@
-// Where Werkzeug keeps its files, and the clock and clipboard its apps use.
-// Every file Werkzeug writes is private to the user (0600 in 0700 folders).
+// Where Werkzeug keeps its files, and the clock, clipboard, keyboard and
+// secret storage its apps use, on the desktop and on Android. Every file
+// Werkzeug writes is private (0600 in 0700 folders).
 #import "std/file"
 #import "std/date_time_linux"
 #import "std/date_parse"
@@ -9,9 +10,19 @@
 #import "std/timer_linux"
 using UI :: #import "kryon/Widgets";
 #import "kryon/SystemTheme"
-LinuxTheme :: #import "kryon/SystemThemeLinux";
+#import "files"
 
-PATH_LIMIT :: 1024
+#if #defined(ANDROID_BUILD) {
+    #import "android"
+    #import "android_jni"
+    #import "android_input"
+    raylib_files :: #system_library "raylib";
+    LoadFileData :: (name: *u8, size: *s32) -> *u8 #foreign raylib_files "LoadFileData";
+} else #if #defined(PLATFORM_WEB) {
+    #import "browser_storage"
+} else {
+    LinuxTheme :: #import "kryon/SystemThemeLinux";
+}
 
 libc :: #system_library "libc";
 Environment :: (name: *u8) -> *u8 #foreign libc "getenv";
@@ -35,62 +46,6 @@ EnvironmentText :: (name: string) -> string {
     return TextFromCString(value)
 }
 
-// base + "/" + name in output; "" when it does not fit.
-PathJoin :: (output: []u8, base: string, name: string) -> string {
-    used: s64 = 0
-    if base.count + name.count + 2 > output.count {
-        output[0] = cast(u8)0
-        return ""
-    }
-    while used < base.count {
-        output[used] = base[used]
-        used += 1
-    }
-    output[used] = cast(u8)47
-    used += 1
-    index: s64 = 0
-    while index < name.count {
-        output[used] = name[index]
-        used += 1
-        index += 1
-    }
-    output[used] = cast(u8)0
-    return TextView(output[0:used])
-}
-
-// A file or folder name an app may use: no separators, no "." or "..".
-SafeName :: (name: string) -> bool {
-    if name.count == 0 || name.count > 128 || name == "." || name == ".." {
-        return false
-    }
-    index: s64 = 0
-    while index < name.count {
-        byte := name[index]
-        if byte == cast(u8)47 || byte == cast(u8)92 || byte < cast(u8)32 || byte == cast(u8)127 {
-            return false
-        }
-        index += 1
-    }
-    return true
-}
-
-// Creates every missing folder of path, privately.
-EnsureDirectory :: (path: string) -> bool {
-    if path.count == 0 || path.count >= PATH_LIMIT {
-        return false
-    }
-    index: s64 = 1
-    while index <= path.count {
-        if index == path.count || path[index] == cast(u8)47 {
-            if !CreatePrivateDirectory(path[0:index]) {
-                return false
-            }
-        }
-        index += 1
-    }
-    return true
-}
-
 // $XDG_<kind>_HOME/werkzeug, or ~/<fallback>/werkzeug.
 UserRoot :: (output: []u8, variable: string, fallback: string) -> string {
     base := EnvironmentText(variable)
@@ -105,14 +60,25 @@ UserRoot :: (output: []u8, variable: string, fallback: string) -> string {
     return PathJoin(output, base, "werkzeug")
 }
 
+// Werkzeug's private data. On Android it is the app's internal folder,
+// where Pass kept its files.
 #program_export
 DataRoot :: () -> string {
     if data_root[0] == cast(u8)0 {
-        override := EnvironmentText("WERKZEUG_DATA")
-        if override != "" {
-            unused CopyCString(override, data_root[:])
+        #if #defined(ANDROID_BUILD) {
+            internal := ActivityInternalDataPath()
+            if internal != null {
+                unused CopyCString(TextFromCString(internal), data_root[:])
+            }
+        } else #if #defined(PLATFORM_WEB) {
+            unused CopyCString(BROWSER_DATA, data_root[:])
         } else {
-            unused UserRoot(data_root[:], "XDG_DATA_HOME", ".local/share")
+            override := EnvironmentText("WERKZEUG_DATA")
+            if override != "" {
+                unused CopyCString(override, data_root[:])
+            } else {
+                unused UserRoot(data_root[:], "XDG_DATA_HOME", ".local/share")
+            }
         }
     }
     return TextUntilNul(data_root[:])
@@ -121,16 +87,27 @@ DataRoot :: () -> string {
 #program_export
 CacheRoot :: () -> string {
     if cache_root[0] == cast(u8)0 {
-        unused UserRoot(cache_root[:], "XDG_CACHE_HOME", ".cache")
+        #if #defined(ANDROID_BUILD) {
+            unused PathJoin(cache_root[:], DataRoot(), "cache")
+        } else #if #defined(PLATFORM_WEB) {
+            unused CopyCString("/tmp/werkzeug-cache", cache_root[:])
+        } else {
+            unused UserRoot(cache_root[:], "XDG_CACHE_HOME", ".cache")
+        }
     }
     return TextUntilNul(cache_root[:])
 }
 
-// Werkzeug's own files: the folder of the executable in a build, or
-// share/werkzeug in an installation. WERKZEUG_ASSETS overrides both. The
-// preinstalled apps are in its apps folder.
+// Werkzeug's own files: lib/werkzeug beside an installed executable's
+// prefix, ~/.local/lib/werkzeug for a user installation, or the folder of
+// the executable in a build. WERKZEUG_ASSETS overrides them. On Android
+// they are the APK's assets, read by relative path; the browser build
+// embeds them at the root of its file system.
 #program_export
 AssetsRoot :: () -> string {
+    #if #defined(ANDROID_BUILD) || #defined(PLATFORM_WEB) {
+        return ""
+    }
     if assets_root[0] != cast(u8)0 {
         return TextUntilNul(assets_root[:])
     }
@@ -152,96 +129,74 @@ AssetsRoot :: () -> string {
     }
     base := TextView(executable[0:folder - 1])
     installed: [PATH_LIMIT]u8
-    share := PathJoin(installed[:], base, "../share/werkzeug")
-    apps: [PATH_LIMIT]u8
-    if DirectoryExists(PathJoin(apps[:], share, "apps")) {
-        unused CopyCString(share, assets_root[:])
-    } else {
-        unused CopyCString(base, assets_root[:])
+    user: [PATH_LIMIT]u8
+    candidates: [3]string = .[PathJoin(installed[:], base, "../lib/werkzeug"),
+    PathJoin(user[:], EnvironmentText("HOME"), ".local/lib/werkzeug"), base]
+    for index: 0..2 {
+        apps: [PATH_LIMIT]u8
+        if candidates[index] != "" && DirectoryExists(PathJoin(apps[:], candidates[index], "apps")) {
+            unused CopyCString(candidates[index], assets_root[:])
+            return TextUntilNul(assets_root[:])
+        }
     }
+    unused CopyCString(base, assets_root[:])
     return TextUntilNul(assets_root[:])
+}
+
+// The path of one of Werkzeug's own files.
+AssetPath :: (output: []u8, name: string) -> string {
+    #if #defined(ANDROID_BUILD) {
+        unused CopyCString(name, output)
+        return TextUntilNul(output)
+    }
+    return PathJoin(output, AssetsRoot(), name)
 }
 
 #program_export
 BundledAppsRoot :: () -> string {
-    return PathJoin(bundled_apps[:], AssetsRoot(), "apps")
+    return AssetPath(bundled_apps[:], "apps")
 }
 
 ProfilePicturesPath :: () -> string {
-    return PathJoin(pictures_path[:], AssetsRoot(), "pfp.png")
+    return AssetPath(pictures_path[:], "pfp.png")
 }
 
-system_palette: SystemPalette;
-system_palette_read_at: float64 = -10.0;
+// A preinstalled app bundle's bytes, which stay loaded while it runs.
+ReadBundle :: (path: string) -> (bytes: string, found: bool) {
+    #if #defined(ANDROID_BUILD) {
+        name: [PATH_LIMIT]u8
+        size: s32 = 0
+        if !CopyCString(path, name[:]) {
+            return "", false
+        }
+        data := LoadFileData(*name[0], *size)
+        if data == null || size <= 0 {
+            return "", false
+        }
+        return TextFromBytes(BytesFromPointer(data, cast(u64)size)), true
+    } else {
+        bytes, found := ReadEntireFile(path)
+        return bytes, found
+    }
+}
 
-// Whether the desktop prefers dark colors, read at most every five seconds.
+system_dark: bool;
+system_dark_read_at: float64 = -10.0;
+
+// Whether the device prefers dark colors, read at most every five seconds.
 SystemDark :: () -> bool {
     now := SteadyClock()
-    if now - system_palette_read_at > 5.0 {
-        system_palette = LinuxTheme.SystemPaletteRead()
-        system_palette_read_at = now
+    if now - system_dark_read_at > 5.0 {
+        #if #defined(ANDROID_BUILD) {
+            system_dark = AndroidDark()
+        } else #if #defined(PLATFORM_WEB) {
+            system_dark = BrowserDark()
+        } else {
+            system_dark = LinuxTheme.SystemPaletteRead().dark
+        }
+        system_dark_read_at = now
     }
-    return system_palette.dark
-}
-
-// Reads a whole private file into output and returns its length, or -1
-// when it is missing, unreadable or larger than output.
-ReadPrivate :: (path: string, output: []u8) -> s32 {
-    if output.count < 2 {
-        return -1
-    }
-    file := OpenRead(path)
-    if !file.valid {
-        return -1
-    }
-    size := FileSize(file)
-    if size < 0 || size >= output.count {
-        unused CloseFile(file)
-        return -1
-    }
-    count := ReadAt(file, output[0:size], 0)
-    unused CloseFile(file)
-    if count != size {
-        return -1
-    }
-    output[size] = cast(u8)0
-    return cast(s32)size
-}
-
-// Replaces a private file whole: a crash leaves the old or the new file,
-// never a mix.
-WritePrivate :: (path: string, value: string) -> bool {
-    temporary: [PATH_LIMIT]u8
-    if path.count + 5 >= PATH_LIMIT {
-        return false
-    }
-    used: s64 = 0
-    while used < path.count {
-        temporary[used] = path[used]
-        used += 1
-    }
-    suffix := ".new"
-    index: s64 = 0
-    while index < suffix.count {
-        temporary[used] = suffix[index]
-        used += 1
-        index += 1
-    }
-    temporary_path := TextView(temporary[0:used])
-    unused RemoveFile(temporary_path)
-    file := OpenExclusivePrivate(temporary_path)
-    if !file.valid {
-        return false
-    }
-    ok := WriteTextAt(file, value, 0) == value.count && SyncFile(file)
-    if !CloseFile(file) {
-        ok = false
-    }
-    if !ok || !RenamePath(temporary_path, path) {
-        unused RemoveFile(temporary_path)
-        return false
-    }
-    return true
+    return system_dark
 }
 
 // Seconds since the Unix epoch.
@@ -269,13 +224,29 @@ SteadyClock :: () -> float64 {
     return cast(float64)MonotonicMilliseconds() / 1000.0
 }
 
+SetClipboard :: (value: string) -> bool {
+    #if #defined(ANDROID_BUILD) {
+        return AndroidClipboardWrite(value)
+    } else {
+        return SystemClipboardSet(value)
+    }
+}
+
+ClipboardText :: (output: []u8) -> string {
+    #if #defined(ANDROID_BUILD) {
+        return AndroidClipboardRead(output)
+    } else {
+        return SystemClipboardText(output)
+    }
+}
+
 // Copied text and when to clear it again.
 clipboard_value: [4096]u8;
 clipboard_clear_at: float64;
 
 #program_export
 ClipboardPut :: (value: string, clear_seconds: s32) -> bool {
-    if value.count >= 4096 || !SystemClipboardSet(value) {
+    if value.count >= 4096 || !SetClipboard(value) {
         return false
     }
     unused CopyCString(value, clipboard_value[:])
@@ -295,32 +266,62 @@ ClipboardTick :: () {
     }
     clipboard_clear_at = 0.0
     current: [4096]u8
-    if SystemClipboardText(current[:]) == TextUntilNul(clipboard_value[:]) {
-        unused SystemClipboardSet("")
+    if ClipboardText(current[:]) == TextUntilNul(clipboard_value[:]) {
+        unused SetClipboard("")
     }
     for index: 0..4095 {
         clipboard_value[index] = cast(u8)0
     }
 }
 
-// Desktop has no device-held secrets; Android answers these through its
-// keystore.
+// Shows or hides the touch keyboard; the desktop has none.
+ShowKeyboard :: (visible: bool) {
+    #if #defined(ANDROID_BUILD) {
+        AndroidKeyboard(visible)
+        if !visible {
+            AndroidTextHide()
+        }
+    }
+}
+
+// One secret kept behind the device's own authentication: Android's
+// keystore. The desktop has none.
 SecureAvailable :: () -> bool {
-    return false
+    #if #defined(ANDROID_BUILD) {
+        return AndroidSecureAvailable()
+    } else {
+        return false
+    }
 }
 
 SecureSaved :: () -> bool {
-    return false
+    #if #defined(ANDROID_BUILD) {
+        return AndroidSecureSaved()
+    } else {
+        return false
+    }
 }
 
 SecureRequest :: (secret: string, save: bool) -> bool {
-    return false
+    #if #defined(ANDROID_BUILD) {
+        return AndroidSecureRequest(secret, save)
+    } else {
+        return false
+    }
 }
 
 SecureForget :: () -> bool {
-    return true
+    #if #defined(ANDROID_BUILD) {
+        return AndroidSecureForget()
+    } else {
+        return true
+    }
 }
 
 SecurePoll :: (output: []u8) -> s32 {
-    return 0
+    #if #defined(ANDROID_BUILD) {
+        return AndroidSecurePoll(output)
+    } else {
+        return 0
+    }
 }

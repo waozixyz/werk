@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Werkzeug
+Comment=Passwords, two-factor codes, a calculator and a clock
+Exec=werkzeug
+Icon=werkzeug
+Terminal=false
+Categories=Utility;Security;
+StartupNotify=true

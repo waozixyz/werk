@@ -1,23 +1,59 @@
-#import "app"
-#import "host"
-#import "runtime"
-#import "mini"
+// The browser host. ?app=ID opens that tool at start; ?mini opens Pass on
+// its own, for pages that embed it.
+#import "werkzeug"
+#import "browser_storage"
+#import "std/text_buffer"
 Browser :: #import "kryon/Canvas";
 using UI :: #import "kryon/Widgets";
 #import "kryon/Frame"
 
+// The value of name=VALUE in a query such as "?app=pass&x=1".
+QueryValue :: (query: string, name: string) -> string {
+    start: s64 = 0
+    if query.count > 0 && query[0] == cast(u8)63 {
+        start = 1
+    }
+    while start < query.count {
+        end := start
+        while end < query.count && query[end] != cast(u8)38 {
+            end += 1
+        }
+        pair := query[start:end]
+        if pair == name {
+            return "1"
+        }
+        if pair.count > name.count && pair[0:name.count] == name && pair[name.count] == cast(u8)61 {
+            return pair[name.count + 1:pair.count]
+        }
+        start = end + 1
+    }
+    return ""
+}
+
 #program_export
 main :: () -> s32 {
-    if !BrowserInitialize() || !Browser.OpenCanvas() { return 1 }
-    SetMiniMode(MiniQuery(HostPageQuery()))
-    SetWaoziTheme(MiniWaoziThemeQuery(HostPageQuery()))
+    if !BrowserStorageOpen() || !Browser.OpenCanvas() {
+        return 1
+    }
     session := SessionOpen()
-    if !SessionValid(session) { Browser.CloseCanvas(); return 1 }
+    if !SessionValid(session) {
+        Browser.CloseCanvas()
+        return 1
+    }
+    WerkzeugStart()
+    query := BrowserQuery()
+    if QueryValue(query, "mini") != "" {
+        unused WerkzeugOpen("pass", true)
+    } else if QueryValue(query, "app") != "" {
+        unused WerkzeugOpen(QueryValue(query, "app"), false)
+    }
     ok: bool = true
     while ok && Browser.PollCanvas() {
         KeyboardModifiersSend(session, Browser.CanvasModifiers())
         key := Browser.CanvasPressedKey()
-        if key != 0 { KeyboardSend(session, key) }
+        if key != 0 {
+            KeyboardSend(session, key)
+        }
         codepoint := Browser.CanvasTypedCodepoint()
         while codepoint != 0 {
             TypedCodepointSend(session, codepoint)
@@ -28,13 +64,23 @@ main :: () -> s32 {
         TreePointerUpdate(session, pointer)
         TreeSecondaryPointerUpdate(session, Browser.PollSecondaryPointer())
         PointerWheelSend(session, pointer.x, pointer.y, Browser.CanvasWheelMove())
-        ok = BeginFrame(session, cast(u64)1, Browser.CanvasViewport()) == FrameStatus.FrameOk
-        if ok { ok = Frame(session, Browser.CanvasViewport()) == 0 }
-        if ok { ok = EndFrame(session) == FrameStatus.FrameOk }
-        if ok { Browser.CanvasCursor(session) }
+        viewport := Browser.CanvasViewport()
+        ok = BeginFrame(session, cast(u64)1, viewport) == FrameStatus.FrameOk
+        if ok {
+            ok = WerkzeugFrame(session, viewport) == 0
+        }
+        if ok {
+            ok = EndFrame(session) == FrameStatus.FrameOk
+        }
+        if ok {
+            Browser.CanvasCursor(session)
+        }
         ok = Browser.EndCanvasFrame() && ok
     }
-    Shutdown(); CloseSession(session); Browser.CloseCanvas()
-    if ok { return 0 }
+    CloseSession(session)
+    Browser.CloseCanvas()
+    if ok {
+        return 0
+    }
     return 1
 }

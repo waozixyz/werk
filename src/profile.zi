@@ -8,6 +8,7 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/Theme"
 #import "kryon/SystemTheme"
 #import "platform"
+#import "files"
 
 PROFILE_NAME_LIMIT :: 40
 // Pictures of Kryon's profile picture atlas, five to a row.

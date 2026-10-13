@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Pass C)
+project(Werkzeug C)
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.." ABSOLUTE)
 set(KRYON_DIR "$ENV{KRYON_DIR}" CACHE PATH "Locked Kryon source" FORCE)
 set(ZIRAN_ROOT "$ENV{ZIRAN_ROOT}" CACHE PATH "Locked Ziran toolchain" FORCE)
@@ -10,8 +10,8 @@ foreach(root KRYON_DIR ZIRAN_ROOT RAYLIB_DIR)
     endif()
 endforeach()
 set(ZIRAN "${REPO_ROOT}/scripts/ziran.sh")
-if(DEFINED ENV{PASS_ZIRAN_COMMAND} AND NOT "$ENV{PASS_ZIRAN_COMMAND}" STREQUAL "")
-    get_filename_component(ZIRAN "$ENV{PASS_ZIRAN_COMMAND}" ABSOLUTE BASE_DIR "${REPO_ROOT}")
+if(DEFINED ENV{WERKZEUG_ZIRAN_COMMAND} AND NOT "$ENV{WERKZEUG_ZIRAN_COMMAND}" STREQUAL "")
+    get_filename_component(ZIRAN "$ENV{WERKZEUG_ZIRAN_COMMAND}" ABSOLUTE BASE_DIR "${REPO_ROOT}")
 endif()
 set(GENERATED "${CMAKE_BINARY_DIR}/ziran")
 set(DEFINES --define ANDROID_BUILD)
@@ -31,18 +31,33 @@ if(EXISTS "${REPO_ROOT}/ziran.local.toml")
     set(LOCK_FLAGS)
 endif()
 file(GLOB_RECURSE SOURCE_INPUTS CONFIGURE_DEPENDS
-    "${REPO_ROOT}/src/*.zi" "${KRYON_DIR}/src/*.zi" "${ZIRAN_ROOT}/std/*.zi")
-list(APPEND SOURCE_INPUTS "${REPO_ROOT}/pass_core.zi" "${REPO_ROOT}/ziran.toml" "${REPO_ROOT}/ziran.lock")
+    "${REPO_ROOT}/src/*.zi" "${REPO_ROOT}/shared/*.zi" "${KRYON_DIR}/src/*.zi" "${ZIRAN_ROOT}/std/*.zi")
+list(APPEND SOURCE_INPUTS "${REPO_ROOT}/ziran.toml" "${REPO_ROOT}/ziran.lock")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SOURCE_INPUTS})
 execute_process(COMMAND "${ZIRAN}" build --project ${LOCK_FLAGS} ${DEFINES}
     --target=c --entry android_main:main -o "${GENERATED}" src/android_main.zi
     WORKING_DIRECTORY "${REPO_ROOT}" COMMAND_ERROR_IS_FATAL ANY)
 file(GLOB GENERATED_SOURCES CONFIGURE_DEPENDS "${GENERATED}/*.c")
+# Kryon's Android glue compiles its thread configurator with the same zi2c.
+foreach(candidate "${ZIRAN_ROOT}/build/bin/zi2c" "${REPO_ROOT}/build/ziran-bootstrap/build/bin/zi2c")
+    if(NOT ZI2C_BIN AND EXISTS "${candidate}")
+        set(ZI2C_BIN "${candidate}")
+    endif()
+endforeach()
 include("${KRYON_DIR}/cmake/KryonAndroid.cmake")
 kryon_android_raylib("${RAYLIB_DIR}")
+# The portable runtime that runs the app bundles, built from the locked Ziran
+# for this ABI.
+set(BUNDLE_RUNTIME_DIR "${CMAKE_BINARY_DIR}/bundle-runtime")
+execute_process(COMMAND make -C "${ZIRAN_ROOT}" BOOTSTRAP=1 "BUILD_DIR=${BUNDLE_RUNTIME_DIR}"
+    "CC=${CMAKE_C_COMPILER} --target=${CMAKE_C_COMPILER_TARGET} --sysroot=${CMAKE_SYSROOT}"
+    "AR=${CMAKE_AR}" "OBJCOPY=${CMAKE_OBJCOPY}" "CFLAGS=-O2 -fPIC"
+    "FRAMEFLAGS=-Wframe-larger-than=16384" "${BUNDLE_RUNTIME_DIR}/libziran.a"
+    COMMAND_ERROR_IS_FATAL ANY)
 add_library(main SHARED ${GENERATED_SOURCES})
 target_include_directories(main PRIVATE "${GENERATED}" "${ZIRAN_ROOT}/include")
 kryon_android_app(main)
+target_link_libraries(main "${BUNDLE_RUNTIME_DIR}/libziran.a")
 target_link_options(main PRIVATE -Wl,--wrap=pthread_attr_init)
-# Pass has no handwritten native sources; every app translation unit above is
+# Werkzeug has no handwritten native sources; every app translation unit above is
 # generated from .zi for this ABI. raylib and the NDK own native_app_glue.
