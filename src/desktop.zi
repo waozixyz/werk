@@ -1,9 +1,6 @@
-#import "app"
-#import "host"
-#import "runtime"
-#import "c_string"
-#import "byte_text_linux"
-#import "mini"
+#import "werkzeug"
+#import "std/c_string"
+#import "std/byte_text_linux"
 Desktop :: #import "kryon/Desktop";
 using UI :: #import "kryon/Widgets";
 #import "kryon/Frame"
@@ -12,9 +9,15 @@ sdl :: #system_library "SDL2";
 SetTitle :: (window: *void, title: *u8) #foreign sdl "SDL_SetWindowTitle";
 libc :: #system_library "libc";
 WriteError :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign libc "write";
+
+DESKTOP_WIDTH :: 420
+DESKTOP_HEIGHT :: 760
+
 Report :: (message: string) {
     buffer: [256]u8
-    if CopyCString(message, buffer[:]) { WriteError(2, *buffer[0], cast(usize)message.count) }
+    if CopyCString(message, buffer[:]) {
+        unused WriteError(2, *buffer[0], cast(usize)message.count)
+    }
 }
 
 DrawDesktop :: (session: Session) -> bool {
@@ -25,49 +28,71 @@ DrawDesktop :: (session: Session) -> bool {
     TreePointerUpdate(session, pointer)
     TreeSecondaryPointerUpdate(session, Desktop.PollSecondaryPointer())
     PointerWheelSend(session, pointer.x, pointer.y, Desktop.DesktopWheelMove())
-    if BeginFrame(session, cast(u64)1, viewport) != FrameStatus.FrameOk { Report("Pass: could not begin frame\n"); return false }
-    if Frame(session, viewport) != 0 { TreeCancel(session); Report("Pass: could not compose frame\n"); return false }
-    if EndFrame(session) != FrameStatus.FrameOk { Report("Pass: could not paint frame\n"); return false }
+    if BeginFrame(session, cast(u64)1, viewport) != FrameStatus.FrameOk {
+        Report("Werkzeug: could not begin frame\n")
+        return false
+    }
+    if WerkzeugFrame(session, viewport) != 0 {
+        TreeCancel(session)
+        Report("Werkzeug: could not compose frame\n")
+        return false
+    }
+    if EndFrame(session) != FrameStatus.FrameOk {
+        Report("Werkzeug: could not paint frame\n")
+        return false
+    }
     unused Desktop.DesktopCursor(session)
     ok := Desktop.EndDesktopFrame()
-    if !ok { Report("Pass: could not present frame\n") }
+    if !ok {
+        Report("Werkzeug: could not present frame\n")
+    }
     return ok
 }
 
 #program_export
 main :: (argc: s32, argv: **u8) -> s32 {
-    args: [16]string
-    count: s32 = 0
-    while count < argc && count < 16 { args[count] = TextFromCString(argv[count]); count += 1 }
-    SetMiniMode(MiniArgument(args[0:count]))
-    // Both modes open at a phone-like size and stay resizable.
-    opened := ifx MiniMode() then Desktop.OpenDesktopSized(400, 640) else Desktop.OpenDesktopSized(DesktopWindowWidth, DesktopWindowHeight)
-    if !opened { Desktop.CloseDesktop(); Report("Pass: could not open desktop\n"); return 1 }
-    title: [5]u8
-    CopyCString("Pass", title[:])
+    if !Desktop.OpenDesktopSized(DESKTOP_WIDTH, DESKTOP_HEIGHT) {
+        Desktop.CloseDesktop()
+        Report("Werkzeug: could not open desktop\n")
+        return 1
+    }
+    title: [16]u8
+    unused CopyCString("Werkzeug", title[:])
     SetTitle(Desktop.window, *title[0])
     session := SessionOpen()
-    if !SessionValid(session) { Desktop.CloseDesktop(); return 1 }
+    if !SessionValid(session) {
+        Desktop.CloseDesktop()
+        return 1
+    }
+    WerkzeugStart()
     ok: bool = true
     if Desktop.CaptureRequested() {
         ok = DrawDesktop(session)
-        if ok { ok = Desktop.CaptureConfigured() }
+        if ok {
+            ok = Desktop.CaptureConfigured()
+        }
     } else {
         while ok && Desktop.PollDesktop() {
             KeyboardModifiersSend(session, Desktop.DesktopModifiers())
             key := Desktop.DesktopPressedKey()
-            if key != 0 { KeyboardSend(session, key) }
+            if key != 0 {
+                KeyboardSend(session, key)
+            }
             codepoint := Desktop.DesktopTypedCodepoint()
             while codepoint != 0 {
                 TypedCodepointSend(session, codepoint)
                 codepoint = Desktop.DesktopTypedCodepoint()
             }
             ok = DrawDesktop(session)
-            if ok { Desktop.PauseDesktop() }
+            if ok {
+                Desktop.PauseDesktop()
+            }
         }
     }
-    Shutdown()
-    CloseSession(session); Desktop.CloseDesktop()
-    if ok { return 0 }
+    CloseSession(session)
+    Desktop.CloseDesktop()
+    if ok {
+        return 0
+    }
     return 1
 }

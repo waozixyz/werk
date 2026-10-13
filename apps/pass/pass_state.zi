@@ -1,19 +1,11 @@
+// Pass's settings, saved profiles and generation. Everything is computed on
+// the device; the master password is never written unless the device keeps
+// it behind its own authentication.
 #import "pass_core"
-#import "text"
+#import "pass_text"
 #import "text_buffer"
 #import "number_text"
-
-host :: #system_library "host_api";
-ReadStore :: (name: string, output: []u8) -> s32 #foreign host;
-WriteStore :: (name: string, value: string) -> bool #foreign host;
-ClipboardWrite :: (value: string) -> bool #foreign host;
-ClipboardMatches :: (value: string) -> bool #foreign host;
-Now :: () -> float64 #foreign host;
-SecureAvailable :: () -> bool #foreign host;
-SecureSaved :: () -> bool #foreign host;
-SecureRequest :: (master: string, save: bool) -> bool #foreign host;
-SecureForget :: () -> bool #foreign host;
-SecurePoll :: (output: []u8) -> s32 #foreign host;
+#import "werkzeug_app"
 
 Profile :: struct {
     name: [64]u8
@@ -39,11 +31,6 @@ Settings :: struct {
     digits: bool
     symbols: bool
     exclude: [128]u8
-    theme_source: s32
-    theme_mode: s32
-    theme_id: s32
-    theme_style: s32
-    style_pack: [64]u8
 }
 
 Runtime :: struct {
@@ -55,7 +42,6 @@ Runtime :: struct {
     unlocked_master: [1024]u8
     has_unlocked_master: bool
     secure_action: s32
-    clipboard_clear_at: float64
 }
 
 runtime: Runtime;
@@ -77,8 +63,6 @@ DefaultSettings :: () -> Settings {
     settings.show_fingerprint = true
     settings.lower = true; settings.upper = true
     settings.digits = true; settings.symbols = true
-    settings.theme_mode = 0; settings.theme_style = 2
-    CopyText("material", settings.style_pack[:])
     return settings
 }
 
@@ -113,7 +97,6 @@ WriteInteger :: (key: string, value: s32) -> bool {
 ApplySetting :: (key: string, value: string) {
     number := ParseNumber(value)
     if key == "exclude" { CopyText(value, runtime.settings.exclude[:]); return }
-    if key == "style_pack" { CopyText(value, runtime.settings.style_pack[:]); return }
     if !number.valid || number.value > 2147483647 || number.value < -2147483647 { return }
     integer := cast(s32)number.value
     if key == "auto_copy" { runtime.settings.auto_copy = integer != 0 }
@@ -125,10 +108,6 @@ ApplySetting :: (key: string, value: string) {
     if key == "upper" { runtime.settings.upper = integer != 0 }
     if key == "digits" { runtime.settings.digits = integer != 0 }
     if key == "symbols" { runtime.settings.symbols = integer != 0 }
-    if key == "theme_source" { runtime.settings.theme_source = integer }
-    if key == "theme_mode" { runtime.settings.theme_mode = integer }
-    if key == "theme_id" { runtime.settings.theme_id = integer }
-    if key == "theme_style" { runtime.settings.theme_style = integer }
 }
 
 LoadSettings :: () {
@@ -150,18 +129,14 @@ LoadSettings :: () {
             index += 1
         }
     }
-    keys: [15]string = .{"auto_copy", "clear_after_seconds", "show_fingerprint", "length", "counter", "lower", "upper", "digits", "symbols", "exclude", "theme_source", "theme_mode", "theme_id", "theme_style", "style_pack"}
-    for index: 0..14 {
+    keys: [10]string = .{"auto_copy", "clear_after_seconds", "show_fingerprint", "length", "counter", "lower", "upper", "digits", "symbols", "exclude"}
+    for index: 0..9 {
         buffer: [256]u8
         if ReadSetting(keys[index], buffer[:]) { ApplySetting(keys[index], TextUntilNul(buffer[:])) }
     }
     runtime.settings.length = Clamp(runtime.settings.length, 5, 35)
     runtime.settings.counter = Clamp(runtime.settings.counter, 1, 999999)
     runtime.settings.clear_seconds = Clamp(runtime.settings.clear_seconds, 0, 3600)
-    runtime.settings.theme_source = Clamp(runtime.settings.theme_source, 0, 1)
-    runtime.settings.theme_mode = Clamp(runtime.settings.theme_mode, 0, 2)
-    runtime.settings.theme_id = Clamp(runtime.settings.theme_id, 0, 15)
-    runtime.settings.theme_style = Clamp(runtime.settings.theme_style, 0, 2)
 }
 
 SaveSettings :: () -> bool {
@@ -176,11 +151,6 @@ SaveSettings :: () -> bool {
     ok = WriteInteger("digits", cast(s32)settings.digits) && ok
     ok = WriteInteger("symbols", cast(s32)settings.symbols) && ok
     ok = WriteSetting("exclude", TextUntilNul(runtime.settings.exclude[:])) && ok
-    ok = WriteInteger("theme_source", settings.theme_source) && ok
-    ok = WriteInteger("theme_mode", settings.theme_mode) && ok
-    ok = WriteInteger("theme_id", settings.theme_id) && ok
-    ok = WriteInteger("theme_style", settings.theme_style) && ok
-    ok = WriteSetting("style_pack", TextUntilNul(runtime.settings.style_pack[:])) && ok
     if ok { SetStatus("Settings saved") } else { SetStatus("Could not save settings") }
     return ok
 }
@@ -206,11 +176,7 @@ Generate :: (site: string, login: string, master: string, options: PassOptions) 
 CopyPassword :: () -> bool {
     value := Generated()
     if value == "" { SetStatus("Generate a password first"); return false }
-    if !ClipboardWrite(value) { SetStatus("Clipboard is unavailable"); return false }
-    runtime.clipboard_clear_at = 0.0
-    if runtime.settings.clear_seconds > 0 {
-        runtime.clipboard_clear_at = Now() + cast(float64)runtime.settings.clear_seconds
-    }
+    if !ClipboardCopy(value, runtime.settings.clear_seconds) { SetStatus("Clipboard is unavailable"); return false }
     SetStatus("Copied")
     return true
 }
@@ -350,7 +316,6 @@ FingerprintStatus :: () -> string {
 }
 HasSavedMaster :: () -> bool { return SecureSaved() }
 CanSaveMaster :: () -> bool { return SecureAvailable() }
-RuntimeNow :: () -> float64 { return Now() }
 
 Tick :: () {
     buffer: [1024]u8
@@ -367,11 +332,6 @@ Tick :: () {
     }
     if result == 3 { SetStatus("Secure master failed or cancelled"); runtime.secure_action = 0 }
     for index: 0..1023 { buffer[index] = cast(u8)0 }
-    if runtime.clipboard_clear_at > 0.0 && Now() >= runtime.clipboard_clear_at {
-        // Do not erase a newer clipboard value owned by another application.
-        if ClipboardMatches(Generated()) { ClipboardWrite(""); SetStatus("Clipboard cleared") }
-        runtime.clipboard_clear_at = 0.0
-    }
 }
 Initialize :: () {
     runtime = Runtime.{}

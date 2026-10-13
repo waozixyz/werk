@@ -1,0 +1,326 @@
+// Where Werkzeug keeps its files, and the clock and clipboard its apps use.
+// Every file Werkzeug writes is private to the user (0600 in 0700 folders).
+#import "std/file"
+#import "std/date_time_linux"
+#import "std/date_parse"
+#import "std/c_string"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/timer_linux"
+using UI :: #import "kryon/Widgets";
+#import "kryon/SystemTheme"
+LinuxTheme :: #import "kryon/SystemThemeLinux";
+
+PATH_LIMIT :: 1024
+
+libc :: #system_library "libc";
+Environment :: (name: *u8) -> *u8 #foreign libc "getenv";
+ExecutableLink :: (path: *u8, output: *u8, limit: usize) -> isize #foreign libc "readlink";
+
+data_root: [PATH_LIMIT]u8;
+cache_root: [PATH_LIMIT]u8;
+bundled_apps: [PATH_LIMIT]u8;
+assets_root: [PATH_LIMIT]u8;
+pictures_path: [PATH_LIMIT]u8;
+
+EnvironmentText :: (name: string) -> string {
+    key: [64]u8
+    if !CopyCString(name, key[:]) {
+        return ""
+    }
+    value := Environment(*key[0])
+    if value == null {
+        return ""
+    }
+    return TextFromCString(value)
+}
+
+// base + "/" + name in output; "" when it does not fit.
+PathJoin :: (output: []u8, base: string, name: string) -> string {
+    used: s64 = 0
+    if base.count + name.count + 2 > output.count {
+        output[0] = cast(u8)0
+        return ""
+    }
+    while used < base.count {
+        output[used] = base[used]
+        used += 1
+    }
+    output[used] = cast(u8)47
+    used += 1
+    index: s64 = 0
+    while index < name.count {
+        output[used] = name[index]
+        used += 1
+        index += 1
+    }
+    output[used] = cast(u8)0
+    return TextView(output[0:used])
+}
+
+// A file or folder name an app may use: no separators, no "." or "..".
+SafeName :: (name: string) -> bool {
+    if name.count == 0 || name.count > 128 || name == "." || name == ".." {
+        return false
+    }
+    index: s64 = 0
+    while index < name.count {
+        byte := name[index]
+        if byte == cast(u8)47 || byte == cast(u8)92 || byte < cast(u8)32 || byte == cast(u8)127 {
+            return false
+        }
+        index += 1
+    }
+    return true
+}
+
+// Creates every missing folder of path, privately.
+EnsureDirectory :: (path: string) -> bool {
+    if path.count == 0 || path.count >= PATH_LIMIT {
+        return false
+    }
+    index: s64 = 1
+    while index <= path.count {
+        if index == path.count || path[index] == cast(u8)47 {
+            if !CreatePrivateDirectory(path[0:index]) {
+                return false
+            }
+        }
+        index += 1
+    }
+    return true
+}
+
+// $XDG_<kind>_HOME/werkzeug, or ~/<fallback>/werkzeug.
+UserRoot :: (output: []u8, variable: string, fallback: string) -> string {
+    base := EnvironmentText(variable)
+    folder: [PATH_LIMIT]u8
+    if base == "" {
+        home := EnvironmentText("HOME")
+        if home == "" {
+            return ""
+        }
+        base = PathJoin(folder[:], home, fallback)
+    }
+    return PathJoin(output, base, "werkzeug")
+}
+
+#program_export
+DataRoot :: () -> string {
+    if data_root[0] == cast(u8)0 {
+        override := EnvironmentText("WERKZEUG_DATA")
+        if override != "" {
+            unused CopyCString(override, data_root[:])
+        } else {
+            unused UserRoot(data_root[:], "XDG_DATA_HOME", ".local/share")
+        }
+    }
+    return TextUntilNul(data_root[:])
+}
+
+#program_export
+CacheRoot :: () -> string {
+    if cache_root[0] == cast(u8)0 {
+        unused UserRoot(cache_root[:], "XDG_CACHE_HOME", ".cache")
+    }
+    return TextUntilNul(cache_root[:])
+}
+
+// Werkzeug's own files: the folder of the executable in a build, or
+// share/werkzeug in an installation. WERKZEUG_ASSETS overrides both. The
+// preinstalled apps are in its apps folder.
+#program_export
+AssetsRoot :: () -> string {
+    if assets_root[0] != cast(u8)0 {
+        return TextUntilNul(assets_root[:])
+    }
+    override := EnvironmentText("WERKZEUG_ASSETS")
+    if override != "" {
+        unused CopyCString(override, assets_root[:])
+        return TextUntilNul(assets_root[:])
+    }
+    link: [32]u8
+    executable: [PATH_LIMIT]u8
+    unused CopyCString("/proc/self/exe", link[:])
+    count := ExecutableLink(*link[0], *executable[0], cast(usize)(PATH_LIMIT - 1))
+    if count <= 0 {
+        return ""
+    }
+    folder := cast(s64)count
+    while folder > 0 && executable[folder - 1] != cast(u8)47 {
+        folder -= 1
+    }
+    base := TextView(executable[0:folder - 1])
+    installed: [PATH_LIMIT]u8
+    share := PathJoin(installed[:], base, "../share/werkzeug")
+    apps: [PATH_LIMIT]u8
+    if DirectoryExists(PathJoin(apps[:], share, "apps")) {
+        unused CopyCString(share, assets_root[:])
+    } else {
+        unused CopyCString(base, assets_root[:])
+    }
+    return TextUntilNul(assets_root[:])
+}
+
+#program_export
+BundledAppsRoot :: () -> string {
+    return PathJoin(bundled_apps[:], AssetsRoot(), "apps")
+}
+
+ProfilePicturesPath :: () -> string {
+    return PathJoin(pictures_path[:], AssetsRoot(), "pfp.png")
+}
+
+system_palette: SystemPalette;
+system_palette_read_at: float64 = -10.0;
+
+// Whether the desktop prefers dark colors, read at most every five seconds.
+SystemDark :: () -> bool {
+    now := SteadyClock()
+    if now - system_palette_read_at > 5.0 {
+        system_palette = LinuxTheme.SystemPaletteRead()
+        system_palette_read_at = now
+    }
+    return system_palette.dark
+}
+
+// Reads a whole private file into output and returns its length, or -1
+// when it is missing, unreadable or larger than output.
+ReadPrivate :: (path: string, output: []u8) -> s32 {
+    if output.count < 2 {
+        return -1
+    }
+    file := OpenRead(path)
+    if !file.valid {
+        return -1
+    }
+    size := FileSize(file)
+    if size < 0 || size >= output.count {
+        unused CloseFile(file)
+        return -1
+    }
+    count := ReadAt(file, output[0:size], 0)
+    unused CloseFile(file)
+    if count != size {
+        return -1
+    }
+    output[size] = cast(u8)0
+    return cast(s32)size
+}
+
+// Replaces a private file whole: a crash leaves the old or the new file,
+// never a mix.
+WritePrivate :: (path: string, value: string) -> bool {
+    temporary: [PATH_LIMIT]u8
+    if path.count + 5 >= PATH_LIMIT {
+        return false
+    }
+    used: s64 = 0
+    while used < path.count {
+        temporary[used] = path[used]
+        used += 1
+    }
+    suffix := ".new"
+    index: s64 = 0
+    while index < suffix.count {
+        temporary[used] = suffix[index]
+        used += 1
+        index += 1
+    }
+    temporary_path := TextView(temporary[0:used])
+    unused RemoveFile(temporary_path)
+    file := OpenExclusivePrivate(temporary_path)
+    if !file.valid {
+        return false
+    }
+    ok := WriteTextAt(file, value, 0) == value.count && SyncFile(file)
+    if !CloseFile(file) {
+        ok = false
+    }
+    if !ok || !RenamePath(temporary_path, path) {
+        unused RemoveFile(temporary_path)
+        return false
+    }
+    return true
+}
+
+// Seconds since the Unix epoch.
+#program_export
+WallClock :: () -> float64 {
+    return cast(float64)UnixMilliseconds() / 1000.0
+}
+
+// Seconds the local time zone is ahead of UTC now.
+#program_export
+LocalOffset :: () -> s32 {
+    now := UnixNow()
+    local := LocalAt(now)
+    if !local.valid {
+        return 0
+    }
+    seconds := DaysFromCivil(local.year, local.month, local.day) * 86400 +
+    cast(s64)(local.hour * 3600 + local.minute * 60 + local.second)
+    return cast(s32)(seconds - now)
+}
+
+// A steady clock for timers; it never jumps with the wall clock.
+#program_export
+SteadyClock :: () -> float64 {
+    return cast(float64)MonotonicMilliseconds() / 1000.0
+}
+
+// Copied text and when to clear it again.
+clipboard_value: [4096]u8;
+clipboard_clear_at: float64;
+
+#program_export
+ClipboardPut :: (value: string, clear_seconds: s32) -> bool {
+    if value.count >= 4096 || !SystemClipboardSet(value) {
+        return false
+    }
+    unused CopyCString(value, clipboard_value[:])
+    clipboard_clear_at = 0.0
+    if clear_seconds > 0 && value != "" {
+        clipboard_clear_at = SteadyClock() + cast(float64)clear_seconds
+    }
+    return true
+}
+
+// Clears copied text when its time is up, unless another application has
+// replaced it since.
+#program_export
+ClipboardTick :: () {
+    if clipboard_clear_at <= 0.0 || SteadyClock() < clipboard_clear_at {
+        return
+    }
+    clipboard_clear_at = 0.0
+    current: [4096]u8
+    if SystemClipboardText(current[:]) == TextUntilNul(clipboard_value[:]) {
+        unused SystemClipboardSet("")
+    }
+    for index: 0..4095 {
+        clipboard_value[index] = cast(u8)0
+    }
+}
+
+// Desktop has no device-held secrets; Android answers these through its
+// keystore.
+SecureAvailable :: () -> bool {
+    return false
+}
+
+SecureSaved :: () -> bool {
+    return false
+}
+
+SecureRequest :: (secret: string, save: bool) -> bool {
+    return false
+}
+
+SecureForget :: () -> bool {
+    return true
+}
+
+SecurePoll :: (output: []u8) -> s32 {
+    return 0
+}

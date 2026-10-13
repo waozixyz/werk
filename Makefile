@@ -6,59 +6,78 @@ LOCK_FLAGS := $(if $(wildcard ziran.local.toml),,--locked)
 ZIRAN_ROOT = $(shell $(ZIRAN) pkg path ziran $(LOCK_FLAGS))
 KRYON_DIR = $(shell $(ZIRAN) pkg path kryon $(LOCK_FLAGS))
 RAYLIB_DIR = $(shell $(ZIRAN) pkg path raylib $(LOCK_FLAGS))/src
+MINGCUTE_DIR = $(shell $(ZIRAN) pkg path mingcute $(LOCK_FLAGS))
 CC ?= cc
 BIN_DIR ?= $(HOME)/bin
 DATA_DIR ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)
 WEB_CC ?= $(if $(wildcard $(HOME)/emsdk/upstream/emscripten/emcc),$(HOME)/emsdk/upstream/emscripten/emcc,emcc)
-SOURCES := $(wildcard src/*.zi) pass_core.zi pass_core_test.zi
+SOURCES := $(wildcard src/*.zi shared/*.zi apps/*/*.zi)
 LIBRARY_SOURCES = $(wildcard $(KRYON_DIR)/src/ui/*.zi $(KRYON_DIR)/src/ui/*/module.zi $(KRYON_DIR)/src/kss/*.zi $(KRYON_DIR)/src/backend/*.zi $(KRYON_DIR)/src/backend/*/module.zi $(ZIRAN_ROOT)/std/*.zi)
 CFLAGS := -std=c99 -O2 -Wno-unused-variable -I$(ZIRAN_ROOT)/include
 PROJECT := --project $(LOCK_FLAGS)
 ANDROID_ABIS ?= armeabi-v7a,arm64-v8a
 
-.PHONY: all cli gui native run test source-check core-test ziran-core-test cli-test runtime-test mini-test lesspass-compat-test gui-smoke gui-input-test web web-canvas site web-smoke android-debug android-emulator android-release android-smoke android-input-test e2e check-package-urls install install-cli install-gui uninstall-cli uninstall-gui package-deb package-appimage plan9-c plan9-test
+.PHONY: all apps cli gui native run test source-check core-test ziran-core-test cli-test pass-state-test app-logic-test lesspass-compat-test gui-smoke gui-test web web-canvas site web-smoke android-debug android-emulator android-release android-smoke android-input-test e2e check-package-urls install install-cli install-gui uninstall-cli uninstall-gui package-deb package-appimage plan9-c plan9-test
 all: cli gui
 native: all
 
 build/generated/cli/.complete: $(SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)
-	$(ZIRAN) build $(PROJECT) --target=c --entry cli:main -o $(@D) src/cli.zi
+	$(ZIRAN) build $(PROJECT) --target=c --entry cli:main -o $(@D) apps/pass/cli.zi
 	touch $@
 build/pass: build/generated/cli/.complete
 	$(CC) $(CFLAGS) -Ibuild/generated/cli build/generated/cli/*.c -o $@
 cli: build/pass
 	cp build/pass pass
 
-build/generated/desktop/.complete: $(SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
+# Each app is its own bundle; Werkzeug runs them in one window.
+APPS := pass auth calculator clock
+APP_BUNDLES := $(APPS:%=build/apps/%.zib)
+SHARED_SOURCES := $(wildcard shared/*.zi)
+APP_MODULE_PATHS = --module-path shared --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
+apps: $(APP_BUNDLES)
+.SECONDEXPANSION:
+build/apps/%.zib: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES) ziran.lock
+	mkdir -p $(@D)
+	$(ZIRAN) bundle --root . --module-path apps/$* $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERKZEUG_APP \
+		$(if $(wildcard apps/$*/assets),--asset-dir assets=apps/$*/assets) --entry $*:Main -o $@ apps/$*/$*.zi
+
+# The portable bundle runtime the host links, built from the locked Ziran.
+build/ziran/libziran.a: ziran.lock
+	env -u DISPLAY -u WAYLAND_DISPLAY $(MAKE) -C $(ZIRAN_ROOT) BUILD_DIR=$(abspath build/ziran) $(abspath $@)
+
+build/generated/desktop/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --target=c --entry desktop:main -o $(@D) src/desktop.zi
 	touch $@
-build/pass-gui: build/generated/desktop/.complete Makefile
-	$(CC) $(CFLAGS) -Ibuild/generated/desktop build/generated/desktop/*.c $(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo) -lm -o $@
-gui: build/pass-gui
+build/werkzeug: build/generated/desktop/.complete build/ziran/libziran.a Makefile
+	$(CC) $(CFLAGS) -Ibuild/generated/desktop build/generated/desktop/*.c build/ziran/libziran.a $(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo) -lm -lpthread -o $@
+build/pfp.png: $(KRYON_DIR)/icons/pfp.png
+	cp $< $@
+gui: build/werkzeug build/pfp.png apps
 run: gui
-	./build/pass-gui
+	./build/werkzeug
 
 source-check:
 	python3 scripts/source_check.py
 	$(ZIRAN) fmt --check $(SOURCES) tests/*.zi
 core-test ziran-core-test:
 	sh scripts/ziran_core_test.sh "$(ZIRAN)"
-runtime-test:
-	sh scripts/runtime_test.sh "$(ZIRAN)"
-mini-test:
-	sh scripts/mini_test.sh "$(ZIRAN)"
+pass-state-test:
+	sh scripts/pass_state_test.sh "$(ZIRAN)"
+app-logic-test:
+	sh scripts/app_logic_test.sh "$(ZIRAN)"
 cli-test: cli
 	sh scripts/cli_test.sh ./pass
 lesspass-compat-test: cli
 	python3 scripts/lesspass_compat_test.py --cli ./pass
-test: source-check core-test runtime-test mini-test cli-test lesspass-compat-test
+test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test
 gui-smoke: gui
 	sh scripts/gui_smoke.sh
-gui-input-test: gui
-	sh scripts/gui_input_test.sh
+gui-test: gui
+	sh scripts/werkzeug_gui_test.sh
 
 build/generated/browser/.complete: $(SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
@@ -120,7 +139,7 @@ plan9-test: plan9-c
 
 check-package-urls:
 	bash scripts/check_package_urls.sh
-e2e: check-package-urls test gui-smoke gui-input-test web-smoke android-debug
+e2e: check-package-urls test gui-smoke gui-test web-smoke android-debug
 
 install: install-cli install-gui
 install-cli: cli

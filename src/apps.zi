@@ -1,0 +1,457 @@
+// Runs the Werkzeug apps. Each app is its own bundle: the host checks every
+// capability it asks for, answers its calls and draws its widgets into the
+// host's session. An app's files, assets and secret belong to it alone.
+#import "std/bundle_host"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/c_string"
+#import "std/file"
+#import "kryon/hosted_app"
+#import "kryon/hosted_values"
+#import "kryon/widget_codec"
+#import "kryon/widget_host"
+using UI :: #import "kryon/Widgets";
+#import "app_protocol"
+#import "platform"
+#import "sha256"
+
+using HostValueKind;
+
+APP_LIMIT :: 8
+APP_STORE_LIMIT :: 262144
+// The preinstalled apps, in their home screen order.
+BUNDLED_APPS :: 4
+
+App :: struct {
+    id: [32]u8
+    name: [64]u8
+    icon: [16384]u8
+    asset_folder: [PATH_LIMIT]u8
+    // The bundle's bytes stay alive while it is open.
+    bytes: string
+    hosted: HostedApp
+    started: bool
+}
+
+// What the running app sees this frame.
+AppView :: struct {
+    session: Session
+    bounds: Rectangle
+    dark: bool
+    key: s32
+    modifiers: s32
+    input: TextFieldInput
+}
+
+apps: [APP_LIMIT]App;
+app_count: s32;
+app_mode: s32;
+app_view: AppView;
+app_keyboard: bool;
+app_described: bool;
+// The app whose call the host is answering, for the asset policy.
+running: s32 = -1;
+// Text returned to an app stays here until its run returns.
+answer_text: [PATH_LIMIT]u8;
+store_bytes: [APP_STORE_LIMIT]u8;
+session_codec: WidgetSessionCodec;
+bounds_codec: WidgetRectangleCodec;
+input_codec: WidgetTextFieldInputCodec;
+
+AppId :: (index: s32) -> string {
+    return TextUntilNul(apps[index].id[:])
+}
+
+AppName :: (index: s32) -> string {
+    return TextUntilNul(apps[index].name[:])
+}
+
+AppIcon :: (index: s32) -> string {
+    return TextUntilNul(apps[index].icon[:])
+}
+
+AppCount :: () -> s32 {
+    return app_count
+}
+
+// Whether a capability's module is this one. Bundles may report the module
+// with a package prefix, such as "werkzeug_werkzeug_app".
+ModuleIs :: (value: string, name: string) -> bool {
+    if value == name {
+        return true
+    }
+    return value.count > name.count + 1 && value[value.count - name.count - 1] == cast(u8)95 &&
+    value[value.count - name.count:value.count] == name
+}
+
+AppFunction :: (function: string) -> bool {
+    names: [20]string = .["AppPbkdf2Sha256Host", "AppModeHost", "AppDescribeHost", "AppSessionHost", "AppBoundsHost",
+    "AppDarkHost", "AppKeyHost", "AppModifiersHost", "AppFieldInputHost", "AppKeyboardHost",
+    "AppNowHost", "AppLocalOffsetHost", "AppAssetPathHost", "ReadStoreHost", "WriteStoreHost",
+    "ClipboardCopyHost", "SecureAvailableHost", "SecureSavedHost", "SecureRequestHost",
+    "SecureForgetHost"]
+    for index: 0..19 {
+        if function == names[index] {
+            return true
+        }
+    }
+    return function == "SecurePollHost"
+}
+
+AppAllows :: (context: *void, module: string, function: string) -> bool {
+    if ModuleIs(module, "werkzeug_app") {
+        return AppFunction(function)
+    }
+    return WidgetHostSupports(module, function)
+}
+
+ArgumentText :: (value: HostValue) -> string {
+    if value.kind != cast(s32)HostString || value.length == cast(usize)0 || value.data == null {
+        return ""
+    }
+    return TextFromBytes(BytesFromPointer(value.data, cast(u64)value.length))
+}
+
+ReturnText :: (result: *HostValue, text: string) {
+    unused CopyCString(text, answer_text[:])
+    result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+        .data = *answer_text[0], .length = cast(usize)TextUntilNul(answer_text[:]).count}
+}
+
+ReturnBytes :: (result: *HostValue, bytes: []u8) {
+    count := bytes.count
+    if count > answer_text.count {
+        count = 0
+    }
+    index: s64 = 0
+    while index < count {
+        answer_text[index] = bytes[index]
+        index += 1
+    }
+    result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+        .data = *answer_text[0], .length = cast(usize)count}
+}
+
+// Forgets text and keys handed to an app once its run has copied them.
+ForgetAnswer :: () {
+    for index: 0..PATH_LIMIT - 1 {
+        answer_text[index] = cast(u8)0
+    }
+}
+
+ReturnVoid :: (result: *HostValue) {
+    result.* = HostValue.{.kind = cast(s32)HostVoid, .type_name = HostTextData("void")}
+}
+
+ReturnBool :: (result: *HostValue, value: bool) {
+    result.* = HostScalar("bool", ifx value then 1 else 0)
+}
+
+ReturnReal :: (result: *HostValue, value: float64) {
+    result.* = HostValue.{.kind = cast(s32)HostReal, .type_name = HostTextData("float64"), .real = value}
+}
+
+CopyField :: (output: []u8, value: string) {
+    count := value.count
+    if count >= output.count {
+        count = output.count - 1
+    }
+    index: s64 = 0
+    while index < count {
+        output[index] = value[index]
+        index += 1
+    }
+    output[count] = cast(u8)0
+}
+
+// The app's own folder of files, created on first use.
+StorePath :: (app: *App, name: string, output: []u8) -> string {
+    if !SafeName(name) {
+        return ""
+    }
+    apps_folder: [PATH_LIMIT]u8
+    own: [PATH_LIMIT]u8
+    folder := PathJoin(own[:], PathJoin(apps_folder[:], DataRoot(), "apps"), TextUntilNul(app.id[:]))
+    if folder == "" || !EnsureDirectory(folder) {
+        return ""
+    }
+    return PathJoin(output, folder, name)
+}
+
+ReadStoreCall :: (app: *App, arguments: *HostValue, result: *HostValue) -> s32 {
+    output := arguments[1]
+    if output.kind != cast(s32)HostSlice || (output.length > cast(usize)0 && output.elements == null) {
+        return 0
+    }
+    path_bytes: [PATH_LIMIT]u8
+    path := StorePath(app, ArgumentText(arguments[0]), path_bytes[:])
+    count: s32 = -1
+    limit := cast(s64)output.length
+    if limit > APP_STORE_LIMIT {
+        limit = APP_STORE_LIMIT
+    }
+    if path != "" && limit >= 2 {
+        count = ReadPrivate(path, store_bytes[0:limit])
+    }
+    // The app reads a terminated text, as from a C buffer.
+    index: s64 = 0
+    while count >= 0 && index <= cast(s64)count && index < cast(s64)output.length {
+        output.elements[index].bits = cast(u64)store_bytes[index]
+        output.elements[index].integer = cast(s64)store_bytes[index]
+        index += 1
+    }
+    result.* = HostScalar("s32", cast(s64)count)
+    return 1
+}
+
+AppCall :: (context: *void, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if !ModuleIs(TextFromCString(module), "werkzeug_app") {
+        return WidgetHostCall(context, module, function, arguments, count, result)
+    }
+    app := cast(*App)context
+    name := TextFromCString(function)
+    if name == "AppModeHost" {
+        result.* = HostScalar("s32", cast(s64)app_mode)
+        return 1
+    }
+    if name == "AppDescribeHost" && count == 2 {
+        if app_mode != APP_IDENTIFY {
+            return 0
+        }
+        CopyField(app.name[:], ArgumentText(arguments[0]))
+        CopyField(app.icon[:], ArgumentText(arguments[1]))
+        app_described = app.name[0] != cast(u8)0
+        ReturnVoid(result)
+        return 1
+    }
+    if name == "ReadStoreHost" && count == 2 {
+        return ReadStoreCall(app, arguments, result)
+    }
+    if name == "WriteStoreHost" && count == 2 {
+        path_bytes: [PATH_LIMIT]u8
+        path := StorePath(app, ArgumentText(arguments[0]), path_bytes[:])
+        ReturnBool(result, path != "" && WritePrivate(path, ArgumentText(arguments[1])))
+        return 1
+    }
+    if name == "AppPbkdf2Sha256Host" && count == 3 {
+        iterations := arguments[2].integer
+        if iterations < 1 || iterations > 1000000 {
+            ReturnText(result, "")
+            return 1
+        }
+        derived := Pbkdf2Sha256(ArgumentText(arguments[0]), ArgumentText(arguments[1]), cast(s32)iterations)
+        ReturnBytes(result, derived[:])
+        for index: 0..31 {
+            derived[index] = cast(u8)0
+        }
+        return 1
+    }
+    if name == "AppNowHost" {
+        ReturnReal(result, WallClock())
+        return 1
+    }
+    if name == "AppLocalOffsetHost" {
+        result.* = HostScalar("s32", cast(s64)LocalOffset())
+        return 1
+    }
+    if name == "ClipboardCopyHost" && count == 2 {
+        ReturnBool(result, ClipboardPut(ArgumentText(arguments[0]), cast(s32)arguments[1].integer))
+        return 1
+    }
+    if name == "AppAssetPathHost" && count == 1 {
+        asset := ArgumentText(arguments[0])
+        path: [PATH_LIMIT]u8
+        found := SafeName(asset) && app.asset_folder[0] != cast(u8)0
+        if found {
+            found = PathExists(PathJoin(path[:], TextUntilNul(app.asset_folder[:]), asset))
+        }
+        ReturnText(result, ifx found then TextUntilNul(path[:]) else "")
+        return 1
+    }
+    if name == "SecureAvailableHost" {
+        ReturnBool(result, SecureAvailable())
+        return 1
+    }
+    if name == "SecureSavedHost" {
+        ReturnBool(result, SecureSaved())
+        return 1
+    }
+    if name == "SecureRequestHost" && count == 2 {
+        ReturnBool(result, SecureRequest(ArgumentText(arguments[0]), arguments[1].integer != 0))
+        return 1
+    }
+    if name == "SecureForgetHost" {
+        ReturnBool(result, SecureForget())
+        return 1
+    }
+    if name == "SecurePollHost" && count == 1 {
+        result.* = HostScalar("s32", 0)
+        return 1
+    }
+    if app_mode != APP_FRAME {
+        return 0
+    }
+    if name == "AppSessionHost" {
+        result.* = WidgetEncodeSession(app_view.session, *session_codec)
+        return 1
+    }
+    if name == "AppBoundsHost" {
+        result.* = WidgetEncodeRectangle(app_view.bounds, *bounds_codec)
+        return 1
+    }
+    if name == "AppDarkHost" {
+        ReturnBool(result, app_view.dark)
+        return 1
+    }
+    if name == "AppKeyHost" {
+        result.* = HostScalar("s32", cast(s64)app_view.key)
+        return 1
+    }
+    if name == "AppModifiersHost" {
+        result.* = HostScalar("s32", cast(s64)app_view.modifiers)
+        return 1
+    }
+    if name == "AppFieldInputHost" {
+        result.* = WidgetEncodeTextFieldInput(app_view.input, *input_codec)
+        return 1
+    }
+    if name == "AppKeyboardHost" && count == 1 {
+        app_keyboard = arguments[0].integer != 0
+        ReturnVoid(result)
+        return 1
+    }
+    return 0
+}
+
+// Images an app draws come from its own unpacked assets.
+AssetAllowed :: (path: string) -> bool {
+    // Widgets without an image ask with an empty path.
+    if path == "" {
+        return true
+    }
+    if running < 0 {
+        return false
+    }
+    folder := TextUntilNul(apps[running].asset_folder[:])
+    return folder != "" && path.count > folder.count + 1 && path[0:folder.count] == folder &&
+    path[folder.count] == cast(u8)47
+}
+
+// Unpacks the bundle's assets/ files into the app's cache folder, so the
+// renderer can read them by path.
+UnpackAssets :: (app: *App) {
+    root: [PATH_LIMIT]u8
+    own: [PATH_LIMIT]u8
+    app.asset_folder[0] = cast(u8)0
+    folder := PathJoin(own[:], PathJoin(root[:], CacheRoot(), "apps"), TextUntilNul(app.id[:]))
+    if folder == "" || !EnsureDirectory(folder) {
+        return
+    }
+    CopyField(app.asset_folder[:], folder)
+    bundle := app.hosted.bundle
+    count := BundleAssets(bundle)
+    index: u64 = 0
+    while index < count {
+        name := TextFromCString(BundleAssetPath(bundle, index))
+        prefix := "assets/"
+        if name.count > prefix.count && name[0:prefix.count] == prefix && SafeName(name[prefix.count:name.count]) {
+            data := TextFromBytes(BytesFromPointer(BundleAssetBytes(bundle, index), BundleAssetLength(bundle, index)))
+            path: [PATH_LIMIT]u8
+            unused WritePrivate(PathJoin(path[:], folder, name[prefix.count:name.count]), data)
+        }
+        index += 1
+    }
+}
+
+// Opens one app bundle and asks it who it is. The id is its file name.
+LoadApp :: (id: string, path: string) -> bool {
+    if app_count >= APP_LIMIT {
+        return false
+    }
+    bytes, found := ReadEntireFile(path)
+    if !found {
+        return false
+    }
+    app := *apps[app_count]
+    app.* = App.{}
+    CopyField(app.id[:], id)
+    app.bytes = bytes
+    if !HostedAppOpen(*app.hosted, app.bytes) ||
+    !HostedAppStart(*app.hosted, AppAllows, AppCall, cast(*void)app) {
+        HostedAppClose(*app.hosted)
+        return false
+    }
+    app_mode = APP_IDENTIFY
+    app_described = false
+    answer: s64 = 0
+    running = app_count
+    identified := HostedAppRun(*app.hosted, *answer) && answer == APP_PROTOCOL && app_described
+    running = -1
+    if !identified {
+        HostedAppClose(*app.hosted)
+        return false
+    }
+    app.started = true
+    UnpackAssets(app)
+    app_count += 1
+    return true
+}
+
+LoadApps :: () {
+    ids: [BUNDLED_APPS]string = .["pass", "auth", "calculator", "clock"]
+    root := BundledAppsRoot()
+    if root == "" {
+        return
+    }
+    for index: 0..BUNDLED_APPS - 1 {
+        file: [64]u8
+        CopyField(file[:], ids[index])
+        used := ids[index].count
+        suffix := ".zib"
+        position: s64 = 0
+        while position < suffix.count {
+            file[used + position] = suffix[position]
+            position += 1
+        }
+        file[used + suffix.count] = cast(u8)0
+        path: [PATH_LIMIT]u8
+        unused LoadApp(ids[index], PathJoin(path[:], root, TextUntilNul(file[:])))
+    }
+}
+
+// Draws one frame of an app into the host's session. False when the app
+// stopped; it starts again the next time it opens.
+RunApp :: (index: s32, view: AppView) -> bool {
+    app := *apps[index]
+    if app.hosted.failed {
+        app.started = HostedAppRestart(*app.hosted, AppAllows, AppCall, cast(*void)app, AppAccepts)
+    }
+    if !app.started {
+        return false
+    }
+    app_view = view
+    app_mode = APP_FRAME
+    app_keyboard = false
+    running = index
+    WidgetHostBegin(view.session, AssetAllowed)
+    answer: s64 = 0
+    ran := HostedAppRun(*app.hosted, *answer)
+    WidgetHostEnd()
+    ForgetAnswer()
+    running = -1
+    return ran
+}
+
+// A restarted app is accepted once it identifies itself again.
+AppAccepts :: (context: *void) -> bool {
+    app := cast(*App)context
+    app_mode = APP_IDENTIFY
+    app_described = false
+    answer: s64 = 0
+    return HostedAppRun(*app.hosted, *answer) && answer == APP_PROTOCOL && app_described
+}
+
+AppWantsKeyboard :: () -> bool {
+    return app_keyboard
+}

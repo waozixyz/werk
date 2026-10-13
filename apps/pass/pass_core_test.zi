@@ -1,4 +1,5 @@
 #import "pass_core"
+#import "sha256"
 
 #program_export
 DigestMatches :: (left: [32]u8, right: [32]u8) -> bool {

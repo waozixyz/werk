@@ -1,0 +1,676 @@
+// Time-based one-time passwords (RFC 6238) with HMAC-SHA-1, SHA-256 or
+// SHA-512, and the otpauth:// links authenticator apps export.
+#import "text_buffer"
+#import "sha256"
+
+HASH_SHA1 :: 1
+HASH_SHA256 :: 2
+HASH_SHA512 :: 3
+// Longest key, message and decoded secret this module handles.
+KEY_LIMIT :: 128
+HASH_INPUT_LIMIT :: 256
+
+Digest :: struct {
+    bytes: [64]u8
+    count: s32
+}
+
+// The 80 SHA-512 round constants, each as its high and low 32 bits.
+sha512_round_halves: [160]u32 = .[
+0x428a2f98, 0xd728ae22, 0x71374491, 0x23ef65cd, 0xb5c0fbcf, 0xec4d3b2f,
+0xe9b5dba5, 0x8189dbbc, 0x3956c25b, 0xf348b538, 0x59f111f1, 0xb605d019,
+0x923f82a4, 0xaf194f9b, 0xab1c5ed5, 0xda6d8118, 0xd807aa98, 0xa3030242,
+0x12835b01, 0x45706fbe, 0x243185be, 0x4ee4b28c, 0x550c7dc3, 0xd5ffb4e2,
+0x72be5d74, 0xf27b896f, 0x80deb1fe, 0x3b1696b1, 0x9bdc06a7, 0x25c71235,
+0xc19bf174, 0xcf692694, 0xe49b69c1, 0x9ef14ad2, 0xefbe4786, 0x384f25e3,
+0x0fc19dc6, 0x8b8cd5b5, 0x240ca1cc, 0x77ac9c65, 0x2de92c6f, 0x592b0275,
+0x4a7484aa, 0x6ea6e483, 0x5cb0a9dc, 0xbd41fbd4, 0x76f988da, 0x831153b5,
+0x983e5152, 0xee66dfab, 0xa831c66d, 0x2db43210, 0xb00327c8, 0x98fb213f,
+0xbf597fc7, 0xbeef0ee4, 0xc6e00bf3, 0x3da88fc2, 0xd5a79147, 0x930aa725,
+0x06ca6351, 0xe003826f, 0x14292967, 0x0a0e6e70, 0x27b70a85, 0x46d22ffc,
+0x2e1b2138, 0x5c26c926, 0x4d2c6dfc, 0x5ac42aed, 0x53380d13, 0x9d95b3df,
+0x650a7354, 0x8baf63de, 0x766a0abb, 0x3c77b2a8, 0x81c2c92e, 0x47edaee6,
+0x92722c85, 0x1482353b, 0xa2bfe8a1, 0x4cf10364, 0xa81a664b, 0xbc423001,
+0xc24b8b70, 0xd0f89791, 0xc76c51a3, 0x0654be30, 0xd192e819, 0xd6ef5218,
+0xd6990624, 0x5565a910, 0xf40e3585, 0x5771202a, 0x106aa070, 0x32bbd1b8,
+0x19a4c116, 0xb8d2d0c8, 0x1e376c08, 0x5141ab53, 0x2748774c, 0xdf8eeb99,
+0x34b0bcb5, 0xe19b48a8, 0x391c0cb3, 0xc5c95a63, 0x4ed8aa4a, 0xe3418acb,
+0x5b9cca4f, 0x7763e373, 0x682e6ff3, 0xd6b2b8a3, 0x748f82ee, 0x5defb2fc,
+0x78a5636f, 0x43172f60, 0x84c87814, 0xa1f0ab72, 0x8cc70208, 0x1a6439ec,
+0x90befffa, 0x23631e28, 0xa4506ceb, 0xde82bde9, 0xbef9a3f7, 0xb2c67915,
+0xc67178f2, 0xe372532b, 0xca273ece, 0xea26619c, 0xd186b8c7, 0x21c0c207,
+0xeada7dd6, 0xcde0eb1e, 0xf57d4f7f, 0xee6ed178, 0x06f067aa, 0x72176fba,
+0x0a637dc5, 0xa2c898a6, 0x113f9804, 0xbef90dae, 0x1b710b35, 0x131c471b,
+0x28db77f5, 0x23047d84, 0x32caab7b, 0x40c72493, 0x3c9ebe0a, 0x15c9bebc,
+0x431d67c4, 0x9c100d4c, 0x4cc5d4be, 0xcb3e42b6, 0x597f299c, 0xfc657e2a,
+0x5fcb6fab, 0x3ad6faec, 0x6c44198c, 0x4a475817
+];
+
+RotateLeft32 :: (value: u32, amount: u32) -> u32 {
+    return (value << amount) | (value >> (cast(u32)32 - amount))
+}
+
+RotateRight64 :: (value: u64, amount: u64) -> u64 {
+    return (value >> amount) | (value << (cast(u64)64 - amount))
+}
+
+// Pads a message the SHA way into blocks: 0x80, zeros, then the bit length
+// in the last eight bytes. Returns the padded length.
+Pad :: (input: []u8, count: s32, block: s32, output: []u8) -> s32 {
+    index: s32 = 0
+    while index < count {
+        output[index] = input[index]
+        index += 1
+    }
+    output[count] = cast(u8)0x80
+    length_bytes: s32 = ifx block == 128 then 16 else 8
+    total := ((count + 1 + length_bytes + block - 1) / block) * block
+    index = count + 1
+    while index < total {
+        output[index] = cast(u8)0
+        index += 1
+    }
+    bits := cast(u64)count * cast(u64)8
+    for shift: 0..7 {
+        output[total - 1 - cast(s32)shift] = cast(u8)(bits >> (cast(u64)shift * cast(u64)8))
+    }
+    return total
+}
+
+Sha1 :: (input: []u8, count: s32) -> Digest {
+    padded: [HASH_INPUT_LIMIT + 128]u8
+    total := Pad(input, count, 64, padded[:])
+    state: [5]u32 = .[0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0]
+    offset: s32 = 0
+    while offset < total {
+        words: [80]u32
+        for index: 0..15 {
+            at := offset + cast(s32)index * 4
+            words[index] = (cast(u32)padded[at] << cast(u32)24) | (cast(u32)padded[at + 1] << cast(u32)16) |
+            (cast(u32)padded[at + 2] << cast(u32)8) | cast(u32)padded[at + 3]
+        }
+        for index: 16..79 {
+            mixed: u32 = words[index - 3] ^ words[index - 8]
+            mixed = mixed ^ words[index - 14]
+            mixed = mixed ^ words[index - 16]
+            words[index] = RotateLeft32(mixed, cast(u32)1)
+        }
+        a := state[0]
+        b := state[1]
+        c := state[2]
+        d := state[3]
+        e := state[4]
+        for index: 0..79 {
+            mix: u32
+            constant: u32
+            if index < 20 {
+                mix = (b & c) | (~b & d)
+                constant = 0x5a827999
+            } else if index < 40 {
+                mix = b ^ c ^ d
+                constant = 0x6ed9eba1
+            } else if index < 60 {
+                mix = (b & c) | (b & d) | (c & d)
+                constant = 0x8f1bbcdc
+            } else {
+                mix = b ^ c ^ d
+                constant = 0xca62c1d6
+            }
+            next := RotateLeft32(a, cast(u32)5) + mix + e + constant + words[index]
+            e = d
+            d = c
+            c = RotateLeft32(b, cast(u32)30)
+            b = a
+            a = next
+        }
+        state[0] += a
+        state[1] += b
+        state[2] += c
+        state[3] += d
+        state[4] += e
+        offset += 64
+    }
+    digest: Digest
+    digest.count = 20
+    for index: 0..4 {
+        for part: 0..3 {
+            digest.bytes[index * 4 + part] = cast(u8)(state[index] >> (cast(u32)(3 - part) * cast(u32)8))
+        }
+    }
+    return digest
+}
+
+Sha512 :: (input: []u8, count: s32) -> Digest {
+    padded: [HASH_INPUT_LIMIT + 256]u8
+    total := Pad(input, count, 128, padded[:])
+    initial: [16]u32 = .[0x6a09e667, 0xf3bcc908, 0xbb67ae85, 0x84caa73b, 0x3c6ef372, 0xfe94f82b,
+    0xa54ff53a, 0x5f1d36f1, 0x510e527f, 0xade682d1, 0x9b05688c, 0x2b3e6c1f, 0x1f83d9ab, 0xfb41bd6b,
+    0x5be0cd19, 0x137e2179]
+    state: [8]u64
+    for index: 0..7 {
+        state[index] = (cast(u64)initial[index * 2] << cast(u64)32) | cast(u64)initial[index * 2 + 1]
+    }
+    offset: s32 = 0
+    while offset < total {
+        words: [80]u64
+        for index: 0..15 {
+            value: u64 = 0
+            for part: 0..7 {
+                value = (value << cast(u64)8) | cast(u64)padded[offset + cast(s32)index * 8 + cast(s32)part]
+            }
+            words[index] = value
+        }
+        for index: 16..79 {
+            low: u64 = RotateRight64(words[index - 15], cast(u64)1)
+            low = low ^ RotateRight64(words[index - 15], cast(u64)8)
+            low = low ^ (words[index - 15] >> cast(u64)7)
+            high: u64 = RotateRight64(words[index - 2], cast(u64)19)
+            high = high ^ RotateRight64(words[index - 2], cast(u64)61)
+            high = high ^ (words[index - 2] >> cast(u64)6)
+            words[index] = words[index - 16] + low + words[index - 7] + high
+        }
+        a := state[0]
+        b := state[1]
+        c := state[2]
+        d := state[3]
+        e := state[4]
+        f := state[5]
+        g := state[6]
+        h := state[7]
+        for index: 0..79 {
+            major: u64 = RotateRight64(e, cast(u64)14)
+            major = major ^ RotateRight64(e, cast(u64)18)
+            major = major ^ RotateRight64(e, cast(u64)41)
+            choose := (e & f) ^ (~e & g)
+            constant := (cast(u64)sha512_round_halves[index * 2] << cast(u64)32) | cast(u64)sha512_round_halves[index * 2 + 1]
+            first := h + major + choose + constant + words[index]
+            minor: u64 = RotateRight64(a, cast(u64)28)
+            minor = minor ^ RotateRight64(a, cast(u64)34)
+            minor = minor ^ RotateRight64(a, cast(u64)39)
+            mixture := (a & b) ^ (a & c) ^ (b & c)
+            h = g
+            g = f
+            f = e
+            e = d + first
+            d = c
+            c = b
+            b = a
+            a = first + minor + mixture
+        }
+        state[0] += a
+        state[1] += b
+        state[2] += c
+        state[3] += d
+        state[4] += e
+        state[5] += f
+        state[6] += g
+        state[7] += h
+        offset += 128
+    }
+    digest: Digest
+    digest.count = 64
+    for index: 0..7 {
+        for part: 0..7 {
+            digest.bytes[index * 8 + part] = cast(u8)(state[index] >> (cast(u64)(7 - part) * cast(u64)8))
+        }
+    }
+    return digest
+}
+
+Hash :: (kind: s32, input: []u8, count: s32) -> Digest {
+    if kind == HASH_SHA256 {
+        hashed := Sha256(TextView(input[0:count]))
+        digest: Digest
+        digest.count = 32
+        for index: 0..31 {
+            digest.bytes[index] = hashed[index]
+        }
+        return digest
+    }
+    if kind == HASH_SHA512 {
+        return Sha512(input, count)
+    }
+    return Sha1(input, count)
+}
+
+// HMAC (RFC 2104). Keys up to KEY_LIMIT bytes and messages up to 64 bytes.
+Hmac :: (kind: s32, key: []u8, key_count: s32, message: []u8, message_count: s32) -> Digest {
+    block: s32 = ifx kind == HASH_SHA512 then 128 else 64
+    block_key: [128]u8
+    if key_count > block {
+        hashed := Hash(kind, key, key_count)
+        for index: 0..63 {
+            block_key[index] = hashed.bytes[index]
+        }
+    } else {
+        index: s32 = 0
+        while index < key_count {
+            block_key[index] = key[index]
+            index += 1
+        }
+    }
+    inner_input: [HASH_INPUT_LIMIT]u8
+    index: s32 = 0
+    while index < block {
+        inner_input[index] = block_key[index] ^ cast(u8)0x36
+        index += 1
+    }
+    index = 0
+    while index < message_count {
+        inner_input[block + index] = message[index]
+        index += 1
+    }
+    inner := Hash(kind, inner_input[:], block + message_count)
+    outer_input: [HASH_INPUT_LIMIT]u8
+    index = 0
+    while index < block {
+        outer_input[index] = block_key[index] ^ cast(u8)0x5c
+        index += 1
+    }
+    index = 0
+    while index < inner.count {
+        outer_input[block + index] = inner.bytes[index]
+        index += 1
+    }
+    result := Hash(kind, outer_input[:], block + inner.count)
+    for wipe: 0..127 {
+        block_key[wipe] = cast(u8)0
+    }
+    for wipe: 0..HASH_INPUT_LIMIT - 1 {
+        inner_input[wipe] = cast(u8)0
+        outer_input[wipe] = cast(u8)0
+    }
+    return result
+}
+
+// The code for a counter (HOTP, RFC 4226), zero-padded to digits.
+CodeAt :: (kind: s32, key: []u8, key_count: s32, digits: s32, counter: u64, output: []u8) -> string {
+    message: [8]u8
+    for index: 0..7 {
+        message[index] = cast(u8)(counter >> (cast(u64)(7 - index) * cast(u64)8))
+    }
+    mac := Hmac(kind, key, key_count, message[:], 8)
+    offset := cast(s32)(mac.bytes[mac.count - 1] & cast(u8)0x0f)
+    binary := ((cast(u32)mac.bytes[offset] & cast(u32)0x7f) << cast(u32)24) |
+    (cast(u32)mac.bytes[offset + 1] << cast(u32)16) |
+    (cast(u32)mac.bytes[offset + 2] << cast(u32)8) | cast(u32)mac.bytes[offset + 3]
+    modulus: u32 = 1
+    for step: 1..digits {
+        modulus *= cast(u32)10
+    }
+    value := binary % modulus
+    position := digits - 1
+    while position >= 0 {
+        output[position] = cast(u8)(48 + cast(s32)(value % cast(u32)10))
+        value /= cast(u32)10
+        position -= 1
+    }
+    output[digits] = cast(u8)0
+    return TextView(output[0:digits])
+}
+
+// The code for a Unix time (TOTP, RFC 6238).
+CodeNow :: (kind: s32, key: []u8, key_count: s32, digits: s32, period: s32, unix: s64, output: []u8) -> string {
+    step := unix / cast(s64)period
+    if step < 0 {
+        step = 0
+    }
+    return CodeAt(kind, key, key_count, digits, cast(u64)step, output)
+}
+
+// Decodes Base32 (RFC 4648) ignoring case, spaces, hyphens and padding.
+// Returns the byte count, or -1 for any other character or a key too long.
+Base32Decode :: (text: string, output: []u8) -> s32 {
+    buffer: u32 = 0
+    bits: s32 = 0
+    count: s32 = 0
+    index: s64 = 0
+    while index < text.count {
+        byte := text[index]
+        index += 1
+        if byte == cast(u8)32 || byte == cast(u8)45 || byte == cast(u8)61 {
+            continue
+        }
+        value: s32 = -1
+        if byte >= cast(u8)65 && byte <= cast(u8)90 {
+            value = cast(s32)(byte - cast(u8)65)
+        } else if byte >= cast(u8)97 && byte <= cast(u8)122 {
+            value = cast(s32)(byte - cast(u8)97)
+        } else if byte >= cast(u8)50 && byte <= cast(u8)55 {
+            value = cast(s32)(byte - cast(u8)50) + 26
+        }
+        if value < 0 {
+            return -1
+        }
+        buffer = (buffer << cast(u32)5) | cast(u32)value
+        bits += 5
+        if bits >= 8 {
+            bits -= 8
+            if count >= cast(s32)output.count {
+                return -1
+            }
+            output[count] = cast(u8)(buffer >> cast(u32)bits)
+            count += 1
+        }
+    }
+    return count
+}
+
+Account :: struct {
+    issuer: [64]u8
+    name: [128]u8
+    // The secret as Base32, kept to save it again.
+    secret: [256]u8
+    key: [KEY_LIMIT]u8
+    key_count: s32
+    kind: s32
+    digits: s32
+    period: s32
+}
+
+Lower :: (byte: u8) -> u8 {
+    if byte >= cast(u8)65 && byte <= cast(u8)90 {
+        return byte + cast(u8)32
+    }
+    return byte
+}
+
+StartsWithIgnoringCase :: (text: string, prefix: string) -> bool {
+    if text.count < prefix.count {
+        return false
+    }
+    index: s64 = 0
+    while index < prefix.count {
+        if Lower(text[index]) != Lower(prefix[index]) {
+            return false
+        }
+        index += 1
+    }
+    return true
+}
+
+HexValue :: (byte: u8) -> s32 {
+    if byte >= cast(u8)48 && byte <= cast(u8)57 {
+        return cast(s32)(byte - cast(u8)48)
+    }
+    lower := Lower(byte)
+    if lower >= cast(u8)97 && lower <= cast(u8)102 {
+        return cast(s32)(lower - cast(u8)97) + 10
+    }
+    return -1
+}
+
+// Percent-decodes into output ("+" is a space in a query). False when it
+// does not fit.
+Unescape :: (text: string, output: []u8) -> bool {
+    used: s64 = 0
+    index: s64 = 0
+    while index < text.count {
+        byte := text[index]
+        if byte == cast(u8)37 && index + 2 < text.count && HexValue(text[index + 1]) >= 0 && HexValue(text[index + 2]) >= 0 {
+            byte = cast(u8)(HexValue(text[index + 1]) * 16 + HexValue(text[index + 2]))
+            index += 2
+        } else if byte == cast(u8)43 {
+            byte = cast(u8)32
+        }
+        if used >= output.count - 1 || byte < cast(u8)32 {
+            return false
+        }
+        output[used] = byte
+        used += 1
+        index += 1
+    }
+    output[used] = cast(u8)0
+    return true
+}
+
+ParseNumber :: (text: string) -> s32 {
+    if text.count == 0 || text.count > 6 {
+        return -1
+    }
+    value: s32 = 0
+    index: s64 = 0
+    while index < text.count {
+        if text[index] < cast(u8)48 || text[index] > cast(u8)57 {
+            return -1
+        }
+        value = value * 10 + cast(s32)(text[index] - cast(u8)48)
+        index += 1
+    }
+    return value
+}
+
+ParseAlgorithm :: (text: string) -> s32 {
+    upper: [8]u8
+    if text.count > 7 {
+        return 0
+    }
+    index: s64 = 0
+    while index < text.count {
+        byte := text[index]
+        upper[index] = ifx byte >= cast(u8)97 && byte <= cast(u8)122 then byte - cast(u8)32 else byte
+        index += 1
+    }
+    name := TextView(upper[0:text.count])
+    if name == "SHA1" {
+        return HASH_SHA1
+    }
+    if name == "SHA256" {
+        return HASH_SHA256
+    }
+    if name == "SHA512" {
+        return HASH_SHA512
+    }
+    return 0
+}
+
+// Checks a Base32 secret and fills the account's key from it.
+SetSecret :: (account: *Account, secret: string) -> bool {
+    clean: [256]u8
+    used: s64 = 0
+    index: s64 = 0
+    while index < secret.count {
+        byte := secret[index]
+        index += 1
+        if byte == cast(u8)32 || byte == cast(u8)45 || byte == cast(u8)61 {
+            continue
+        }
+        if used >= 255 {
+            return false
+        }
+        clean[used] = ifx byte >= cast(u8)97 && byte <= cast(u8)122 then byte - cast(u8)32 else byte
+        used += 1
+    }
+    count := Base32Decode(TextView(clean[0:used]), account.key[:])
+    // Shorter keys than 80 bits are refused as RFC 4226 asks; most services
+    // use 160.
+    if count < 10 {
+        return false
+    }
+    account.key_count = count
+    index = 0
+    while index < used {
+        account.secret[index] = clean[index]
+        index += 1
+    }
+    account.secret[used] = cast(u8)0
+    return true
+}
+
+CopyLimited :: (text: string, output: []u8) -> bool {
+    if text.count >= output.count {
+        return false
+    }
+    index: s64 = 0
+    while index < text.count {
+        if text[index] < cast(u8)32 {
+            return false
+        }
+        output[index] = text[index]
+        index += 1
+    }
+    output[text.count] = cast(u8)0
+    return true
+}
+
+// Reads an otpauth://totp/ link. HOTP and other kinds are refused.
+ParseLink :: (link: string, account: *Account) -> bool {
+    account.* = Account.{.kind = HASH_SHA1, .digits = 6, .period = 30}
+    prefix := "otpauth://totp/"
+    if !StartsWithIgnoringCase(link, prefix) {
+        return false
+    }
+    rest := link[prefix.count:link.count]
+    query_at: s64 = 0
+    while query_at < rest.count && rest[query_at] != cast(u8)63 {
+        query_at += 1
+    }
+    label: [256]u8
+    if !Unescape(rest[0:query_at], label[:]) {
+        return false
+    }
+    label_text := TextUntilNul(label[:])
+    colon: s64 = 0
+    while colon < label_text.count && label_text[colon] != cast(u8)58 {
+        colon += 1
+    }
+    if colon < label_text.count {
+        start := colon + 1
+        while start < label_text.count && label_text[start] == cast(u8)32 {
+            start += 1
+        }
+        if !CopyLimited(label_text[0:colon], account.issuer[:]) ||
+        !CopyLimited(label_text[start:label_text.count], account.name[:]) {
+            return false
+        }
+    } else if !CopyLimited(label_text, account.name[:]) {
+        return false
+    }
+    has_secret := false
+    position := query_at + 1
+    while position < rest.count {
+        end := position
+        while end < rest.count && rest[end] != cast(u8)38 {
+            end += 1
+        }
+        pair := rest[position:end]
+        equals: s64 = 0
+        while equals < pair.count && pair[equals] != cast(u8)61 {
+            equals += 1
+        }
+        if equals < pair.count {
+            key := pair[0:equals]
+            value: [256]u8
+            if !Unescape(pair[equals + 1:pair.count], value[:]) {
+                return false
+            }
+            text := TextUntilNul(value[:])
+            if key == "secret" {
+                if !SetSecret(account, text) {
+                    return false
+                }
+                has_secret = true
+            } else if key == "issuer" {
+                if !CopyLimited(text, account.issuer[:]) {
+                    return false
+                }
+            } else if key == "algorithm" {
+                account.kind = ParseAlgorithm(text)
+                if account.kind == 0 {
+                    return false
+                }
+            } else if key == "digits" {
+                account.digits = ParseNumber(text)
+                if account.digits < 6 || account.digits > 8 {
+                    return false
+                }
+            } else if key == "period" {
+                account.period = ParseNumber(text)
+                if account.period < 1 || account.period > 300 {
+                    return false
+                }
+            }
+        }
+        position = end + 1
+    }
+    return has_secret && (account.issuer[0] != cast(u8)0 || account.name[0] != cast(u8)0)
+}
+
+Unreserved :: (byte: u8) -> bool {
+    return byte >= cast(u8)65 && byte <= cast(u8)90 || byte >= cast(u8)97 && byte <= cast(u8)122 ||
+    byte >= cast(u8)48 && byte <= cast(u8)57 || byte == cast(u8)45 || byte == cast(u8)46 ||
+    byte == cast(u8)95 || byte == cast(u8)126
+}
+
+AppendText :: (output: []u8, used: s64, text: string) -> s64 {
+    index: s64 = 0
+    while index < text.count {
+        if used < 0 || used >= output.count - 1 {
+            return -1
+        }
+        output[used] = text[index]
+        used += 1
+        index += 1
+    }
+    output[used] = cast(u8)0
+    return used
+}
+
+AppendEscaped :: (output: []u8, used: s64, text: string) -> s64 {
+    hex := "0123456789ABCDEF"
+    index: s64 = 0
+    while index < text.count && used >= 0 {
+        byte := text[index]
+        if Unreserved(byte) {
+            used = AppendText(output, used, text[index:index + 1])
+        } else if used + 3 < output.count {
+            output[used] = cast(u8)37
+            output[used + 1] = hex[cast(s64)(byte >> cast(u8)4)]
+            output[used + 2] = hex[cast(s64)(byte & cast(u8)15)]
+            used += 3
+            output[used] = cast(u8)0
+        } else {
+            return -1
+        }
+        index += 1
+    }
+    return used
+}
+
+// The account as an otpauth link, the format Auth saves and imports.
+LinkText :: (account: *Account, output: []u8) -> string {
+    used := AppendText(output, 0, "otpauth://totp/")
+    issuer := TextUntilNul(account.issuer[:])
+    if issuer != "" {
+        used = AppendEscaped(output, used, issuer)
+        used = AppendText(output, used, ":")
+    }
+    used = AppendEscaped(output, used, TextUntilNul(account.name[:]))
+    used = AppendText(output, used, "?secret=")
+    used = AppendText(output, used, TextUntilNul(account.secret[:]))
+    if issuer != "" {
+        used = AppendText(output, used, "&issuer=")
+        used = AppendEscaped(output, used, issuer)
+    }
+    algorithms: [4]string = .["", "SHA1", "SHA256", "SHA512"]
+    used = AppendText(output, used, "&algorithm=")
+    used = AppendText(output, used, algorithms[account.kind])
+    digits: [2]u8
+    digits[0] = cast(u8)(48 + account.digits)
+    used = AppendText(output, used, "&digits=")
+    used = AppendText(output, used, TextView(digits[0:1]))
+    period: [8]u8
+    value := account.period
+    length: s32 = 0
+    while value > 0 || length == 0 {
+        period[7 - length] = cast(u8)(48 + value % 10)
+        value /= 10
+        length += 1
+    }
+    used = AppendText(output, used, "&period=")
+    used = AppendText(output, used, TextView(period[8 - length:8]))
+    if used < 0 {
+        return ""
+    }
+    return TextView(output[0:used])
+}

@@ -1,5 +1,5 @@
 #import "pass_core"
-#import "text"
+#import "pass_text"
 #import "byte_text_linux"
 #import "version"
 #import "c_string"

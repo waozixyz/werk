@@ -1,0 +1,487 @@
+// Pass: a stateless password generator. The same site, login, master
+// password and settings always give the same password, with no database.
+#import "session"
+#import "geometry"
+#import "text_props"
+#import "text_widget"
+#import "text_input_props"
+#import "text_field_widget"
+#import "button_props"
+#import "button_widget"
+#import "control_props"
+#import "checkbox_props"
+#import "checkbox_widget"
+#import "spinbox_props"
+#import "spinbox_widget"
+#import "box_props"
+#import "box_widget"
+#import "image_props"
+#import "image_widget"
+#import "scroll_props"
+#import "scroll_widget"
+#import "tree"
+#import "text_buffer"
+#import "utf8"
+#import "werkzeug_app"
+#import "app_protocol"
+#import "pass_core"
+#import "pass_state"
+#import "pass_text"
+Icon :: #import "mingcute_regular_keyhole";
+
+FieldState :: struct {
+    cursor: s32
+    anchor: s32
+    scroll_x: s32
+}
+
+initialized: bool;
+view: s32;
+focused: s32;
+fields: [5]FieldState;
+site: [256]u8;
+login: [256]u8;
+master: [1024]u8;
+profile_name: [64]u8;
+reveal: bool;
+scroll_offsets: [3]s32;
+emoji: [32]u8;
+session: Session;
+
+Label :: (value: string, x: float32, y: float32, width: float32, font: s32) {
+    props: TextProps
+    props.bounds = Rectangle.{x, y, width, cast(float32)(font + 8)}
+    props.text = value
+    props.font = font
+    Text(session, props)
+}
+
+Action :: (id: s32, label: string, bounds: Rectangle, accent: bool, disabled: bool) -> bool {
+    props: ButtonProps
+    props.key = cast(u64)id
+    props.id = id
+    props.bounds = bounds
+    props.label = label
+    props.disabled = disabled
+    props.tone = ButtonTone.ButtonToneNeutral
+    props.emphasis = ButtonEmphasis.ButtonEmphasisSoft
+    if accent {
+        props.tone = ButtonTone.ButtonToneAccent
+        props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
+    }
+    return Button(session, props) == 1
+}
+
+ApplyEdit :: (buffer: []u8, edit: TextFieldEdit) -> bool {
+    if !edit.changed {
+        return false
+    }
+    length: s32 = 0
+    while length < cast(s32)buffer.count && buffer[length] != cast(u8)0 {
+        length += 1
+    }
+    if edit.start < 0 || edit.end < edit.start || edit.end > length {
+        return false
+    }
+    replacement: [1024]u8
+    used := length - (edit.end - edit.start) + cast(s32)edit.replacement.count
+    if used >= cast(s32)buffer.count || used >= 1024 {
+        return false
+    }
+    position: s32 = 0
+    while position < edit.start {
+        replacement[position] = buffer[position]
+        position += 1
+    }
+    index: s32 = 0
+    while index < cast(s32)edit.replacement.count {
+        replacement[position] = edit.replacement[index]
+        position += 1
+        index += 1
+    }
+    index = edit.end
+    while index < length {
+        replacement[position] = buffer[index]
+        position += 1
+        index += 1
+    }
+    index = 0
+    while index < cast(s32)buffer.count {
+        buffer[index] = ifx index < used then replacement[index] else cast(u8)0
+        index += 1
+    }
+    for wipe: 0..1023 {
+        replacement[wipe] = cast(u8)0
+    }
+    return true
+}
+
+Field :: (index: s32, label: string, buffer: []u8, bounds: Rectangle, secure: bool) {
+    snapshot: [1024]u8
+    mask: [1024]u8
+    // The views of the copies end with this block, before they are wiped.
+    {
+        props: TextFieldProps
+        position: s32 = 0
+        while position < cast(s32)buffer.count && position < 1023 {
+            snapshot[position] = buffer[position]
+            if buffer[position] == cast(u8)0 {
+                break
+            }
+            position += 1
+        }
+        props.key = cast(u64)(100 + index)
+        props.focus_id = 100 + index
+        props.bounds = bounds
+        props.label = label
+        props.value = TextUntilNul(snapshot[:])
+        props.cursor = fields[index].cursor
+        props.anchor = fields[index].anchor
+        props.scroll_x = fields[index].scroll_x
+        props.focused = focused == index + 1
+        props.max_bytes = cast(s32)buffer.count - 1
+        props.max_codepoints = props.max_bytes
+        props.secure = secure
+        if secure {
+            count := Codepoints(props.value)
+            if count > 1023 {
+                count = 1023
+            }
+            masked: s32 = 0
+            while masked < count {
+                mask[masked] = cast(u8)42
+                masked += 1
+            }
+            props.display_value = TextView(mask[0:count])
+        }
+        if props.focused {
+            props.input = AppFieldInput()
+        }
+        result := TextField(session, props)
+        fields[index].cursor = result.cursor
+        fields[index].anchor = result.anchor
+        fields[index].scroll_x = result.scroll_x
+        unused ApplyEdit(buffer, result.edit)
+        if result.focused {
+            focused = index + 1
+        }
+        if result.escaped && focused == index + 1 {
+            focused = 0
+        }
+    }
+    for wipe: 0..1023 {
+        snapshot[wipe] = cast(u8)0
+        mask[wipe] = cast(u8)0
+    }
+}
+
+// The number of characters in UTF-8 text.
+Codepoints :: (text: string) -> s32 {
+    count: s32 = 0
+    index: s64 = 0
+    while index < text.count {
+        if (text[index] & cast(u8)0xC0) != cast(u8)0x80 {
+            count += 1
+        }
+        index += 1
+    }
+    return count
+}
+
+Check :: (id: s32, label: string, value: bool, bounds: Rectangle) -> bool {
+    props: CheckboxProps
+    props.key = cast(u64)id
+    props.id = id
+    props.label = label
+    props.bounds = bounds
+    props.checked = value
+    return Checkbox(session, props).checked
+}
+
+Integer :: (id: s32, label: string, value: s32, low: s32, high: s32, x: float32, y: float32, width: float32) -> s32 {
+    Label(label, x, y + 8.0, width - 160.0, 16)
+    props: SpinboxProps
+    props.key = cast(u64)id
+    props.id = id
+    props.label = label
+    props.bounds = Rectangle.{x + width - 150.0, y, 150.0, 38.0}
+    props.value = value
+    props.min = low
+    props.max = high
+    props.step = 1
+    return Spinbox(session, props).value
+}
+
+CurrentOptions :: () -> PassOptions {
+    options: PassOptions
+    options.length = runtime.settings.length
+    options.counter = cast(u64)runtime.settings.counter
+    options.lowercase = runtime.settings.lower
+    options.uppercase = runtime.settings.upper
+    options.digits = runtime.settings.digits
+    options.symbols = runtime.settings.symbols
+    options.exclude = TextUntilNul(runtime.settings.exclude[:])
+    return options
+}
+
+CurrentProfile :: () -> Profile {
+    profile: Profile
+    profile.name = profile_name
+    profile.site = site
+    profile.login = login
+    profile.exclude = runtime.settings.exclude
+    profile.length = runtime.settings.length
+    profile.counter = runtime.settings.counter
+    profile.lower = runtime.settings.lower
+    profile.upper = runtime.settings.upper
+    profile.digits = runtime.settings.digits
+    profile.symbols = runtime.settings.symbols
+    return profile
+}
+
+// The four fingerprint emoji that let you notice a mistyped master password.
+Fingerprint :: (x: float32, y: float32) {
+    used := MasterEmoji(TextUntilNul(master[:]), emoji[:])
+    atlas := AppAssetPath("fingerprint.png")
+    position: s32 = 0
+    for index: 0..3 {
+        decoded := Decode(TextView(emoji[0:used]), position)
+        glyph: s32 = 0
+        while glyph < 63 && cast(u32)master_emoji_codepoints[glyph] != decoded.value {
+            glyph += 1
+        }
+        props: ImageProps
+        props.asset_path = atlas
+        props.alt_text = TextView(emoji[position:decoded.after])
+        props.bounds = Rectangle.{x + cast(float32)index * 28.0, y, 24.0, 24.0}
+        props.source = Rectangle.{cast(float32)(glyph % 8) * 64.0, cast(float32)(glyph / 8) * 64.0, 64.0, 64.0}
+        props.tint = ifx AppDark() then cast(u32)0xe8e8e8ff else cast(u32)0x202c29ff
+        Image(session, props)
+        position = decoded.after
+    }
+}
+
+MasterField :: (x: float32, y: float32, width: float32) -> float32 {
+    Label("Master password", x, y, width, 14)
+    Field(2, "Master password", master[:], Rectangle.{x, y + 24.0, width - 86.0, 40.0}, !reveal)
+    if Action(13, ifx reveal then "Hide" else "Show", Rectangle.{x + width - 78.0, y + 24.0, 78.0, 40.0}, false, false) {
+        reveal = !reveal
+    }
+    y += 76.0
+    if runtime.settings.show_fingerprint && master[0] != cast(u8)0 {
+        Fingerprint(x, y)
+        y += 34.0
+    }
+    if HasSavedMaster() {
+        if Action(14, "Unlock master password", Rectangle.{x, y, width, 38.0}, false, false) {
+            focused = 0
+            unused UnlockMaster()
+        }
+        y += 48.0
+    }
+    return y
+}
+
+OptionsForm :: (x: float32, y: float32, width: float32) -> float32 {
+    runtime.settings.length = Integer(20, "Length", runtime.settings.length, 5, 35, x, y, width)
+    y += 50.0
+    runtime.settings.counter = Integer(21, "Counter", runtime.settings.counter, 1, 999999, x, y, width)
+    y += 50.0
+    part := width / 4.0
+    runtime.settings.lower = Check(31, "a-z", runtime.settings.lower, Rectangle.{x, y, part, 36.0})
+    runtime.settings.upper = Check(32, "A-Z", runtime.settings.upper, Rectangle.{x + part, y, part, 36.0})
+    runtime.settings.digits = Check(33, "0-9", runtime.settings.digits, Rectangle.{x + part * 2.0, y, part, 36.0})
+    runtime.settings.symbols = Check(34, "#", runtime.settings.symbols, Rectangle.{x + part * 3.0, y, part, 36.0})
+    y += 48.0
+    Label("Exclude", x, y, width, 14)
+    Field(3, "Exclude", runtime.settings.exclude[:], Rectangle.{x, y + 24.0, width, 40.0}, false)
+    return y + 76.0
+}
+
+GenerateForm :: (x: float32, y: float32, width: float32) {
+    Label("Site", x, y, width, 14)
+    Field(0, "Site", site[:], Rectangle.{x, y + 24.0, width, 40.0}, false)
+    y += 76.0
+    Label("Login", x, y, width, 14)
+    Field(1, "Login", login[:], Rectangle.{x, y + 24.0, width, 40.0}, false)
+    y += 76.0
+    y = MasterField(x, y, width)
+    y = OptionsForm(x, y, width)
+    if Action(40, "Generate", Rectangle.{x, y, width, 44.0}, true, false) {
+        focused = 0
+        unused Generate(TextUntilNul(site[:]), TextUntilNul(login[:]), TextUntilNul(master[:]), CurrentOptions())
+        scroll_offsets[0] = 10000
+    }
+    y += 60.0
+    Label("Generated password", x, y, width, 14)
+    y += 28.0
+    props: BoxProps
+    props.key = cast(u64)42
+    props.bounds = Rectangle.{x, y, width, 54.0}
+    props.radius = 8.0
+    Box(session, props)
+    Label(ifx Generated() == "" then "Password will appear here" else Generated(), x + 10.0, y + 16.0, width - 20.0, 16)
+    y += 68.0
+    if Action(41, "Copy", Rectangle.{x, y, width, 40.0}, false, false) {
+        unused CopyPassword()
+    }
+}
+
+ProfilesForm :: (x: float32, y: float32, width: float32) {
+    Label("Profile name", x, y, width, 14)
+    Field(4, "Profile name", profile_name[:], Rectangle.{x, y + 24.0, width, 40.0}, false)
+    y += 76.0
+    if Action(210, "Save Current Profile", Rectangle.{x, y, width, 42.0}, true, false) {
+        unused SaveProfile(CurrentProfile())
+    }
+    y += 60.0
+    if runtime.profile_count == 0 {
+        Label("No saved profiles", x, y, width, 16)
+    }
+    index: s32 = 0
+    while index < runtime.profile_count {
+        Label(TextUntilNul(runtime.profiles[index].name[:]), x, y, width, 16)
+        Label(TextUntilNul(runtime.profiles[index].site[:]), x, y + 26.0, width, 12)
+        if Action(300 + index, "Generate", Rectangle.{x, y + 50.0, width * 0.6 - 4.0, 36.0}, false, false) {
+            unused GenerateProfile(index, TextUntilNul(master[:]))
+            view = 0
+            focused = 0
+            scroll_offsets[0] = 10000
+        }
+        if Action(400 + index, "Delete", Rectangle.{x + width * 0.6 + 4.0, y + 50.0, width * 0.4 - 4.0, 36.0}, false, false) {
+            unused DeleteProfile(index)
+            break
+        }
+        y += 102.0
+        index += 1
+    }
+}
+
+SettingsForm :: (x: float32, y: float32, width: float32) {
+    runtime.settings.auto_copy = Check(501, "Auto-copy after Generate", runtime.settings.auto_copy, Rectangle.{x, y, width, 36.0})
+    y += 48.0
+    runtime.settings.clear_seconds = Integer(502, "Clipboard seconds", runtime.settings.clear_seconds, 0, 3600, x, y, width)
+    y += 50.0
+    runtime.settings.show_fingerprint = Check(503, "Show master fingerprint", runtime.settings.show_fingerprint, Rectangle.{x, y, width, 36.0})
+    y += 54.0
+    Label("Generation defaults", x, y, width, 20)
+    y += 38.0
+    y = OptionsForm(x, y, width)
+    if Action(510, "Save Settings", Rectangle.{x, y, width, 42.0}, true, false) {
+        unused SaveSettings()
+    }
+    y += 60.0
+    Label("Secure master password", x, y, width, 20)
+    y += 38.0
+    y = MasterField(x, y, width)
+    Label(FingerprintStatus(), x, y, width, 12)
+    y += 36.0
+    if Action(520, "Save", Rectangle.{x, y, width / 2.0 - 4.0, 42.0}, true, !CanSaveMaster()) {
+        focused = 0
+        unused SaveMaster(TextUntilNul(master[:]))
+    }
+    if Action(522, "Forget", Rectangle.{x + width / 2.0 + 4.0, y, width / 2.0 - 4.0, 42.0}, false, !HasSavedMaster()) {
+        unused ForgetMaster()
+    }
+}
+
+// Tab moves between the fields of the current view.
+FocusNext :: () {
+    if AppKey() != 258 {
+        return
+    }
+    if view == 0 {
+        if (AppModifiers() & 1) != 0 {
+            focused = ((focused + 2) % 4) + 1
+        } else {
+            focused = (focused % 4) + 1
+        }
+    }
+    if view == 1 {
+        focused = 5
+    }
+    if view == 2 {
+        focused = 3
+    }
+}
+
+Draw :: () {
+    session = AppSession()
+    area := AppBounds()
+    if runtime.has_unlocked_master {
+        master = runtime.unlocked_master
+        runtime.unlocked_master = .{}
+        runtime.has_unlocked_master = false
+        fields[2] = FieldState.{}
+    }
+    FocusNext()
+    pad: float32 = 18.0
+    width := area.width - pad * 2.0
+    if width > 480.0 {
+        width = 480.0
+    }
+    left := area.x + (area.width - width) * 0.5
+    height := area.height - 110.0
+    if height < 60.0 {
+        height = 60.0
+    }
+    content_height: s32 = 648
+    if runtime.settings.show_fingerprint && master[0] != cast(u8)0 {
+        content_height += 34
+    }
+    if HasSavedMaster() {
+        content_height += 48
+    }
+    if view == 1 {
+        content_height = 180 + runtime.profile_count * 102
+    }
+    if view == 2 {
+        content_height = 760
+    }
+    props: ScrollProps
+    props.key = cast(u64)(10 + view)
+    props.bounds = Rectangle.{left, area.y + 12.0, width, height}
+    props.content_height = content_height
+    props.scroll_offset = scroll_offsets[view]
+    props.scale = 1.0
+    scroll := Scroll(session, props)
+    scroll_offsets[view] = scroll.scroll_offset
+    if scroll.opened {
+        if view == 0 {
+            GenerateForm(scroll.content.x, scroll.content.y, scroll.content.width - 10.0)
+        }
+        if view == 1 {
+            ProfilesForm(scroll.content.x, scroll.content.y, scroll.content.width - 10.0)
+        }
+        if view == 2 {
+            SettingsForm(scroll.content.x, scroll.content.y, scroll.content.width - 10.0)
+        }
+        End(session)
+    }
+    Label(Status(), left, area.y + area.height - 88.0, width, 12)
+    labels: [3]string = .{"Generate", "Profiles", "Settings"}
+    for index: 0..2 {
+        tab := cast(s32)index
+        bounds := Rectangle.{left + cast(float32)index * width / 3.0, area.y + area.height - 58.0, width / 3.0 - 4.0, 46.0}
+        if Action(700 + tab, labels[index], bounds, view == tab, false) {
+            view = tab
+            focused = 0
+        }
+    }
+    AppKeyboard(focused != 0)
+}
+
+#program_export "PassMain"
+Main :: () -> s32 {
+    if AppMode() == APP_IDENTIFY {
+        AppDescribe("Pass", Icon.Shape)
+        return APP_PROTOCOL
+    }
+    if !initialized {
+        Initialize()
+        initialized = true
+    }
+    Tick()
+    Draw()
+    return 0
+}

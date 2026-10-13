@@ -1,6 +1,6 @@
 Json :: #import "std/json_scan";
 #import "pass_core"
-#import "text"
+#import "pass_text"
 #import "cli_native"
 #import "std/text_buffer"
 
