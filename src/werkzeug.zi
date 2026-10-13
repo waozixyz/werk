@@ -43,6 +43,12 @@ code_text: [32]u8;
 forget_pending: bool;
 choosing_picture: bool;
 profile_scroll: s32;
+// Where Profile's focused field was drawn, so Profile can scroll it into
+// view when it gains focus or the keyboard changes the visible height.
+focused_top: float32;
+focused_bottom: float32;
+revealed_field: s32;
+profile_height: float32;
 typed: [256]u8;
 keyboard_wanted: bool;
 
@@ -240,6 +246,10 @@ NameField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
         }
     }
     result := TextField(session, props)
+    if result.focused {
+        focused_top = bounds.y
+        focused_bottom = bounds.y + bounds.height
+    }
     ApplyEdit(profile.name[:], result.edit)
     name_field.cursor = result.cursor
     name_field.anchor = result.anchor
@@ -261,6 +271,32 @@ Heading :: (session: Session, key: u64, text: string, x: float32, y: float32, wi
     Label(session, key, text, Rectangle.{x, y, width, 24.0}, 16)
 }
 
+// Scrolls the field drawn focused last frame just into view, once when it
+// gains focus and again whenever the visible height changes, as when the
+// keyboard opens; scrolling by hand while typing is left alone.
+RevealFocusedField :: (area: Rectangle) {
+    field: s32 = 0
+    if name_field.focused {
+        field = 30
+    }
+    if code_field.focused {
+        field = 31
+    }
+    if field != 0 && (field != revealed_field || area.height != profile_height) {
+        margin: float32 = 16.0
+        if focused_bottom + margin > area.y + area.height {
+            profile_scroll += cast(s32)(focused_bottom + margin - area.y - area.height)
+        } else if focused_top - margin < area.y {
+            profile_scroll -= cast(s32)(area.y - focused_top + margin)
+            if profile_scroll < 0 {
+                profile_scroll = 0
+            }
+        }
+    }
+    revealed_field = field
+    profile_height = area.height
+}
+
 ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput) {
     width := area.width - 32.0
     if width > 480.0 {
@@ -271,6 +307,7 @@ ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput) {
     if choosing_picture {
         content_height += cast(s32)((PROFILE_PICTURES + 5) / 6) * 56 + 16
     }
+    RevealFocusedField(area)
     scroll := Scroll(session, ScrollProps.{.key = cast(u64)40,
             .bounds = Rectangle.{left, area.y, width, area.height},
             .content_height = content_height, .scroll_offset = profile_scroll, .scale = 1.0})
@@ -388,6 +425,10 @@ CodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput, buffer
             }
         }
         result := TextField(session, props)
+        if result.focused {
+            focused_top = bounds.y
+            focused_bottom = bounds.y + bounds.height
+        }
         code_field.cursor = result.cursor
         code_field.anchor = result.anchor
         code_field.scroll_x = result.scroll_x
