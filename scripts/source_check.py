@@ -20,4 +20,4 @@ manifest = (root / "droid/app/src/main/AndroidManifest.xml").read_text()
 assert 'android:hasCode="false"' in manifest
 assert 'android:name="android.app.NativeActivity"' in manifest
 assert "android.permission.INTERNET" not in manifest
-print("All maintained Pass application implementations are Ziran")
+print("All maintained Werkzeug application implementations are Ziran")

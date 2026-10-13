@@ -1,0 +1,216 @@
+// The Werkzeug profile: a name and picture, and the appearance every app
+// shares. It lives in the private profile/settings.txt file.
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/number_text"
+#import "std/text_buffer"
+using UI :: #import "kryon/Widgets";
+#import "kryon/Theme"
+#import "kryon/SystemTheme"
+#import "platform"
+
+PROFILE_NAME_LIMIT :: 40
+// Pictures of Kryon's profile picture atlas, five to a row.
+PROFILE_PICTURES :: 28
+ACCENTS :: 16
+
+Profile :: struct {
+    name: [64]u8
+    picture: s32
+    // 0 follows the system, 1 light, 2 dark.
+    theme_mode: s32
+    accent: s32
+    material: bool
+}
+
+profile: Profile;
+theme_signature: s32 = -1;
+palette: Palette;
+
+ProfileName :: () -> string {
+    return TextUntilNul(profile.name[:])
+}
+
+Accent :: (index: s32) -> u32 {
+    accents: [ACCENTS]u32 = .[0x7355d9ff, 0x2563ebff, 0x059669ff, 0xdb2777ff, 0xd97706ff, 0x0891b2ff,
+    0xdc2626ff, 0x7c3aedff, 0x4f46e5ff, 0x0d9488ff, 0x65a30dff, 0xc026d3ff, 0xea580cff,
+    0x0284c7ff, 0x9333eaff, 0x475569ff]
+    if index < 0 || index >= ACCENTS {
+        return accents[0]
+    }
+    return accents[index]
+}
+
+Clamp :: (value: s32, low: s32, high: s32) -> s32 {
+    if value < low {
+        return low
+    }
+    if value > high {
+        return high
+    }
+    return value
+}
+
+ProfilePath :: (output: []u8) -> string {
+    folder: [PATH_LIMIT]u8
+    path := PathJoin(folder[:], DataRoot(), "profile")
+    if path == "" || !EnsureDirectory(path) {
+        return ""
+    }
+    return PathJoin(output, path, "settings.txt")
+}
+
+ParseInteger :: (text: string) -> s32 {
+    value: s32 = 0
+    index: s64 = 0
+    while index < text.count && index < 9 {
+        if text[index] < cast(u8)48 || text[index] > cast(u8)57 {
+            return -1
+        }
+        value = value * 10 + cast(s32)(text[index] - cast(u8)48)
+        index += 1
+    }
+    if text.count == 0 {
+        return -1
+    }
+    return value
+}
+
+ApplyProfileSetting :: (key: string, value: string) {
+    if key == "name" {
+        count := value.count
+        if count > PROFILE_NAME_LIMIT {
+            count = PROFILE_NAME_LIMIT
+        }
+        unused CopyCString(value[0:count], profile.name[:])
+        return
+    }
+    number := ParseInteger(value)
+    if number < 0 {
+        return
+    }
+    if key == "picture" {
+        profile.picture = Clamp(number, 0, PROFILE_PICTURES - 1)
+    }
+    if key == "theme_mode" {
+        profile.theme_mode = Clamp(number, 0, 2)
+    }
+    if key == "accent" {
+        profile.accent = Clamp(number, 0, ACCENTS - 1)
+    }
+    if key == "material" {
+        profile.material = number != 0
+    }
+}
+
+// Reads key=value lines; unknown keys are kept out, malformed lines ignored.
+LoadProfile :: () {
+    profile = Profile.{.material = true}
+    path_bytes: [PATH_LIMIT]u8
+    path := ProfilePath(path_bytes[:])
+    text_bytes: [4096]u8
+    count := ifx path == "" then -1 else ReadPrivate(path, text_bytes[:])
+    if count <= 0 {
+        return
+    }
+    text := TextView(text_bytes[0:count])
+    start: s64 = 0
+    index: s64 = 0
+    while index <= text.count {
+        if index == text.count || text[index] == cast(u8)10 {
+            line := text[start:index]
+            separator: s64 = 0
+            while separator < line.count && line[separator] != cast(u8)61 {
+                separator += 1
+            }
+            if separator < line.count {
+                ApplyProfileSetting(line[0:separator], line[separator + 1:line.count])
+            }
+            start = index + 1
+        }
+        index += 1
+    }
+}
+
+AppendLine :: (output: []u8, used: s64, key: string, value: string) -> s64 {
+    parts: [4]string = .[key, "=", value, "\n"]
+    for part: 0..3 {
+        index: s64 = 0
+        while index < parts[part].count {
+            if used >= output.count - 1 {
+                return -1
+            }
+            output[used] = parts[part][index]
+            used += 1
+            index += 1
+        }
+    }
+    return used
+}
+
+SaveProfile :: () -> bool {
+    path_bytes: [PATH_LIMIT]u8
+    path := ProfilePath(path_bytes[:])
+    if path == "" {
+        return false
+    }
+    text: [4096]u8
+    number: [24]u8
+    used: s64 = 0
+    // A name never holds a line break: the field keeps one line.
+    used = AppendLine(text[:], used, "name", ProfileName())
+    if used >= 0 {
+        used = AppendLine(text[:], used, "picture", FormatInteger(cast(s64)profile.picture, number[:]))
+    }
+    if used >= 0 {
+        used = AppendLine(text[:], used, "theme_mode", FormatInteger(cast(s64)profile.theme_mode, number[:]))
+    }
+    if used >= 0 {
+        used = AppendLine(text[:], used, "accent", FormatInteger(cast(s64)profile.accent, number[:]))
+    }
+    if used >= 0 {
+        used = AppendLine(text[:], used, "material", ifx profile.material then "1" else "0")
+    }
+    return used >= 0 && WritePrivate(path, TextView(text[0:used]))
+}
+
+// The picture's square in Kryon's profile picture atlas.
+PictureImage :: (picture: s32, bounds: Rectangle) -> ImageProps {
+    image: ImageProps
+    image.asset_path = ProfilePicturesPath()
+    image.alt_text = "Profile picture"
+    image.bounds = bounds
+    image.source = Rectangle.{cast(float32)((picture % 5) * 64), cast(float32)((picture / 5) * 64), 64.0, 64.0}
+    return image
+}
+
+ProfileDark :: () -> bool {
+    return ResolveDark(cast(ThemePolicy)profile.theme_mode, SystemDark())
+}
+
+// Installs the profile's appearance when it changes.
+ApplyTheme :: () {
+    dark := ProfileDark()
+    signature := cast(s32)dark + profile.theme_mode * 2 + profile.accent * 8 + (ifx profile.material then 256 else 0)
+    if signature == theme_signature {
+        return
+    }
+    theme_signature = signature
+    palette = DefaultPalette(dark)
+    system: SystemPalette
+    system.dark = dark
+    system.background = palette.background
+    system.text = palette.text
+    system.base = palette.surface
+    system.selected = Accent(profile.accent)
+    system.border = palette.border
+    system.selected_text = OnColor(system.selected)
+    system.danger = palette.danger
+    system.success = palette.success
+    system.warning = palette.warning
+    unused SystemPaletteInstall(system, profile.material)
+}
+
+ThemePalette :: () -> Palette {
+    return palette
+}

@@ -1,0 +1,341 @@
+// Werkzeug's own screens: the home screen of apps, the profile, and the bar
+// above the app that is open.
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+using UI :: #import "kryon/Widgets";
+#import "kryon/key_input"
+#import "kryon/ScrollDevice"
+#import "kryon/Theme"
+#import "apps"
+#import "profile"
+#import "platform"
+Back :: #import "mingcute/mingcute_regular_left";
+
+SCREEN_HOME :: 0
+SCREEN_APP :: 1
+SCREEN_PROFILE :: 2
+BAR_HEIGHT :: 56.0
+
+FieldState :: struct {
+    cursor: s32
+    anchor: s32
+    scroll_x: s32
+    focused: bool
+}
+
+screen: s32;
+open_app: s32 = -1;
+name_field: FieldState;
+choosing_picture: bool;
+profile_scroll: s32;
+typed: [256]u8;
+keyboard_wanted: bool;
+
+WerkzeugStart :: () {
+    LoadProfile()
+    LoadApps()
+}
+
+// Whether the touch keyboard should show.
+WerkzeugKeyboard :: () -> bool {
+    return keyboard_wanted
+}
+
+Label :: (session: Session, key: u64, text: string, bounds: Rectangle, font: s32) {
+    Text(session, TextProps.{.key = key, .bounds = bounds, .text = text, .font = font,
+            .wrap = TextWrap.TextWrapEllipsis})
+}
+
+Action :: (session: Session, id: s32, label: string, bounds: Rectangle, selected: bool) -> bool {
+    props := ButtonProps.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
+        .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+    if selected {
+        props.tone = ButtonTone.ButtonToneAccent
+        props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
+    }
+    return Button(session, props) != 0
+}
+
+OpenHome :: () {
+    if screen == SCREEN_PROFILE {
+        name_field.focused = false
+        unused SaveProfile()
+    }
+    screen = SCREEN_HOME
+    open_app = -1
+    choosing_picture = false
+}
+
+TopBar :: (session: Session, viewport: Rectangle) {
+    bar := Rectangle.{viewport.x, viewport.y, viewport.width, BAR_HEIGHT}
+    title := "Werkzeug"
+    left := bar.x + 16.0
+    if screen != SCREEN_HOME {
+        back := ButtonProps.{.key = cast(u64)10, .id = 10, .label = "Home",
+            .bounds = Rectangle.{bar.x + 8.0, bar.y + 8.0, 40.0, 40.0},
+            .icon_shape = Back.Shape, .icon_only = true,
+            .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+        if Button(session, back) != 0 {
+            OpenHome()
+            return
+        }
+        left = bar.x + 56.0
+        title = ifx screen == SCREEN_APP then AppName(open_app) else "Profile"
+    }
+    Label(session, cast(u64)11, title, Rectangle.{left, bar.y + 16.0, bar.width - left - 64.0, 26.0}, 20)
+    if screen == SCREEN_HOME {
+        avatar := ButtonProps.{.key = cast(u64)12, .id = 12, .label = "Profile",
+            .bounds = Rectangle.{bar.x + bar.width - 52.0, bar.y + 6.0, 44.0, 44.0},
+            .image = PictureImage(profile.picture, Rectangle.{}), .icon_only = true, .circle = true,
+            .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+        if Button(session, avatar) != 0 {
+            screen = SCREEN_PROFILE
+        }
+    }
+}
+
+Home :: (session: Session, area: Rectangle) {
+    tile: float32 = 120.0
+    gap: float32 = 16.0
+    columns := cast(s32)((area.width - gap) / (tile + gap))
+    if columns < 2 {
+        columns = 2
+        tile = (area.width - gap * 3.0) / 2.0
+    }
+    if columns > AppCount() && AppCount() > 0 {
+        columns = AppCount()
+    }
+    if AppCount() == 0 {
+        Label(session, cast(u64)20, "No apps are installed.", Rectangle.{area.x + 16.0, area.y + 16.0,
+                area.width - 32.0, 24.0}, 16)
+        return
+    }
+    row_width := cast(float32)columns * tile + cast(float32)(columns - 1) * gap
+    left := area.x + (area.width - row_width) * 0.5
+    index: s32 = 0
+    while index < AppCount() {
+        column := cast(float32)(index % columns)
+        row := cast(float32)(index / columns)
+        bounds := Rectangle.{left + column * (tile + gap), area.y + gap + row * (tile + gap), tile, tile}
+        props := ButtonProps.{.key = cast(u64)(100 + index), .id = 100 + index, .bounds = bounds,
+            .label = AppName(index), .icon_shape = AppIcon(index),
+            .icon_placement = IconPlacement.IconPlacementAbove,
+            .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+        if Button(session, props) != 0 {
+            open_app = index
+            screen = SCREEN_APP
+        }
+        index += 1
+    }
+}
+
+// Applies a text field's edit to a terminated buffer.
+ApplyEdit :: (buffer: []u8, edit: TextFieldEdit) {
+    if !edit.changed {
+        return
+    }
+    length: s64 = 0
+    while length < buffer.count && buffer[length] != cast(u8)0 {
+        length += 1
+    }
+    if edit.start < 0 || edit.end < edit.start || cast(s64)edit.end > length {
+        return
+    }
+    used := length - cast(s64)(edit.end - edit.start) + edit.replacement.count
+    if used >= buffer.count || used >= 256 {
+        return
+    }
+    result: [256]u8
+    position: s64 = 0
+    index: s64 = 0
+    while index < cast(s64)edit.start {
+        result[position] = buffer[index]
+        position += 1
+        index += 1
+    }
+    index = 0
+    while index < edit.replacement.count {
+        // One line: a pasted line break ends the name.
+        if edit.replacement[index] == cast(u8)10 || edit.replacement[index] == cast(u8)13 {
+            return
+        }
+        result[position] = edit.replacement[index]
+        position += 1
+        index += 1
+    }
+    index = cast(s64)edit.end
+    while index < length {
+        result[position] = buffer[index]
+        position += 1
+        index += 1
+    }
+    index = 0
+    while index < buffer.count {
+        buffer[index] = ifx index < used then result[index] else cast(u8)0
+        index += 1
+    }
+}
+
+NameField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
+    props := TextFieldProps.{.key = cast(u64)30, .focus_id = 30, .bounds = bounds,
+        .label = "Name", .placeholder = "Your name", .value = ProfileName(),
+        .cursor = name_field.cursor, .anchor = name_field.anchor, .scroll_x = name_field.scroll_x,
+        .focused = name_field.focused, .max_bytes = 160, .max_codepoints = PROFILE_NAME_LIMIT}
+    if name_field.focused {
+        props.input = input
+    }
+    result := TextField(session, props)
+    ApplyEdit(profile.name[:], result.edit)
+    name_field.cursor = result.cursor
+    name_field.anchor = result.anchor
+    name_field.scroll_x = result.scroll_x
+    was_focused := name_field.focused
+    name_field.focused = result.focused && !result.escaped
+    if was_focused && (!name_field.focused || result.committed) {
+        name_field.focused = false
+        unused SaveProfile()
+    }
+}
+
+Heading :: (session: Session, key: u64, text: string, x: float32, y: float32, width: float32) {
+    Label(session, key, text, Rectangle.{x, y, width, 24.0}, 16)
+}
+
+ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput) {
+    width := area.width - 32.0
+    if width > 480.0 {
+        width = 480.0
+    }
+    left := area.x + (area.width - width) * 0.5
+    content_height: s32 = 620
+    if choosing_picture {
+        content_height += cast(s32)((PROFILE_PICTURES + 5) / 6) * 56 + 16
+    }
+    scroll := Scroll(session, ScrollProps.{.key = cast(u64)40,
+            .bounds = Rectangle.{left, area.y, width, area.height},
+            .content_height = content_height, .scroll_offset = profile_scroll, .scale = 1.0})
+    profile_scroll = scroll.scroll_offset
+    if !scroll.opened {
+        return
+    }
+    x := scroll.content.x
+    y := scroll.content.y + 16.0
+    width = scroll.content.width - 12.0
+    Image(session, PictureImage(profile.picture, Rectangle.{x, y, 96.0, 96.0}))
+    if Action(session, 41, ifx choosing_picture then "Done" else "Change picture",
+        Rectangle.{x + 112.0, y + 28.0, width - 112.0, 40.0}, false) {
+        choosing_picture = !choosing_picture
+    }
+    y += 112.0
+    if choosing_picture {
+        size: float32 = 48.0
+        gap := (width - size * 6.0) / 5.0
+        picture: s32 = 0
+        while picture < PROFILE_PICTURES {
+            bounds := Rectangle.{x + cast(float32)(picture % 6) * (size + gap),
+                y + cast(float32)(picture / 6) * (size + 8.0), size, size}
+            choice := ButtonProps.{.key = cast(u64)(200 + picture), .id = 200 + picture,
+                .label = "Picture", .bounds = bounds, .icon_only = true,
+                .image = PictureImage(picture, Rectangle.{}), .selected = picture == profile.picture,
+                .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+            if Button(session, choice) != 0 {
+                profile.picture = picture
+                unused SaveProfile()
+            }
+            picture += 1
+        }
+        y += cast(float32)((PROFILE_PICTURES + 5) / 6) * (size + 8.0) + 16.0
+    }
+    Heading(session, cast(u64)42, "Name", x, y, width)
+    NameField(session, Rectangle.{x, y + 28.0, width, 40.0}, input)
+    y += 88.0
+    Heading(session, cast(u64)43, "Appearance", x, y, width)
+    y += 32.0
+    modes: [3]string = .["System", "Light", "Dark"]
+    third := (width - 16.0) / 3.0
+    for index: 0..2 {
+        mode := cast(s32)index
+        if Action(session, 50 + mode, modes[index],
+            Rectangle.{x + cast(float32)mode * (third + 8.0), y, third, 40.0}, profile.theme_mode == mode) {
+            profile.theme_mode = mode
+            unused SaveProfile()
+        }
+    }
+    y += 56.0
+    Heading(session, cast(u64)44, "Accent", x, y, width)
+    y += 32.0
+    swatch: float32 = 40.0
+    swatch_gap := (width - swatch * 8.0) / 7.0
+    accent: s32 = 0
+    while accent < ACCENTS {
+        bounds := Rectangle.{x + cast(float32)(accent % 8) * (swatch + swatch_gap),
+            y + cast(float32)(accent / 8) * (swatch + 8.0), swatch, swatch}
+        props := ButtonProps.{.key = cast(u64)(300 + accent), .id = 300 + accent, .label = "Accent",
+            .bounds = bounds, .swatch = true, .swatch_color = ColorFromPacked(Accent(accent)),
+            .icon_only = true, .selected = profile.accent == accent}
+        if Button(session, props) != 0 {
+            profile.accent = accent
+            unused SaveProfile()
+        }
+        accent += 1
+    }
+    y += swatch * 2.0 + 24.0
+    Heading(session, cast(u64)45, "Widgets", x, y, width)
+    y += 32.0
+    half := (width - 8.0) / 2.0
+    if Action(session, 60, "Material", Rectangle.{x, y, half, 40.0}, profile.material) {
+        profile.material = true
+        unused SaveProfile()
+    }
+    if Action(session, 61, "Classic", Rectangle.{x + half + 8.0, y, half, 40.0}, !profile.material) {
+        profile.material = false
+        unused SaveProfile()
+    }
+    End(session)
+}
+
+AppScreen :: (session: Session, area: Rectangle, key: s32, modifiers: s32, input: TextFieldInput) {
+    view := AppView.{.session = session, .bounds = area, .dark = ProfileDark(), .key = key,
+        .modifiers = modifiers, .input = input}
+    // The app's widgets live in their own container, so their keys never
+    // meet the host's.
+    container := Group(session, ColumnProps.{.key = cast(u64)69, .bounds = area})
+    if !container.opened {
+        return
+    }
+    ran := RunApp(open_app, view)
+    unused End(session)
+    if !ran {
+        Label(session, cast(u64)70, "This app stopped. Go back and open it again.",
+            Rectangle.{area.x + 16.0, area.y + 16.0, area.width - 32.0, 24.0}, 16)
+    }
+    keyboard_wanted = AppWantsKeyboard()
+}
+
+#program_export
+WerkzeugFrame :: (session: Session, viewport: Rectangle) -> s32 {
+    ApplyTheme()
+    ClipboardTick()
+    key := KeyboardTake(session)
+    modifiers := KeyboardModifiers(session)
+    text := TypedTextTake(session, typed[:])
+    input := TextFieldInputFor(key, modifiers, text)
+    pointer := PointerSample(session)
+    BeginScrollFrame(session, Vector2.{pointer.x, pointer.y}, pointer.pressed, pointer.down,
+        pointer.released, PointerWheelTake(session, viewport), SteadyClock())
+    background := BoxProps.{.key = cast(u64)1, .bounds = viewport,
+        .fill = ColorFromPacked(ThemePalette().background)}
+    Box(session, background)
+    keyboard_wanted = false
+    TopBar(session, viewport)
+    content := Rectangle.{viewport.x, viewport.y + BAR_HEIGHT, viewport.width, viewport.height - BAR_HEIGHT}
+    if screen == SCREEN_HOME {
+        Home(session, content)
+    } else if screen == SCREEN_PROFILE {
+        ProfileScreen(session, content, input)
+        keyboard_wanted = name_field.focused
+    } else if screen == SCREEN_APP && open_app >= 0 {
+        AppScreen(session, content, key, modifiers, input)
+    }
+    return 0
+}

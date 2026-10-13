@@ -1,0 +1,233 @@
+// Calculator: a keypad and keyboard calculator for ordinary arithmetic with
+// brackets. It keeps the expression and the last result in memory only.
+#import "session"
+#import "geometry"
+#import "text_props"
+#import "text_align"
+#import "text_widget"
+#import "button_props"
+#import "button_widget"
+#import "control_props"
+#import "box_props"
+#import "box_widget"
+#import "text_buffer"
+#import "number_text"
+#import "werkzeug_app"
+#import "app_protocol"
+#import "arithmetic"
+Icon :: #import "mingcute_regular_counter";
+
+using ButtonTone;
+using ButtonEmphasis;
+
+EXPRESSION_LIMIT :: 256
+
+expression: [EXPRESSION_LIMIT]u8;
+expression_length: s32;
+result_text: [64]u8;
+// The expression shows the last result, which typing a digit replaces.
+showing_result: bool;
+
+ExpressionText :: () -> string {
+    return TextView(expression[0:expression_length])
+}
+
+Clear :: () {
+    expression_length = 0
+    result_text[0] = cast(u8)0
+    showing_result = false
+}
+
+Append :: (text: string) {
+    starts_number := text[0] >= cast(u8)48 && text[0] <= cast(u8)57 || text[0] == cast(u8)46 ||
+    text[0] == cast(u8)40
+    if showing_result && starts_number {
+        expression_length = 0
+    }
+    showing_result = false
+    result_text[0] = cast(u8)0
+    if expression_length + cast(s32)text.count > EXPRESSION_LIMIT {
+        return
+    }
+    index: s32 = 0
+    while index < cast(s32)text.count {
+        expression[expression_length] = text[index]
+        expression_length += 1
+        index += 1
+    }
+}
+
+Backspace :: () {
+    showing_result = false
+    result_text[0] = cast(u8)0
+    if expression_length == 0 {
+        return
+    }
+    expression_length -= 1
+    // Remove a whole UTF-8 sequence, such as the multiplication sign.
+    while expression_length > 0 && (expression[expression_length] & cast(u8)0xC0) == cast(u8)0x80 {
+        expression_length -= 1
+    }
+}
+
+Evaluate :: () {
+    if expression_length == 0 {
+        return
+    }
+    answer := EvaluateExpression(ExpressionText())
+    if !answer.valid {
+        CopyResult(answer.error)
+        return
+    }
+    formatted: [64]u8
+    text := FormatNumber(answer.value, formatted[:])
+    expression_length = 0
+    Append(text)
+    showing_result = true
+    result_text[0] = cast(u8)0
+}
+
+CopyResult :: (text: string) {
+    index: s32 = 0
+    while index < cast(s32)text.count && index < 63 {
+        result_text[index] = text[index]
+        index += 1
+    }
+    result_text[index] = cast(u8)0
+}
+
+// Typed characters and keys act like the keypad.
+Keyboard :: () {
+    key := AppKey()
+    if key == 257 || key == 335 {
+        Evaluate()
+    }
+    if key == 259 {
+        Backspace()
+    }
+    if key == 256 {
+        Clear()
+    }
+    typed := AppFieldInput().text
+    index: s32 = 0
+    while index < cast(s32)typed.count {
+        byte := typed[index]
+        if byte >= cast(u8)48 && byte <= cast(u8)57 || byte == cast(u8)46 || byte == cast(u8)40 ||
+        byte == cast(u8)41 || byte == cast(u8)43 || byte == cast(u8)45 || byte == cast(u8)37 ||
+        byte == cast(u8)94 {
+            Append(typed[index:index + 1])
+        }
+        if byte == cast(u8)42 {
+            Append("×")
+        }
+        if byte == cast(u8)47 {
+            Append("÷")
+        }
+        if byte == cast(u8)44 {
+            Append(".")
+        }
+        if byte == cast(u8)61 {
+            Evaluate()
+        }
+        index += 1
+    }
+}
+
+KEYS :: 20
+
+Key :: struct {
+    label: string
+    input: string
+    accent: bool
+}
+
+KeyAt :: (index: s32) -> Key {
+    labels: [KEYS]string = .["C", "(", ")", "÷",
+    "7", "8", "9", "×",
+    "4", "5", "6", "−",
+    "1", "2", "3", "+",
+    "⌫", "0", ".", "="]
+    inputs: [KEYS]string = .["", "(", ")", "÷",
+    "7", "8", "9", "×",
+    "4", "5", "6", "-",
+    "1", "2", "3", "+",
+    "", "0", ".", ""]
+    return Key.{.label = labels[index], .input = inputs[index], .accent = index == 19}
+}
+
+Press :: (index: s32) {
+    if index == 0 {
+        Clear()
+        return
+    }
+    if index == 16 {
+        Backspace()
+        return
+    }
+    if index == 19 {
+        Evaluate()
+        return
+    }
+    Append(KeyAt(index).input)
+}
+
+Draw :: () {
+    session := AppSession()
+    area := AppBounds()
+    gap: float32 = 8.0
+    width := area.width - 32.0
+    if width > 420.0 {
+        width = 420.0
+    }
+    left := area.x + (area.width - width) * 0.5
+    top := area.y + 16.0
+    display := Rectangle.{left, top, width, 112.0}
+    Box(session, BoxProps.{.key = cast(u64)1, .bounds = display, .radius = 12.0})
+    shown := ExpressionText()
+    if shown == "" {
+        shown = "0"
+    }
+    Text(session, TextProps.{.key = cast(u64)2,
+            .bounds = Rectangle.{left + 16.0, top + 16.0, width - 32.0, 48.0},
+            .text = shown, .font = 32, .align = TextAlign.TextAlignEnd, .wrap = TextWrap.TextWrapEllipsis})
+    Text(session, TextProps.{.key = cast(u64)3,
+            .bounds = Rectangle.{left + 16.0, top + 72.0, width - 32.0, 24.0},
+            .text = TextUntilNul(result_text[:]), .font = 16, .align = TextAlign.TextAlignEnd})
+    pad_top := top + 112.0 + gap * 2.0
+    rows: float32 = 5.0
+    key_width := (width - gap * 3.0) / 4.0
+    key_height := (area.y + area.height - 16.0 - pad_top - gap * (rows - 1.0)) / rows
+    if key_height > 72.0 {
+        key_height = 72.0
+    }
+    if key_height < 36.0 {
+        key_height = 36.0
+    }
+    index: s32 = 0
+    while index < KEYS {
+        key := KeyAt(index)
+        column := cast(float32)(index % 4)
+        row := cast(float32)(index / 4)
+        bounds := Rectangle.{left + column * (key_width + gap), pad_top + row * (key_height + gap),
+            key_width, key_height}
+        props := ButtonProps.{.key = cast(u64)(100 + index), .id = 100 + index, .bounds = bounds,
+            .label = key.label,
+            .tone = cast(ButtonTone)(ifx key.accent then ButtonToneAccent else ButtonToneNeutral),
+            .emphasis = cast(ButtonEmphasis)(ifx key.accent then ButtonEmphasisFilled else ButtonEmphasisSoft)}
+        if Button(session, props) != 0 {
+            Press(index)
+        }
+        index += 1
+    }
+}
+
+#program_export "CalculatorMain"
+Main :: () -> s32 {
+    if AppMode() == APP_IDENTIFY {
+        AppDescribe("Calculator", Icon.Shape)
+        return APP_PROTOCOL
+    }
+    Keyboard()
+    Draw()
+    return 0
+}

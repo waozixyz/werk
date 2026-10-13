@@ -1,0 +1,470 @@
+// Auth: two-factor sign-in codes. Accounts are kept in the app's private
+// accounts.txt as otpauth links; secrets are never shown again after adding.
+#import "session"
+#import "geometry"
+#import "text_props"
+#import "text_widget"
+#import "text_input_props"
+#import "text_field_widget"
+#import "button_props"
+#import "button_widget"
+#import "control_props"
+#import "box_props"
+#import "box_widget"
+#import "scroll_props"
+#import "scroll_widget"
+#import "tree"
+#import "text_buffer"
+#import "number_text"
+#import "werkzeug_app"
+#import "app_protocol"
+#import "totp"
+Icon :: #import "mingcute_regular_shield";
+Remove :: #import "mingcute_regular_delete_2";
+
+ACCOUNT_LIMIT :: 128
+LIST_LIMIT :: 65536
+// Copied codes clear from the clipboard after this many seconds.
+CODE_CLEAR_SECONDS :: 30
+
+VIEW_LIST :: 0
+VIEW_ADD :: 1
+
+FIELD_LINKS :: 1
+FIELD_ISSUER :: 2
+FIELD_NAME :: 3
+FIELD_SECRET :: 4
+
+FieldState :: struct {
+    cursor: s32
+    anchor: s32
+    scroll_x: s32
+}
+
+CachedCode :: struct {
+    step: s64
+    code: [12]u8
+}
+
+accounts: [ACCOUNT_LIMIT]Account;
+codes: [ACCOUNT_LIMIT]CachedCode;
+account_count: s32;
+loaded: bool;
+view: s32;
+focused: s32;
+fields: [5]FieldState;
+links: [16384]u8;
+issuer: [64]u8;
+name: [128]u8;
+secret: [256]u8;
+status: [128]u8;
+// The account whose Remove was tapped once; a second tap removes it.
+remove_pending: s32 = -1;
+list_scroll: s32;
+store: [LIST_LIMIT]u8;
+session: Session;
+
+SetStatus :: (text: string) {
+    unused CopyLimited(text, status[:])
+}
+
+Clear :: (bytes: []u8) {
+    index: s64 = 0
+    while index < bytes.count {
+        bytes[index] = cast(u8)0
+        index += 1
+    }
+}
+
+LoadAccounts :: () {
+    account_count = 0
+    count := ReadStore("accounts.txt", store[:])
+    if count > 0 {
+        unused AddLinks(TextView(store[0:count]), false)
+    }
+    Clear(store[:])
+}
+
+SaveAccounts :: () -> bool {
+    used: s64 = 0
+    index: s32 = 0
+    while index < account_count {
+        line: [1024]u8
+        {
+            link := LinkText(*accounts[index], line[:])
+            used = ifx link == "" then -1 else AppendText(store[:], used, link)
+        }
+        used = AppendText(store[:], used, "\n")
+        Clear(line[:])
+        if used < 0 {
+            Clear(store[:])
+            return false
+        }
+        index += 1
+    }
+    saved := false
+    {
+        saved = WriteStore("accounts.txt", TextView(store[0:used]))
+    }
+    Clear(store[:])
+    return saved
+}
+
+SameAccount :: (left: *Account, right: *Account) -> bool {
+    return TextUntilNul(left.issuer[:]) == TextUntilNul(right.issuer[:]) &&
+    TextUntilNul(left.name[:]) == TextUntilNul(right.name[:]) &&
+    TextUntilNul(left.secret[:]) == TextUntilNul(right.secret[:])
+}
+
+// Adds every otpauth link in text, separated by spaces or line breaks.
+// Returns how many were new.
+AddLinks :: (text: string, report: bool) -> s32 {
+    added: s32 = 0
+    refused: s32 = 0
+    start: s64 = 0
+    while start < text.count {
+        while start < text.count && text[start] <= cast(u8)32 {
+            start += 1
+        }
+        end := start
+        while end < text.count && text[end] > cast(u8)32 {
+            end += 1
+        }
+        if end > start {
+            account: Account
+            if ParseLink(text[start:end], *account) && account_count < ACCOUNT_LIMIT {
+                known := false
+                index: s32 = 0
+                while index < account_count {
+                    if SameAccount(*accounts[index], *account) {
+                        known = true
+                    }
+                    index += 1
+                }
+                if !known {
+                    accounts[account_count] = account
+                    codes[account_count] = CachedCode.{.step = -1}
+                    account_count += 1
+                    added += 1
+                }
+            } else {
+                refused += 1
+            }
+            account = Account.{}
+        }
+        start = end
+    }
+    if report {
+        number: [24]u8
+        message: [128]u8
+        used := AppendText(message[:], 0, "Added ")
+        used = AppendText(message[:], used, FormatInteger(cast(s64)added, number[:]))
+        used = AppendText(message[:], used, ifx added == 1 then " account" else " accounts")
+        if refused > 0 {
+            used = AppendText(message[:], used, ", skipped ")
+            used = AppendText(message[:], used, FormatInteger(cast(s64)refused, number[:]))
+        }
+        SetStatus(TextView(message[0:used]))
+    }
+    return added
+}
+
+AddManual :: () -> bool {
+    account := Account.{.kind = HASH_SHA1, .digits = 6, .period = 30}
+    if name[0] == cast(u8)0 && issuer[0] == cast(u8)0 {
+        SetStatus("Enter a name for the account")
+        return false
+    }
+    if !SetSecret(*account, TextUntilNul(secret[:])) {
+        SetStatus("The secret key is not valid Base32")
+        account = Account.{}
+        return false
+    }
+    account.issuer = issuer
+    account.name = name
+    if account_count >= ACCOUNT_LIMIT {
+        SetStatus("Auth holds at most 128 accounts")
+        account = Account.{}
+        return false
+    }
+    accounts[account_count] = account
+    codes[account_count] = CachedCode.{.step = -1}
+    account_count += 1
+    account = Account.{}
+    return true
+}
+
+RemoveAccount :: (index: s32) {
+    position := index
+    while position + 1 < account_count {
+        accounts[position] = accounts[position + 1]
+        codes[position] = codes[position + 1]
+        position += 1
+    }
+    account_count -= 1
+    accounts[account_count] = Account.{}
+    codes[account_count] = CachedCode.{}
+}
+
+Unix :: () -> s64 {
+    return cast(s64)AppNow()
+}
+
+// The current code, computed once per time step.
+Code :: (index: s32) -> string {
+    account := *accounts[index]
+    step := Unix() / cast(s64)account.period
+    if codes[index].step != step {
+        codes[index].step = step
+        unused CodeNow(account.kind, account.key[:], account.key_count, account.digits, account.period,
+            Unix(), codes[index].code[:])
+    }
+    return TextUntilNul(codes[index].code[:])
+}
+
+Label :: (key: u64, text: string, bounds: Rectangle, font: s32) {
+    Text(session, TextProps.{.key = key, .bounds = bounds, .text = text, .font = font,
+            .wrap = TextWrap.TextWrapEllipsis})
+}
+
+Action :: (id: s32, label: string, bounds: Rectangle, accent: bool) -> bool {
+    props := ButtonProps.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
+        .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+    if accent {
+        props.tone = ButtonTone.ButtonToneAccent
+        props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
+    }
+    return Button(session, props) != 0
+}
+
+ApplyEdit :: (buffer: []u8, edit: TextFieldEdit) {
+    if !edit.changed {
+        return
+    }
+    length: s64 = 0
+    while length < buffer.count && buffer[length] != cast(u8)0 {
+        length += 1
+    }
+    if edit.start < 0 || edit.end < edit.start || cast(s64)edit.end > length {
+        return
+    }
+    used := length - cast(s64)(edit.end - edit.start) + edit.replacement.count
+    if used >= buffer.count {
+        return
+    }
+    tail := length - cast(s64)edit.end
+    if edit.replacement.count > cast(s64)(edit.end - edit.start) {
+        // Move the tail right, from its end.
+        index := tail - 1
+        while index >= 0 {
+            buffer[cast(s64)edit.start + edit.replacement.count + index] = buffer[cast(s64)edit.end + index]
+            index -= 1
+        }
+    } else {
+        index: s64 = 0
+        while index < tail {
+            buffer[cast(s64)edit.start + edit.replacement.count + index] = buffer[cast(s64)edit.end + index]
+            index += 1
+        }
+    }
+    index: s64 = 0
+    while index < edit.replacement.count {
+        buffer[cast(s64)edit.start + index] = edit.replacement[index]
+        index += 1
+    }
+    index = used
+    while index < buffer.count {
+        buffer[index] = cast(u8)0
+        index += 1
+    }
+}
+
+Field :: (id: s32, label: string, placeholder: string, buffer: []u8, bounds: Rectangle, secure: bool) {
+    state := *fields[id]
+    edit: TextFieldEdit
+    {
+        props := TextFieldProps.{.key = cast(u64)(500 + id), .focus_id = 500 + id, .bounds = bounds,
+            .label = label, .placeholder = placeholder, .value = TextUntilNul(buffer),
+            .cursor = state.cursor, .anchor = state.anchor, .scroll_x = state.scroll_x,
+            .focused = focused == id, .max_bytes = cast(s32)buffer.count - 1,
+            .max_codepoints = cast(s32)buffer.count - 1, .secure = secure}
+        if secure {
+            props.display_value = "••••••••"
+        }
+        if focused == id {
+            props.input = AppFieldInput()
+        }
+        result := TextField(session, props)
+        state.cursor = result.cursor
+        state.anchor = result.anchor
+        state.scroll_x = result.scroll_x
+        if result.focused {
+            focused = id
+        } else if focused == id {
+            focused = 0
+        }
+        edit = result.edit
+    }
+    ApplyEdit(buffer, edit)
+}
+
+// One account: its name, current code (tap to copy), the seconds left and
+// Remove. True when Remove was confirmed.
+DrawRow :: (index: s32, x: float32, y: float32, inner: float32, row: float32) -> bool {
+    account := *accounts[index]
+    Box(session, BoxProps.{.key = cast(u64)(1000 + index), .bounds = Rectangle.{x, y, inner, row - 8.0},
+            .radius = 10.0})
+    title := TextUntilNul(account.issuer[:])
+    subtitle := TextUntilNul(account.name[:])
+    if title == "" {
+        title = subtitle
+        subtitle = ""
+    }
+    text_width := inner - 210.0
+    Label(cast(u64)(2000 + index), title, Rectangle.{x + 12.0, y + 12.0, text_width, 22.0}, 16)
+    Label(cast(u64)(3000 + index), subtitle, Rectangle.{x + 12.0, y + 38.0, text_width, 18.0}, 12)
+    code := Code(index)
+    if Action(4000 + index, code, Rectangle.{x + inner - 196.0, y + 12.0, 140.0, 44.0}, false) {
+        if ClipboardCopy(code, CODE_CLEAR_SECONDS) {
+            SetStatus("Code copied; it clears in 30 seconds")
+        } else {
+            SetStatus("The clipboard is unavailable")
+        }
+    }
+    remaining := cast(s64)account.period - Unix() % cast(s64)account.period
+    number: [24]u8
+    Label(cast(u64)(5000 + index), FormatInteger(remaining, number[:]),
+        Rectangle.{x + inner - 52.0, y + 24.0, 16.0, 18.0}, 12)
+    remove := ButtonProps.{.key = cast(u64)(6000 + index), .id = 6000 + index,
+        .label = ifx remove_pending == index then "Tap again to remove" else "Remove",
+        .bounds = Rectangle.{x + inner - 40.0, y + 16.0, 36.0, 36.0},
+        .icon_shape = Remove.Shape, .icon_only = true,
+        .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+    if remove_pending == index {
+        remove.tone = ButtonTone.ButtonToneDanger
+        remove.emphasis = ButtonEmphasis.ButtonEmphasisFilled
+    }
+    if Button(session, remove) == 0 {
+        return false
+    }
+    if remove_pending == index {
+        return true
+    }
+    remove_pending = index
+    SetStatus("Tap the red button again to remove this account")
+    return false
+}
+
+ListView :: (area: Rectangle, left: float32, width: float32) {
+    if Action(10, "Add account", Rectangle.{left, area.y + 12.0, width, 40.0}, true) {
+        view = VIEW_ADD
+        focused = 0
+        SetStatus("")
+        return
+    }
+    top := area.y + 64.0
+    height := area.height - 100.0
+    if account_count == 0 {
+        Label(cast(u64)11, "No accounts yet. Add one with its otpauth link or secret key.",
+            Rectangle.{left, top, width, 24.0}, 14)
+    }
+    row: float32 = 76.0
+    scroll := Scroll(session, ScrollProps.{.key = cast(u64)12, .bounds = Rectangle.{left, top, width, height},
+            .content_height = cast(s32)(cast(float32)account_count * row), .scroll_offset = list_scroll,
+            .scale = 1.0})
+    list_scroll = scroll.scroll_offset
+    if scroll.opened {
+        x := scroll.content.x
+        inner := scroll.content.width - 10.0
+        index: s32 = 0
+        while index < account_count {
+            y := scroll.content.y + cast(float32)index * row
+            if DrawRow(index, x, y, inner, row) {
+                RemoveAccount(index)
+                remove_pending = -1
+                SetStatus(ifx SaveAccounts() then "Account removed" else "Could not save the accounts")
+                break
+            }
+            index += 1
+        }
+        End(session)
+    }
+}
+
+AddView :: (area: Rectangle, left: float32, width: float32) {
+    y := area.y + 12.0
+    Label(cast(u64)20, "Paste otpauth:// links, one or many", Rectangle.{left, y, width, 20.0}, 14)
+    Field(FIELD_LINKS, "Links", "otpauth://totp/…", links[:], Rectangle.{left, y + 24.0, width, 40.0}, true)
+    y += 76.0
+    if Action(21, "Import links", Rectangle.{left, y, width, 40.0}, true) {
+        added := AddLinks(TextUntilNul(links[:]), true)
+        if added > 0 && !SaveAccounts() {
+            SetStatus("Could not save the accounts")
+        }
+        Clear(links[:])
+        fields[FIELD_LINKS] = FieldState.{}
+        if added > 0 {
+            view = VIEW_LIST
+        }
+    }
+    y += 64.0
+    Label(cast(u64)22, "Or enter the secret key", Rectangle.{left, y, width, 20.0}, 14)
+    y += 24.0
+    Field(FIELD_ISSUER, "Service", "Service, such as GitHub", issuer[:], Rectangle.{left, y, width, 40.0}, false)
+    y += 48.0
+    Field(FIELD_NAME, "Account", "Account name or email", name[:], Rectangle.{left, y, width, 40.0}, false)
+    y += 48.0
+    Field(FIELD_SECRET, "Secret key", "Secret key", secret[:], Rectangle.{left, y, width, 40.0}, true)
+    y += 56.0
+    half := (width - 8.0) / 2.0
+    if Action(23, "Add", Rectangle.{left, y, half, 40.0}, true) {
+        if AddManual() {
+            if SaveAccounts() {
+                SetStatus("Account added")
+            } else {
+                SetStatus("Could not save the accounts")
+            }
+            Clear(issuer[:])
+            Clear(name[:])
+            Clear(secret[:])
+            view = VIEW_LIST
+        }
+    }
+    if Action(24, "Cancel", Rectangle.{left + half + 8.0, y, half, 40.0}, false) {
+        Clear(links[:])
+        Clear(secret[:])
+        view = VIEW_LIST
+        SetStatus("")
+    }
+}
+
+Draw :: () {
+    session = AppSession()
+    area := AppBounds()
+    width := area.width - 32.0
+    if width > 520.0 {
+        width = 520.0
+    }
+    left := area.x + (area.width - width) * 0.5
+    if view == VIEW_ADD {
+        AddView(area, left, width)
+    } else {
+        ListView(area, left, width)
+    }
+    Label(cast(u64)30, TextUntilNul(status[:]), Rectangle.{left, area.y + area.height - 28.0, width, 20.0}, 12)
+    AppKeyboard(focused != 0)
+}
+
+#program_export "AuthMain"
+Main :: () -> s32 {
+    if AppMode() == APP_IDENTIFY {
+        AppDescribe("Auth", Icon.Shape)
+        return APP_PROTOCOL
+    }
+    if !loaded {
+        LoadAccounts()
+        loaded = true
+    }
+    Draw()
+    return 0
+}

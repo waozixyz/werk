@@ -1,0 +1,271 @@
+// Clock: the local time and date, and a stopwatch that keeps running while
+// the app is closed.
+#import "session"
+#import "geometry"
+#import "text_props"
+#import "text_align"
+#import "text_widget"
+#import "button_props"
+#import "button_widget"
+#import "control_props"
+#import "text_buffer"
+#import "number_text"
+#import "werkzeug_app"
+#import "app_protocol"
+Icon :: #import "mingcute_regular_time";
+
+VIEW_CLOCK :: 0
+VIEW_STOPWATCH :: 1
+
+Civil :: struct {
+    year: s64
+    month: s32
+    day: s32
+    weekday: s32
+}
+
+view: s32;
+loaded: bool;
+running: bool;
+// While running, the wall time it started from; the time counted before
+// that start is in elapsed.
+started_at: float64;
+elapsed: float64;
+session: Session;
+
+// The civil date of a day count since 1970-01-01 (proleptic Gregorian).
+CivilFromDays :: (days: s64) -> Civil {
+    shifted := days + 719468
+    era := ifx shifted >= 0 then shifted / 146097 else (shifted - 146096) / 146097
+    day_of_era := shifted - era * 146097
+    year_of_era := (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365
+    day_of_year := day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100)
+    month_index := (5 * day_of_year + 2) / 153
+    result: Civil
+    result.day = cast(s32)(day_of_year - (153 * month_index + 2) / 5 + 1)
+    result.month = cast(s32)(ifx month_index < 10 then month_index + 3 else month_index - 9)
+    result.year = year_of_era + era * 400 + (ifx result.month <= 2 then 1 else 0)
+    weekday := (days + 4) % 7
+    if weekday < 0 {
+        weekday += 7
+    }
+    result.weekday = cast(s32)weekday
+    return result
+}
+
+Append :: (output: []u8, used: s32, text: string) -> s32 {
+    index: s32 = 0
+    while index < cast(s32)text.count && used < cast(s32)output.count - 1 {
+        output[used] = text[index]
+        used += 1
+        index += 1
+    }
+    output[used] = cast(u8)0
+    return used
+}
+
+AppendTwoDigits :: (output: []u8, used: s32, value: s64) -> s32 {
+    digits: [3]u8
+    digits[0] = cast(u8)(48 + cast(s32)((value / 10) % 10))
+    digits[1] = cast(u8)(48 + cast(s32)(value % 10))
+    return Append(output, used, TextView(digits[0:2]))
+}
+
+AppendNumber :: (output: []u8, used: s32, value: s64) -> s32 {
+    number: [24]u8
+    return Append(output, used, FormatInteger(value, number[:]))
+}
+
+LocalSeconds :: () -> s64 {
+    now := AppNow()
+    seconds := cast(s64)now
+    if cast(float64)seconds > now {
+        seconds -= 1
+    }
+    return seconds + cast(s64)AppLocalOffset()
+}
+
+TimeText :: (output: []u8) -> string {
+    seconds := LocalSeconds()
+    of_day := seconds % 86400
+    if of_day < 0 {
+        of_day += 86400
+    }
+    used := AppendTwoDigits(output, 0, of_day / 3600)
+    used = Append(output, used, ":")
+    used = AppendTwoDigits(output, used, (of_day / 60) % 60)
+    used = Append(output, used, ":")
+    used = AppendTwoDigits(output, used, of_day % 60)
+    return TextView(output[0:used])
+}
+
+DateText :: (output: []u8) -> string {
+    seconds := LocalSeconds()
+    days := seconds / 86400
+    if seconds < 0 && seconds % 86400 != 0 {
+        days -= 1
+    }
+    date := CivilFromDays(days)
+    weekdays: [7]string = .["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    months: [12]string = .["January", "February", "March", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December"]
+    used := Append(output, 0, weekdays[date.weekday])
+    used = Append(output, used, ", ")
+    used = AppendNumber(output, used, cast(s64)date.day)
+    used = Append(output, used, " ")
+    used = Append(output, used, months[date.month - 1])
+    used = Append(output, used, " ")
+    used = AppendNumber(output, used, date.year)
+    return TextView(output[0:used])
+}
+
+StopwatchSeconds :: () -> float64 {
+    total := elapsed
+    if running {
+        total += AppNow() - started_at
+    }
+    if total < 0.0 {
+        return 0.0
+    }
+    return total
+}
+
+// h:mm:ss.t, or m:ss.t under an hour.
+StopwatchText :: (output: []u8) -> string {
+    tenths := cast(s64)(StopwatchSeconds() * 10.0)
+    seconds := tenths / 10
+    used: s32 = 0
+    if seconds >= 3600 {
+        used = AppendNumber(output, used, seconds / 3600)
+        used = Append(output, used, ":")
+        used = AppendTwoDigits(output, used, (seconds / 60) % 60)
+    } else {
+        used = AppendNumber(output, used, seconds / 60)
+    }
+    used = Append(output, used, ":")
+    used = AppendTwoDigits(output, used, seconds % 60)
+    used = Append(output, used, ".")
+    used = AppendNumber(output, used, tenths % 10)
+    return TextView(output[0:used])
+}
+
+// stopwatch.txt holds "running started_at elapsed" in milliseconds.
+LoadStopwatch :: () {
+    buffer: [128]u8
+    count := ReadStore("stopwatch.txt", buffer[:])
+    if count <= 0 {
+        return
+    }
+    values: [3]s64
+    field: s32 = 0
+    index: s32 = 0
+    negative := false
+    while index < count && field < 3 {
+        byte := buffer[index]
+        if byte == cast(u8)32 {
+            if negative {
+                values[field] = 0 - values[field]
+            }
+            field += 1
+            negative = false
+        } else if byte == cast(u8)45 {
+            negative = true
+        } else if byte >= cast(u8)48 && byte <= cast(u8)57 {
+            values[field] = values[field] * 10 + cast(s64)(byte - cast(u8)48)
+        } else {
+            return
+        }
+        index += 1
+    }
+    if field < 3 && negative {
+        values[field] = 0 - values[field]
+    }
+    if field < 2 {
+        return
+    }
+    running = values[0] == 1
+    started_at = cast(float64)values[1] / 1000.0
+    elapsed = cast(float64)values[2] / 1000.0
+}
+
+SaveStopwatch :: () {
+    buffer: [128]u8
+    used := AppendNumber(buffer[:], 0, ifx running then 1 else 0)
+    used = Append(buffer[:], used, " ")
+    used = AppendNumber(buffer[:], used, cast(s64)(started_at * 1000.0))
+    used = Append(buffer[:], used, " ")
+    used = AppendNumber(buffer[:], used, cast(s64)(elapsed * 1000.0))
+    unused WriteStore("stopwatch.txt", TextView(buffer[0:used]))
+}
+
+Big :: (key: u64, text: string, area: Rectangle, y: float32, font: s32) {
+    Text(session, TextProps.{.key = key, .bounds = Rectangle.{area.x + 16.0, y, area.width - 32.0, cast(float32)(font + 16)},
+            .text = text, .font = font, .align = TextAlign.TextAlignCenter})
+}
+
+Action :: (id: s32, label: string, bounds: Rectangle, accent: bool) -> bool {
+    props := ButtonProps.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
+        .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+    if accent {
+        props.tone = ButtonTone.ButtonToneAccent
+        props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
+    }
+    return Button(session, props) != 0
+}
+
+Draw :: () {
+    session = AppSession()
+    area := AppBounds()
+    width := area.width - 32.0
+    if width > 420.0 {
+        width = 420.0
+    }
+    left := area.x + (area.width - width) * 0.5
+    half := (width - 8.0) / 2.0
+    if Action(1, "Clock", Rectangle.{left, area.y + 16.0, half, 40.0}, view == VIEW_CLOCK) {
+        view = VIEW_CLOCK
+    }
+    if Action(2, "Stopwatch", Rectangle.{left + half + 8.0, area.y + 16.0, half, 40.0}, view == VIEW_STOPWATCH) {
+        view = VIEW_STOPWATCH
+    }
+    middle := area.y + area.height * 0.35
+    text: [64]u8
+    if view == VIEW_CLOCK {
+        Big(cast(u64)10, TimeText(text[:]), area, middle - 40.0, 56)
+        date: [96]u8
+        Big(cast(u64)11, DateText(date[:]), area, middle + 40.0, 18)
+        return
+    }
+    Big(cast(u64)20, StopwatchText(text[:]), area, middle - 40.0, 56)
+    buttons_y := middle + 56.0
+    if Action(21, ifx running then "Stop" else "Start", Rectangle.{left, buttons_y, half, 48.0}, true) {
+        now := AppNow()
+        if running {
+            elapsed += now - started_at
+        } else {
+            started_at = now
+        }
+        running = !running
+        SaveStopwatch()
+    }
+    if Action(22, "Reset", Rectangle.{left + half + 8.0, buttons_y, half, 48.0}, false) {
+        running = false
+        elapsed = 0.0
+        started_at = 0.0
+        SaveStopwatch()
+    }
+}
+
+#program_export "ClockMain"
+Main :: () -> s32 {
+    if AppMode() == APP_IDENTIFY {
+        AppDescribe("Clock", Icon.Shape)
+        return APP_PROTOCOL
+    }
+    if !loaded {
+        LoadStopwatch()
+        loaded = true
+    }
+    Draw()
+    return 0
+}

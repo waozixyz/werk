@@ -1,0 +1,6 @@
+// What the host asks of a run of an app's Main, shared by Werkzeug and its
+// apps.
+APP_IDENTIFY :: 1
+APP_FRAME :: 2
+// Main's answer to APP_IDENTIFY after it called AppDescribe.
+APP_PROTOCOL :: 0x57524b31

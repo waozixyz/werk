@@ -1,0 +1,247 @@
+// Evaluates calculator expressions: + − × ÷ (also - * /), ^ for powers,
+// a postfix % for percent, unary signs and brackets. Brackets left open at
+// the end are closed there.
+#import "text_buffer"
+#import "number_text"
+
+Answer :: struct {
+    valid: bool
+    value: float64
+    error: string
+}
+
+source: string;
+position: s32;
+failure: string;
+
+EvaluateExpression :: (text: string) -> Answer {
+    source = text
+    position = 0
+    failure = ""
+    value := ParseSum()
+    SkipSpaces()
+    if failure == "" && position < cast(s32)source.count {
+        failure = "Cannot read this expression"
+    }
+    if failure == "" && !Finite(value) {
+        failure = "Result is too large"
+    }
+    if failure != "" {
+        return Answer.{.error = failure}
+    }
+    return Answer.{.valid = true, .value = value}
+}
+
+Finite :: (value: float64) -> bool {
+    return value == value && value < 1.0e300 && value > -1.0e300
+}
+
+SkipSpaces :: () {
+    while position < cast(s32)source.count && source[position] == cast(u8)32 {
+        position += 1
+    }
+}
+
+// Whether the next character is the given one, consuming it when it is.
+Take :: (symbol: string) -> bool {
+    SkipSpaces()
+    end := position + cast(s32)symbol.count
+    if end > cast(s32)source.count || source[position:end] != symbol {
+        return false
+    }
+    position = end
+    return true
+}
+
+ParseSum :: () -> float64 {
+    value := ParseProduct()
+    while failure == "" {
+        if Take("+") {
+            value += ParseProduct()
+        } else if Take("-") || Take("−") {
+            value -= ParseProduct()
+        } else {
+            return value
+        }
+    }
+    return value
+}
+
+ParseProduct :: () -> float64 {
+    value := ParseSigned()
+    while failure == "" {
+        if Take("×") || Take("*") {
+            value *= ParseSigned()
+        } else if Take("÷") || Take("/") {
+            divisor := ParseSigned()
+            if divisor == 0.0 {
+                failure = "Cannot divide by zero"
+                return 0.0
+            }
+            value /= divisor
+        } else {
+            return value
+        }
+    }
+    return value
+}
+
+ParseSigned :: () -> float64 {
+    if Take("-") || Take("−") {
+        return 0.0 - ParseSigned()
+    }
+    if Take("+") {
+        return ParseSigned()
+    }
+    return ParsePower()
+}
+
+ParsePower :: () -> float64 {
+    base := ParsePercent()
+    if failure == "" && Take("^") {
+        exponent := ParseSigned()
+        return Power(base, exponent)
+    }
+    return base
+}
+
+ParsePercent :: () -> float64 {
+    value := ParseAtom()
+    while failure == "" && Take("%") {
+        value /= 100.0
+    }
+    return value
+}
+
+ParseAtom :: () -> float64 {
+    if failure != "" {
+        return 0.0
+    }
+    if Take("(") {
+        value := ParseSum()
+        // A bracket still open at the end closes there.
+        SkipSpaces()
+        if !Take(")") && position < cast(s32)source.count {
+            failure = "Missing closing bracket"
+        }
+        return value
+    }
+    return ParseNumber()
+}
+
+ParseNumber :: () -> float64 {
+    SkipSpaces()
+    value: float64 = 0.0
+    digits: s32 = 0
+    while position < cast(s32)source.count && IsDigit(source[position]) {
+        value = value * 10.0 + cast(float64)(source[position] - cast(u8)48)
+        position += 1
+        digits += 1
+    }
+    if position < cast(s32)source.count && source[position] == cast(u8)46 {
+        position += 1
+        scale: float64 = 0.1
+        while position < cast(s32)source.count && IsDigit(source[position]) {
+            value += cast(float64)(source[position] - cast(u8)48) * scale
+            scale /= 10.0
+            position += 1
+            digits += 1
+        }
+    }
+    if digits == 0 {
+        failure = ifx position >= cast(s32)source.count then "Incomplete expression" else "Cannot read this expression"
+    }
+    return value
+}
+
+IsDigit :: (byte: u8) -> bool {
+    return byte >= cast(u8)48 && byte <= cast(u8)57
+}
+
+// Whole exponents multiply exactly; others are refused rather than
+// approximated.
+Power :: (base: float64, exponent: float64) -> float64 {
+    whole := cast(s64)exponent
+    if cast(float64)whole != exponent || whole > 4096 || whole < -4096 {
+        failure = "Powers must be whole numbers"
+        return 0.0
+    }
+    negative := whole < 0
+    if negative {
+        whole = 0 - whole
+    }
+    result: float64 = 1.0
+    factor := base
+    while whole > 0 {
+        if whole % 2 == 1 {
+            result *= factor
+        }
+        factor *= factor
+        whole /= 2
+    }
+    if negative {
+        if result == 0.0 {
+            failure = "Cannot divide by zero"
+            return 0.0
+        }
+        return 1.0 / result
+    }
+    return result
+}
+
+// Up to ten significant digits; very large and very small numbers use an
+// exponent, such as 1.5e20.
+FormatNumber :: (value: float64, output: []u8) -> string {
+    magnitude := ifx value < 0.0 then 0.0 - value else value
+    if magnitude != 0.0 && (magnitude >= 1.0e15 || magnitude < 1.0e-9) {
+        return FormatExponent(value, output)
+    }
+    whole_digits: s32 = 1
+    bound: float64 = 10.0
+    while magnitude >= bound && whole_digits < 15 {
+        bound *= 10.0
+        whole_digits += 1
+    }
+    places := 10 - whole_digits
+    if places < 0 {
+        places = 0
+    }
+    if places > 9 {
+        places = 9
+    }
+    return FormatDecimal(value, places, output)
+}
+
+FormatExponent :: (value: float64, output: []u8) -> string {
+    negative := value < 0.0
+    mantissa := ifx negative then 0.0 - value else value
+    exponent: s32 = 0
+    while mantissa >= 10.0 {
+        mantissa /= 10.0
+        exponent += 1
+    }
+    while mantissa < 1.0 {
+        mantissa *= 10.0
+        exponent -= 1
+    }
+    digits: [32]u8
+    text := FormatDecimal(ifx negative then 0.0 - mantissa else mantissa, 9, digits[:])
+    power: [24]u8
+    exponent_text := FormatInteger(cast(s64)exponent, power[:])
+    used: s32 = 0
+    used = AppendTo(output, used, text)
+    used = AppendTo(output, used, "e")
+    used = AppendTo(output, used, exponent_text)
+    return TextView(output[0:used])
+}
+
+AppendTo :: (output: []u8, used: s32, text: string) -> s32 {
+    index: s32 = 0
+    while index < cast(s32)text.count && used < cast(s32)output.count - 1 {
+        output[used] = text[index]
+        used += 1
+        index += 1
+    }
+    output[used] = cast(u8)0
+    return used
+}

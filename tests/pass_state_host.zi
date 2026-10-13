@@ -1,0 +1,95 @@
+#import "pass_text"
+#import "text_buffer"
+
+StoreEntry :: struct { name: [256]u8; value: [8192]u8; }
+entries: [20]StoreEntry;
+entry_count: s32;
+fail_writes: bool;
+clipboard: [256]u8;
+secure_available: bool;
+secure_saved: bool;
+secure_result: s32;
+secure_output: [1024]u8;
+
+#program_export
+ReadStoreHost :: (name: string, output: []u8) -> s32 {
+    index: s32 = 0
+    while index < entry_count {
+        if TextUntilNul(entries[index].name[:]) == name {
+            value := TextUntilNul(entries[index].value[:])
+            if !CopyText(value, output) { return -1 }
+            return cast(s32)value.count
+        }
+        index += 1
+    }
+    return -1
+}
+#program_export
+WriteStoreHost :: (name: string, value: string) -> bool {
+    if fail_writes { return false }
+    index: s32 = 0
+    while index < entry_count {
+        if TextUntilNul(entries[index].name[:]) == name { break }
+        index += 1
+    }
+    if index >= 20 { return false }
+    if !CopyText(name, entries[index].name[:]) || !CopyText(value, entries[index].value[:]) { return false }
+    if index == entry_count { entry_count += 1 }
+    return true
+}
+clear_seconds: s32;
+#program_export
+ClipboardCopyHost :: (value: string, seconds: s32) -> bool {
+    clear_seconds = seconds
+    return CopyText(value, clipboard[:])
+}
+#program_export
+SecureAvailableHost :: () -> bool { return secure_available }
+#program_export
+SecureSavedHost :: () -> bool { return secure_saved }
+#program_export
+SecureRequestHost :: (master: string, save: bool) -> bool {
+    if !secure_available { return false }
+    secure_result = 2
+    if save { secure_saved = true; CopyText(master, secure_output[:]) }
+    return true
+}
+#program_export
+SecureForgetHost :: () -> bool { secure_saved = false; return true }
+#program_export
+SecurePollHost :: (output: []u8) -> s32 {
+    status := secure_result; secure_result = 0
+    CopyText(TextUntilNul(secure_output[:]), output)
+    return status
+}
+
+// The rest of the Werkzeug interface, which Pass's state does not use.
+#import "session"
+#import "geometry"
+#import "text_input_props"
+#program_export
+AppModeHost :: () -> s32 { return 0 }
+#program_export
+AppDescribeHost :: (name: string, icon_shape: string) {}
+#program_export
+AppSessionHost :: () -> Session { return Session.{} }
+#program_export
+AppBoundsHost :: () -> Rectangle { return Rectangle.{} }
+#program_export
+AppDarkHost :: () -> bool { return false }
+#program_export
+AppKeyHost :: () -> s32 { return 0 }
+#program_export
+AppModifiersHost :: () -> s32 { return 0 }
+#program_export
+AppFieldInputHost :: () -> TextFieldInput { return TextFieldInput.{} }
+#program_export
+AppKeyboardHost :: (visible: bool) {}
+#program_export
+AppNowHost :: () -> float64 { return 0.0 }
+#program_export
+AppLocalOffsetHost :: () -> s32 { return 0 }
+#program_export
+AppAssetPathHost :: (name: string) -> string { return "" }
+#program_export
+AppPbkdf2Sha256Host :: (password: string, salt: string, iterations: s32) -> string { return "" }
