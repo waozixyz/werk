@@ -1,0 +1,506 @@
+// Syncs the records of the apps that sync (Auth) through the account's
+// Daochi server. Each record travels sealed with the vault key; the sealed
+// text holds the change time and whether the record was removed, so the
+// server can neither read, forge nor reorder a change it relays. Every
+// request uploads the unsynced changes and pages through the server's.
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/c_string"
+#import "std/number_text"
+#import "std/json_scan"
+#import "std/net_http"
+#import "daochi_client/auth"
+Auth :: #import "daochi_client/auth";
+#import "daochi_client/sync"
+#import "daochi_client/async_client"
+#import "daochi_client/async_sync"
+#import "kryon/http_transfer"
+#import "files"
+#import "platform"
+#import "sync_keys"
+#import "account"
+#import "records"
+
+SYNC_APP :: "auth"
+SYNC_COLLECTION :: "private.werkzeug.v1.auth"
+SYNC_UPLOAD_LIMIT :: 100
+SYNC_BODY_LIMIT :: 524288
+SYNC_OUTPUT_LIMIT :: 1048576
+// Changes reach the server shortly after they are made, and other
+// devices' changes arrive at least this often while Werkzeug is open.
+SYNC_INTERVAL :: 300.0
+SYNC_DELAY :: 2.0
+
+SyncPhase :: enum {
+    SyncIdle :: 0
+    SyncRunning :: 1
+    SyncDone :: 2
+    SyncFailed :: 3
+}
+
+SyncTransfer :: struct {
+    transfer: HttpTransfer
+}
+
+// The login token, for the account it was issued to.
+SyncLogin :: struct {
+    session: Auth.Session
+}
+
+SyncUpload :: struct {
+    id: [65]u8
+    updated: s64
+}
+
+sync_phase: SyncPhase;
+sync_login: SyncLogin;
+sync_session_generation: s32 = -1;
+sync_status: [96]u8;
+sync_pending: PendingSync;
+sync_transfer: SyncTransfer;
+sync_body: [SYNC_BODY_LIMIT]u8;
+sync_output: [SYNC_OUTPUT_LIMIT]u8;
+sync_uploads: [SYNC_UPLOAD_LIMIT]SyncUpload;
+sync_upload_count: s32;
+sync_since: s64;
+sync_cursor: [512]u8;
+sync_rounds: s32;
+sync_last: float64 = -1000000.0;
+sync_due: float64 = -1.0;
+sync_changed: bool;
+
+SyncStatus :: () -> string {
+    return TextUntilNul(sync_status[:])
+}
+
+SyncRunning :: () -> bool {
+    return sync_phase == SyncPhase.SyncRunning
+}
+
+SetStatus :: (text: string) {
+    unused CopyCString(text, sync_status[:])
+}
+
+// Asks for a sync soon, after a burst of local changes settles.
+SyncSoon :: () {
+    sync_due = WallClock() + SYNC_DELAY
+}
+
+StatePath :: (output: []u8) -> string {
+    folder: [PATH_LIMIT]u8
+    path := PathJoin(folder[:], DataRoot(), "account")
+    if path == "" || !EnsureDirectory(path) {
+        return ""
+    }
+    return PathJoin(output, path, "sync.txt")
+}
+
+LoadSince :: () {
+    sync_since = 0
+    path_bytes: [PATH_LIMIT]u8
+    path := StatePath(path_bytes[:])
+    text: [32]u8
+    count := ifx path == "" then -1 else ReadPrivate(path, text[:])
+    if count > 0 {
+        value := ParseNumber(TextView(text[0:count]))
+        if value > 0 {
+            sync_since = value
+        }
+    }
+}
+
+SaveSince :: () {
+    path_bytes: [PATH_LIMIT]u8
+    path := StatePath(path_bytes[:])
+    number: [24]u8
+    if path != "" {
+        unused WritePrivate(path, FormatInteger(sync_since, number[:]))
+    }
+}
+
+ForgetSync :: () {
+    sync_since = 0
+    sync_cursor[0] = cast(u8)0
+    path_bytes: [PATH_LIMIT]u8
+    path := StatePath(path_bytes[:])
+    if path != "" {
+        unused WritePrivate(path, "0")
+    }
+    SetStatus("")
+}
+
+// The body under construction; used is -1 once anything failed to fit.
+Writer :: struct {
+    used: s64
+}
+
+Put :: (writer: *Writer, text: string) {
+    if writer.used < 0 || writer.used + text.count >= SYNC_BODY_LIMIT {
+        writer.used = -1
+        return
+    }
+    index: s64 = 0
+    while index < text.count {
+        sync_body[writer.used] = text[index]
+        writer.used += 1
+        index += 1
+    }
+}
+
+PutNumber :: (writer: *Writer, value: s64) {
+    number: [24]u8
+    Put(writer, FormatInteger(value, number[:]))
+}
+
+Digits :: (output: []u8, at: s64, value: s64, width: s64) {
+    index := width - 1
+    while index >= 0 {
+        output[at + index] = cast(u8)(48 + value % 10)
+        value = value / 10
+        index -= 1
+    }
+}
+
+// RFC 3339 UTC time of a Unix time in milliseconds, as the server stores it.
+UtcText :: (milliseconds: s64, output: []u8) -> string {
+    seconds := milliseconds / 1000
+    days := seconds / 86400
+    rest := seconds % 86400
+    shifted := days + 719468
+    era := shifted / 146097
+    day_of_era := shifted - era * 146097
+    year_of_era := (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365
+    year := year_of_era + era * 400
+    day_of_year := day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100)
+    month_index := (5 * day_of_year + 2) / 153
+    day := day_of_year - (153 * month_index + 2) / 5 + 1
+    month := ifx month_index < 10 then month_index + 3 else month_index - 9
+    if month <= 2 {
+        year += 1
+    }
+    if output.count < 25 {
+        return ""
+    }
+    Digits(output, 0, year, 4)
+    output[4] = cast(u8)45
+    Digits(output, 5, month, 2)
+    output[7] = cast(u8)45
+    Digits(output, 8, day, 2)
+    output[10] = cast(u8)84
+    Digits(output, 11, rest / 3600, 2)
+    output[13] = cast(u8)58
+    Digits(output, 14, rest % 3600 / 60, 2)
+    output[16] = cast(u8)58
+    Digits(output, 17, rest % 60, 2)
+    output[19] = cast(u8)46
+    Digits(output, 20, milliseconds % 1000, 3)
+    output[23] = cast(u8)90
+    output[24] = cast(u8)0
+    return TextView(output[0:24])
+}
+
+// What a record's seal is bound to: this account, collection, record and key.
+RecordAd :: (id: string, key_id: string, output: []u8) -> string {
+    parts: [8]string = .["werkzeug-record-1\n", AccountId(), "\n", SYNC_COLLECTION, "\n", id, "\n", key_id]
+    used := Append(output, 0, parts[:])
+    if used < 0 {
+        return ""
+    }
+    return TextView(output[0:used])
+}
+
+PutRecord :: (writer: *Writer, record: *Record) -> bool {
+    id := TextUntilNul(record.id[:])
+    plain: [1100]u8
+    number: [24]u8
+    parts: [4]string = .[FormatInteger(record.updated, number[:]), "\n", ifx record.deleted then "D" else "V",
+    TextUntilNul(record.value[:])]
+    used := Append(plain[:], 0, parts[:])
+    ad_bytes: [256]u8
+    sealed: [1200]u8
+    size := ifx used < 0 then -1 else Seal(AccountVault(), RecordAd(id, AccountVaultId(), ad_bytes[:]),
+        TextView(plain[0:used]), sealed[:])
+    Wipe(plain[:])
+    if size < 0 {
+        return false
+    }
+    nonce_hex: [49]u8
+    cipher_hex: [2400]u8
+    time: [32]u8
+    Put(writer, "{\"collection\":\"")
+    Put(writer, SYNC_COLLECTION)
+    Put(writer, "\",\"id\":\"")
+    Put(writer, id)
+    Put(writer, "\",\"key_id\":\"")
+    Put(writer, AccountVaultId())
+    Put(writer, "\",\"nonce\":\"")
+    Put(writer, HexOf(sealed[0:NONCE_SIZE], nonce_hex[:]))
+    Put(writer, "\",\"ciphertext\":\"")
+    Put(writer, HexOf(sealed[NONCE_SIZE:size], cipher_hex[:]))
+    Put(writer, "\",\"updated_at\":\"")
+    Put(writer, UtcText(record.updated, time[:]))
+    Put(writer, "\",\"schema_version\":1}")
+    return writer.used >= 0
+}
+
+// The request body: this device's unsynced changes, up to the upload limit.
+BuildBody :: () -> string {
+    writer: Writer
+    Put(*writer, "{\"protocol_version\":6,\"app_id\":\"")
+    Put(*writer, ACCOUNT_APP)
+    Put(*writer, "\",\"user_id_hash\":\"")
+    Put(*writer, AccountId())
+    Put(*writer, "\",\"client_id\":\"")
+    Put(*writer, AccountClient().identity.client_id)
+    Put(*writer, "\",\"since_server_version\":")
+    PutNumber(*writer, sync_since)
+    Put(*writer, ",\"encrypted_records_only\":true,\"record_limit\":100")
+    if sync_cursor[0] != cast(u8)0 {
+        Put(*writer, ",\"record_cursor\":")
+        Put(*writer, TextUntilNul(sync_cursor[:]))
+    }
+    Put(*writer, ",\"encrypted_records\":[")
+    sync_upload_count = 0
+    if RecordsOpen(SYNC_APP) {
+        index: s32 = 0
+        while index < record_table.count && sync_upload_count < SYNC_UPLOAD_LIMIT && writer.used >= 0 {
+            record := *record_table.records[index]
+            if record.dirty {
+                if sync_upload_count > 0 {
+                    Put(*writer, ",")
+                }
+                if PutRecord(*writer, record) {
+                    upload := *sync_uploads[sync_upload_count]
+                    unused CopyCString(TextUntilNul(record.id[:]), upload.id[:])
+                    upload.updated = record.updated
+                    sync_upload_count += 1
+                }
+            }
+            index += 1
+        }
+    }
+    Put(*writer, "]}")
+    if writer.used < 0 {
+        return ""
+    }
+    sync_body[writer.used] = cast(u8)0
+    return TextView(sync_body[0:writer.used])
+}
+
+StartTransfer :: (context: *void, request: HttpRequest, output: []u8) -> bool {
+    transfer := cast(*SyncTransfer)context
+    return transfer != null && HttpTransferStart(*transfer.transfer, request, output, 30000)
+}
+
+PollTransfer :: (context: *void, status: *s32) -> s32 {
+    transfer := cast(*SyncTransfer)context
+    if transfer == null {
+        return 0
+    }
+    return HttpTransferPoll(*transfer.transfer, status)
+}
+
+CancelTransfer :: (context: *void) {
+    transfer := cast(*SyncTransfer)context
+    if transfer != null {
+        HttpTransferCancel(*transfer.transfer)
+    }
+}
+
+SyncTransport :: () -> AsyncTransport {
+    return AsyncTransport.{.context = cast(*void)*sync_transfer, .start = StartTransfer,
+        .poll = PollTransfer, .cancel = CancelTransfer}
+}
+
+StartRound :: () -> bool {
+    if sync_session_generation != account_generation {
+        sync_login = SyncLogin.{}
+        sync_session_generation = account_generation
+    }
+    body := BuildBody()
+    if body == "" {
+        return false
+    }
+    sync_rounds += 1
+    return BeginSync(*sync_pending, AccountClient(), *sync_login.session, AccountDevice(),
+        cast(s64)WallClock(), null, RandomNonceHex, SyncTransport(), body, sync_output[:])
+}
+
+// Starts a sync unless one is running.
+SyncNow :: () {
+    if !AccountReady() || SyncRunning() {
+        return
+    }
+    if sync_since == 0 && sync_rounds == 0 {
+        LoadSince()
+    }
+    sync_rounds = 0
+    sync_cursor[0] = cast(u8)0
+    sync_changed = false
+    sync_due = -1.0
+    sync_last = WallClock()
+    SetStatus("Syncing…")
+    sync_phase = SyncPhase.SyncRunning
+    if !StartRound() {
+        sync_phase = SyncPhase.SyncFailed
+        SetStatus("Could not prepare the sync")
+    }
+}
+
+// One record from the server: opened with the vault key, then the newer
+// change wins. Records under another key or altered in transit are skipped.
+ApplyRecord :: (text: string, at: s32) -> bool {
+    collection: [64]u8
+    id: [65]u8
+    key_id: [33]u8
+    nonce_hex: [49]u8
+    cipher_hex: [2400]u8
+    if ReadStringText(text, FieldAt(text, at, "collection"), collection[:]) < 0 ||
+    TextUntilNul(collection[:]) != SYNC_COLLECTION ||
+    ReadStringText(text, FieldAt(text, at, "id"), id[:]) < 0 ||
+    ReadStringText(text, FieldAt(text, at, "key_id"), key_id[:]) < 0 ||
+    TextUntilNul(key_id[:]) != AccountVaultId() ||
+    ReadStringText(text, FieldAt(text, at, "nonce"), nonce_hex[:]) < 0 ||
+    ReadStringText(text, FieldAt(text, at, "ciphertext"), cipher_hex[:]) < 0 {
+        return false
+    }
+    sealed: [1200]u8
+    nonce := TextUntilNul(nonce_hex[:])
+    cipher := TextUntilNul(cipher_hex[:])
+    if BytesOfHex(nonce, sealed[0:NONCE_SIZE]) != NONCE_SIZE {
+        return false
+    }
+    size := BytesOfHex(cipher, sealed[NONCE_SIZE:1200])
+    if size < MAC_SIZE {
+        return false
+    }
+    ad_bytes: [256]u8
+    plain: [1100]u8
+    count := Open(AccountVault(), RecordAd(TextUntilNul(id[:]), AccountVaultId(), ad_bytes[:]),
+        sealed[0:NONCE_SIZE + size], plain[:])
+    if count < 2 {
+        return false
+    }
+    opened := TextView(plain[0:count])
+    line: s64 = 0
+    while line < opened.count && opened[line] != cast(u8)10 {
+        line += 1
+    }
+    updated := ParseNumber(opened[0:line])
+    changed := false
+    if line + 1 < opened.count && updated >= 0 {
+        flag := opened[line + 1]
+        changed = (flag == cast(u8)68 || flag == cast(u8)86) &&
+        RecordFromSync(TextUntilNul(id[:]), updated, flag == cast(u8)68, opened[line + 2:opened.count])
+    }
+    Wipe(plain[:])
+    return changed
+}
+
+// The server's answer: its records, the next page, the version reached.
+ApplyAnswer :: () -> bool {
+    text := TextUntilNul(sync_output[:])
+    version := ReadNumber(text, FieldAt(text, 0, "server_version"))
+    if !version.valid {
+        return false
+    }
+    if !RecordsOpen(SYNC_APP) {
+        return false
+    }
+    index: s32 = 0
+    while index < sync_upload_count {
+        RecordSynced(TextUntilNul(sync_uploads[index].id[:]), sync_uploads[index].updated)
+        index += 1
+    }
+    changes := FieldAt(text, 0, "changes")
+    records := ifx changes < 0 then -1 else FieldAt(text, changes, "encrypted_records")
+    if records >= 0 {
+        positions: [256]s32
+        count := ArrayPositions(text, records, positions[:])
+        element: s32 = 0
+        while element < count && element < 256 {
+            if ApplyRecord(text, positions[element]) {
+                sync_changed = true
+            }
+            element += 1
+        }
+    }
+    unused RecordsSave()
+    cursor := FieldAt(text, 0, "record_cursor")
+    sync_cursor[0] = cast(u8)0
+    if cursor >= 0 {
+        end := ValueEnd(text, cursor, 0)
+        if end > cursor && end - cursor < 511 {
+            unused CopyCString(text[cursor:end], sync_cursor[:])
+        }
+        return true
+    }
+    complete := FieldAt(text, 0, "changes_complete")
+    if complete < 0 || MatchLiteral(text, complete, "true") {
+        sync_since = cast(s64)version.value
+        SaveSince()
+    }
+    return true
+}
+
+FailureText :: (result: AuthResult, status: s32) -> string {
+    if result == AuthResult.AUTH_FAILED {
+        return "The server refused this account"
+    }
+    if status == 413 {
+        return "The account's storage is full"
+    }
+    if status == 0 {
+        return "Could not reach the server"
+    }
+    return "The server could not sync"
+}
+
+// Advances a running sync; call once per frame. Starts one when due.
+SyncFrame :: () {
+    if !AccountReady() {
+        return
+    }
+    now := WallClock()
+    if !SyncRunning() {
+        if (sync_due >= 0.0 && now >= sync_due) || now - sync_last >= SYNC_INTERVAL {
+            SyncNow()
+        }
+        return
+    }
+    if !PollSync(*sync_pending) {
+        return
+    }
+    if sync_pending.result != AuthResult.AUTH_OK || !ApplyAnswer() {
+        sync_phase = SyncPhase.SyncFailed
+        SetStatus(FailureText(sync_pending.result, sync_pending.status))
+        return
+    }
+    // More pages or more local changes go in another round.
+    more := sync_cursor[0] != cast(u8)0 || sync_upload_count == SYNC_UPLOAD_LIMIT
+    if more && sync_rounds < 50 {
+        if !StartRound() {
+            sync_phase = SyncPhase.SyncFailed
+            SetStatus("Could not prepare the sync")
+        }
+        return
+    }
+    sync_phase = SyncPhase.SyncDone
+    SetStatus("Synced")
+}
+
+// True once after a sync rewrote records, so the open app reloads them.
+SyncTakeChanges :: () -> bool {
+    changed := sync_changed && !SyncRunning()
+    if changed {
+        sync_changed = false
+    }
+    return changed
+}
+
+CancelSyncNow :: () {
+    if SyncRunning() {
+        CancelSync(*sync_pending)
+    }
+    sync_phase = SyncPhase.SyncIdle
+}

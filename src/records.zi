@@ -1,0 +1,336 @@
+// Synced records: small named values an app keeps through the host, which
+// syncs them between the owner's devices when an account is set up. A
+// removed record stays as a deletion, so the removal reaches other devices.
+// Each app's records live in the private records/<app>.txt, one per line:
+// id, the change time in milliseconds, V or D, 1 while unsynced, value.
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/c_string"
+#import "std/number_text"
+#import "files"
+#import "platform"
+
+RECORD_LIMIT :: 256
+RECORD_ID_LIMIT :: 64
+RECORD_VALUE_LIMIT :: 1024
+RECORD_FILE_LIMIT :: 360448
+
+Record :: struct {
+    id: [65]u8
+    updated: s64
+    deleted: bool
+    dirty: bool
+    value: [1025]u8
+}
+
+RecordTable :: struct {
+    app: [32]u8
+    loaded: bool
+    count: s32
+    records: [RECORD_LIMIT]Record
+    // Changes whenever sync rewrote a record, so the app reloads.
+    version: s32
+}
+
+record_table: RecordTable;
+record_file: [RECORD_FILE_LIMIT]u8;
+
+ValidRecordId :: (id: string) -> bool {
+    if id.count == 0 || id.count > RECORD_ID_LIMIT {
+        return false
+    }
+    index: s64 = 0
+    while index < id.count {
+        byte := id[index]
+        letter := (byte >= cast(u8)97 && byte <= cast(u8)122) || (byte >= cast(u8)65 && byte <= cast(u8)90)
+        digit := byte >= cast(u8)48 && byte <= cast(u8)57
+        if !letter && !digit && byte != cast(u8)45 && byte != cast(u8)46 && byte != cast(u8)95 {
+            return false
+        }
+        index += 1
+    }
+    return true
+}
+
+ValidRecordValue :: (value: string) -> bool {
+    if value.count > RECORD_VALUE_LIMIT {
+        return false
+    }
+    index: s64 = 0
+    while index < value.count {
+        if value[index] == cast(u8)0 || value[index] == cast(u8)9 || value[index] == cast(u8)10 {
+            return false
+        }
+        index += 1
+    }
+    return true
+}
+
+RecordsPath :: (app: string, output: []u8) -> string {
+    folder: [PATH_LIMIT]u8
+    path := PathJoin(folder[:], DataRoot(), "records")
+    name: [48]u8
+    parts: [2]string = .[app, ".txt"]
+    used: s64 = 0
+    for part: 0..1 {
+        index: s64 = 0
+        while index < parts[part].count && used < 47 {
+            name[used] = parts[part][index]
+            used += 1
+            index += 1
+        }
+    }
+    if path == "" || !SafeName(app) || !EnsureDirectory(path) {
+        return ""
+    }
+    return PathJoin(output, path, TextView(name[0:used]))
+}
+
+ParseNumber :: (text: string) -> s64 {
+    value: s64 = 0
+    if text.count == 0 || text.count > 18 {
+        return -1
+    }
+    index: s64 = 0
+    while index < text.count {
+        if text[index] < cast(u8)48 || text[index] > cast(u8)57 {
+            return -1
+        }
+        value = value * 10 + cast(s64)(text[index] - cast(u8)48)
+        index += 1
+    }
+    return value
+}
+
+// One line of the records file into the next free record.
+ParseRecord :: (line: string) {
+    if record_table.count >= RECORD_LIMIT {
+        return
+    }
+    fields: [5]string
+    count: s32 = 0
+    start: s64 = 0
+    index: s64 = 0
+    while index <= line.count && count < 5 {
+        if index == line.count || (line[index] == cast(u8)9 && count < 4) {
+            fields[count] = line[start:index]
+            count += 1
+            start = index + 1
+        }
+        index += 1
+    }
+    updated := ParseNumber(fields[1])
+    if count != 5 || !ValidRecordId(fields[0]) || updated < 0 || !ValidRecordValue(fields[4]) ||
+    (fields[2] != "V" && fields[2] != "D") {
+        return
+    }
+    record := *record_table.records[record_table.count]
+    record.* = Record.{.updated = updated, .deleted = fields[2] == "D", .dirty = fields[3] == "1"}
+    unused CopyCString(fields[0], record.id[:])
+    unused CopyCString(fields[4], record.value[:])
+    record_table.count += 1
+}
+
+// Loads the app's records unless they are the ones in memory.
+RecordsOpen :: (app: string) -> bool {
+    if record_table.loaded && TextUntilNul(record_table.app[:]) == app {
+        return true
+    }
+    path_bytes: [PATH_LIMIT]u8
+    path := RecordsPath(app, path_bytes[:])
+    if path == "" {
+        return false
+    }
+    version := record_table.version
+    record_table = RecordTable.{.loaded = true, .version = version + 1}
+    unused CopyCString(app, record_table.app[:])
+    count := ReadPrivate(path, record_file[:])
+    if count <= 0 {
+        return true
+    }
+    text := TextView(record_file[0:count])
+    start: s64 = 0
+    index: s64 = 0
+    while index <= text.count {
+        if index == text.count || text[index] == cast(u8)10 {
+            if index > start {
+                ParseRecord(text[start:index])
+            }
+            start = index + 1
+        }
+        index += 1
+    }
+    return true
+}
+
+AppendText :: (used: s64, text: string) -> s64 {
+    if used < 0 || used + text.count >= RECORD_FILE_LIMIT {
+        return -1
+    }
+    index: s64 = 0
+    while index < text.count {
+        record_file[used] = text[index]
+        used += 1
+        index += 1
+    }
+    return used
+}
+
+RecordsSave :: () -> bool {
+    path_bytes: [PATH_LIMIT]u8
+    path := RecordsPath(TextUntilNul(record_table.app[:]), path_bytes[:])
+    if path == "" {
+        return false
+    }
+    used: s64 = 0
+    number: [24]u8
+    index: s32 = 0
+    while index < record_table.count {
+        record := *record_table.records[index]
+        used = AppendText(used, TextUntilNul(record.id[:]))
+        used = AppendText(used, "\t")
+        used = AppendText(used, FormatInteger(record.updated, number[:]))
+        used = AppendText(used, ifx record.deleted then "\tD\t" else "\tV\t")
+        used = AppendText(used, ifx record.dirty then "1\t" else "0\t")
+        used = AppendText(used, TextUntilNul(record.value[:]))
+        used = AppendText(used, "\n")
+        index += 1
+    }
+    return used >= 0 && WritePrivate(path, TextView(record_file[0:used]))
+}
+
+RecordFind :: (id: string) -> s32 {
+    index: s32 = 0
+    while index < record_table.count {
+        if TextUntilNul(record_table.records[index].id[:]) == id {
+            return index
+        }
+        index += 1
+    }
+    return -1
+}
+
+// A slot for id: its record, or a new one.
+RecordSlot :: (id: string) -> *Record {
+    found := RecordFind(id)
+    if found >= 0 {
+        return *record_table.records[found]
+    }
+    if record_table.count >= RECORD_LIMIT {
+        return null
+    }
+    record := *record_table.records[record_table.count]
+    record.* = Record.{}
+    unused CopyCString(id, record.id[:])
+    record_table.count += 1
+    return record
+}
+
+// A local change; it reaches other devices on the next sync. Times only move
+// forward, so the change wins over every version this device has seen.
+RecordChange :: (app: string, id: string, value: string, deleted: bool, now: s64) -> bool {
+    if !ValidRecordId(id) || !ValidRecordValue(value) || !RecordsOpen(app) {
+        return false
+    }
+    record := RecordSlot(id)
+    if record == null {
+        return false
+    }
+    record.updated = ifx now > record.updated then now else record.updated + 1
+    record.deleted = deleted
+    record.dirty = true
+    unused CopyCString(ifx deleted then "" else value, record.value[:])
+    return RecordsSave()
+}
+
+RecordPut :: (app: string, id: string, value: string, now: s64) -> bool {
+    return RecordChange(app, id, value, false, now)
+}
+
+RecordDelete :: (app: string, id: string, now: s64) -> bool {
+    if !RecordsOpen(app) || RecordFind(id) < 0 {
+        return false
+    }
+    return RecordChange(app, id, "", true, now)
+}
+
+// The ids of the app's records, one per line, in output; the byte count,
+// or -1 when they do not fit.
+RecordIds :: (app: string, output: []u8) -> s32 {
+    if output.count < 1 || !RecordsOpen(app) {
+        return -1
+    }
+    used: s64 = 0
+    index: s32 = 0
+    while index < record_table.count {
+        record := *record_table.records[index]
+        id := TextUntilNul(record.id[:])
+        if !record.deleted {
+            if used + id.count + 1 >= output.count {
+                return -1
+            }
+            for at: 0..id.count - 1 {
+                output[used] = id[at]
+                used += 1
+            }
+            output[used] = cast(u8)10
+            used += 1
+        }
+        index += 1
+    }
+    output[used] = cast(u8)0
+    return cast(s32)used
+}
+
+RecordValue :: (app: string, id: string, output: []u8) -> s32 {
+    if output.count < 1 || !RecordsOpen(app) {
+        return -1
+    }
+    found := RecordFind(id)
+    if found < 0 || record_table.records[found].deleted {
+        return -1
+    }
+    value := TextUntilNul(record_table.records[found].value[:])
+    if value.count >= output.count {
+        return -1
+    }
+    unused CopyCString(value, output)
+    return cast(s32)value.count
+}
+
+RecordsVersion :: (app: string) -> s32 {
+    if !RecordsOpen(app) {
+        return 0
+    }
+    return record_table.version
+}
+
+// A version from another device. The newer change wins; true when it
+// replaced this device's record.
+RecordFromSync :: (id: string, updated: s64, deleted: bool, value: string) -> bool {
+    if !ValidRecordId(id) || !ValidRecordValue(value) || updated < 0 {
+        return false
+    }
+    found := RecordFind(id)
+    if found >= 0 && record_table.records[found].updated >= updated {
+        return false
+    }
+    record := RecordSlot(id)
+    if record == null {
+        return false
+    }
+    record.updated = updated
+    record.deleted = deleted
+    record.dirty = false
+    unused CopyCString(ifx deleted then "" else value, record.value[:])
+    record_table.version += 1
+    return true
+}
+
+// The server stored the change made at updated; later changes stay unsynced.
+RecordSynced :: (id: string, updated: s64) {
+    found := RecordFind(id)
+    if found >= 0 && record_table.records[found].updated == updated {
+        record_table.records[found].dirty = false
+    }
+}

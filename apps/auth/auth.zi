@@ -1,5 +1,6 @@
-// Auth: two-factor sign-in codes. Accounts are kept in the app's private
-// accounts.txt as otpauth links; secrets are never shown again after adding.
+// Auth: two-factor sign-in codes. Each account is a synced record holding
+// its otpauth link, so it follows the owner's Werkzeug account to their
+// other devices; secrets are never shown again after adding.
 #import "session"
 #import "geometry"
 #import "text_props"
@@ -19,6 +20,7 @@
 #import "werkzeug_app"
 #import "app_protocol"
 #import "totp"
+#import "sha256"
 Icon :: #import "mingcute_regular_shield";
 Remove :: #import "mingcute_regular_delete_2";
 
@@ -48,6 +50,11 @@ CachedCode :: struct {
 
 accounts: [ACCOUNT_LIMIT]Account;
 codes: [ACCOUNT_LIMIT]CachedCode;
+// Each account's record id, and whether its record is written.
+record_ids: [ACCOUNT_LIMIT][33]u8;
+recorded: [ACCOUNT_LIMIT]bool;
+records_version: s32 = -1;
+ids: [8192]u8;
 account_count: s32;
 loaded: bool;
 view: s32;
@@ -76,38 +83,85 @@ Clear :: (bytes: []u8) {
     }
 }
 
-LoadAccounts :: () {
-    account_count = 0
-    count := ReadStore("accounts.txt", store[:])
-    if count > 0 {
-        unused AddLinks(TextView(store[0:count]), false)
-    }
-    Clear(store[:])
+HexDigit :: (value: u8) -> u8 {
+    return ifx value < cast(u8)10 then cast(u8)48 + value else cast(u8)87 + value
 }
 
+// An account's record id comes from its link, so the same account added on
+// two devices is one record.
+SetRecordId :: (index: s32, link: string) {
+    digest := Sha256(link)
+    for at: 0..15 {
+        record_ids[index][at * 2] = HexDigit(digest[at] >> cast(u8)4)
+        record_ids[index][at * 2 + 1] = HexDigit(digest[at] & cast(u8)15)
+    }
+    record_ids[index][32] = cast(u8)0
+    for at: 0..31 {
+        digest[at] = cast(u8)0
+    }
+}
+
+// Writes the records of accounts added since the last save.
 SaveAccounts :: () -> bool {
-    used: s64 = 0
+    saved := true
     index: s32 = 0
     while index < account_count {
-        line: [1024]u8
-        {
-            link := LinkText(*accounts[index], line[:])
-            used = ifx link == "" then -1 else AppendText(store[:], used, link)
-        }
-        used = AppendText(store[:], used, "\n")
-        Clear(line[:])
-        if used < 0 {
-            Clear(store[:])
-            return false
+        if !recorded[index] {
+            line: [1024]u8
+            {
+                link := LinkText(*accounts[index], line[:])
+                if link != "" {
+                    SetRecordId(index, link)
+                    recorded[index] = RecordWrite(TextUntilNul(record_ids[index][:]), link)
+                }
+            }
+            Clear(line[:])
+            saved = saved && recorded[index]
         }
         index += 1
     }
-    saved := false
-    {
-        saved = WriteStore("accounts.txt", TextView(store[0:used]))
+    return saved
+}
+
+LoadAccounts :: () {
+    records_version = RecordsVersion()
+    // Accounts saved before records existed move into records once.
+    count := ReadStore("accounts.txt", store[:])
+    if count > 0 {
+        account_count = 0
+        unused AddLinks(TextView(store[0:count]), false)
+        if SaveAccounts() {
+            unused WriteStore("accounts.txt", "")
+        }
     }
     Clear(store[:])
-    return saved
+    while account_count > 0 {
+        account_count -= 1
+        accounts[account_count] = Account.{}
+    }
+    listed := RecordList(ids[:])
+    start: s32 = 0
+    at: s32 = 0
+    while listed > 0 && at <= listed && account_count < ACCOUNT_LIMIT {
+        if at == listed || ids[at] == cast(u8)10 {
+            if at > start {
+                id := TextView(ids[start:at])
+                length := RecordRead(id, store[:])
+                account: Account
+                if length > 0 && ParseLink(TextView(store[0:length]), *account) {
+                    accounts[account_count] = account
+                    codes[account_count] = CachedCode.{.step = -1}
+                    unused CopyLimited(id, record_ids[account_count][:])
+                    recorded[account_count] = true
+                    account_count += 1
+                }
+                account = Account.{}
+                Clear(store[0:ifx length > 0 then length else 0])
+            }
+            start = at + 1
+        }
+        at += 1
+    }
 }
 
 SameAccount :: (left: *Account, right: *Account) -> bool {
@@ -144,6 +198,7 @@ AddLinks :: (text: string, report: bool) -> s32 {
                 if !known {
                     accounts[account_count] = account
                     codes[account_count] = CachedCode.{.step = -1}
+                    recorded[account_count] = false
                     account_count += 1
                     added += 1
                 }
@@ -189,21 +244,29 @@ AddManual :: () -> bool {
     }
     accounts[account_count] = account
     codes[account_count] = CachedCode.{.step = -1}
+    recorded[account_count] = false
     account_count += 1
     account = Account.{}
     return true
 }
 
-RemoveAccount :: (index: s32) {
+RemoveAccount :: (index: s32) -> bool {
+    if recorded[index] && !RecordRemove(TextUntilNul(record_ids[index][:])) {
+        return false
+    }
     position := index
     while position + 1 < account_count {
         accounts[position] = accounts[position + 1]
         codes[position] = codes[position + 1]
+        record_ids[position] = record_ids[position + 1]
+        recorded[position] = recorded[position + 1]
         position += 1
     }
     account_count -= 1
     accounts[account_count] = Account.{}
     codes[account_count] = CachedCode.{}
+    recorded[account_count] = false
+    return true
 }
 
 Unix :: () -> s64 {
@@ -381,9 +444,8 @@ ListView :: (area: Rectangle, left: float32, width: float32) {
         while index < account_count {
             y := scroll.content.y + cast(float32)index * row
             if DrawRow(index, x, y, inner, row) {
-                RemoveAccount(index)
                 remove_pending = -1
-                SetStatus(ifx SaveAccounts() then "Account removed" else "Could not save the accounts")
+                SetStatus(ifx RemoveAccount(index) then "Account removed" else "Could not remove the account")
                 break
             }
             index += 1
@@ -462,7 +524,8 @@ Main :: () -> s32 {
         AppDescribe("Auth", Icon.Shape)
         return APP_PROTOCOL
     }
-    if !loaded {
+    // Records from another device replace the list.
+    if !loaded || RecordsVersion() != records_version {
         LoadAccounts()
         loaded = true
     }

@@ -19,5 +19,10 @@ if bad:
 manifest = (root / "droid/app/src/main/AndroidManifest.xml").read_text()
 assert 'android:hasCode="false"' in manifest
 assert 'android:name="android.app.NativeActivity"' in manifest
-assert "android.permission.INTERNET" not in manifest
+# Fingerprint unlock for the saved master password, and the network only for
+# sync, which stays off until the owner sets up an account.
+import re
+permissions = set(re.findall(r'uses-permission android:name="([^"]+)"', manifest))
+assert permissions <= {"android.permission.USE_BIOMETRIC", "android.permission.USE_FINGERPRINT",
+                       "android.permission.INTERNET"}, permissions
 print("All maintained Werkzeug application implementations are Ziran")

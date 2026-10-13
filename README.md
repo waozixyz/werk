@@ -32,8 +32,9 @@ Pass's package, so it updates in place and keeps a saved master password.
 
 ## Privacy
 
-Everything is computed on the device. Werkzeug makes no network requests and
-has no accounts. Each tool keeps its own files, readable only by your user:
+Everything is computed on the device. Werkzeug makes no network requests
+unless you turn on sync. Each tool keeps its own files, readable only by your
+user:
 
 | Platform | Data |
 |---|---|
@@ -41,10 +42,32 @@ has no accounts. Each tool keeps its own files, readable only by your user:
 | Android | the app's private storage |
 | Browser | IndexedDB on this site |
 
-Auth's secret keys are stored in its private `accounts.txt` as `otpauth`
-links, protected by the file permissions of your account or the Android app
-sandbox. Back up that file, or keep your original export, to move accounts to
-another device.
+Auth's accounts are synced records: `otpauth` links in the private
+`records/auth.txt`, protected by the file permissions of your account or the
+Android app sandbox.
+
+## Sync
+
+Profile → Sync keeps Auth's accounts on all your devices through a
+[Daochi](https://github.com/kryonlabs/daochi) account, `api.waozi.xyz` by
+default. Sync is off until you create or connect an account.
+
+- Each record is sealed on the device with XChaCha20-Poly1305 under a random
+  vault key that never leaves your devices unencrypted. The seal covers the
+  account, the record and the time of the change, so the server can neither
+  read nor alter a record or a removal.
+- The account key (ML-DSA-44) signs in and signs each sync together with
+  the device's own Ed25519 key.
+- To connect another device, open Profile → Sync → Connect a device and enter
+  the 12-character code on the other device. The devices swap X25519 keys
+  through the server's link mailbox, and the account and vault keys travel
+  sealed with a key derived from that exchange and the code, so the server
+  cannot open or replace them. The code works for 10 minutes.
+- The server can still withhold changes or serve an older copy to a device
+  that has not seen a newer one. A lost device keeps the keys it had: stop
+  syncing there if you can, and replace two-factor secrets you care about.
+
+`scripts/sync_e2e_test.sh` runs two devices against a local Daochi node.
 
 ## Tools are separate apps
 

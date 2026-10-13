@@ -1,7 +1,7 @@
-Werkzeug holds small private tools in one app. Everything is computed on your device: it makes no network requests, keeps no accounts, and tracks nothing.
+Werkzeug holds small private tools in one app. Everything is computed on your device and nothing is tracked. It makes no network requests unless you turn on sync.
 
 • Pass derives strong, repeatable passwords. The same site, login, master password, and settings always produce the same result, so there is no password database to back up, sync, or lose. It is LessPass-compatible, with configurable length, counter, character classes and excluded characters, and an optional master password kept behind device authentication.
-• Auth shows two-factor sign-in codes (TOTP with SHA-1, SHA-256 or SHA-512). Add accounts from otpauth links, including an authenticator's plain-text export, or by secret key. Copied codes are cleared from the clipboard after 30 seconds.
+• Auth shows two-factor sign-in codes (TOTP with SHA-1, SHA-256 or SHA-512). Add accounts from otpauth links, including an authenticator's plain-text export, or by secret key. Copied codes are cleared from the clipboard after 30 seconds. Optional sync keeps them on all your devices, encrypted on the device so the server never sees them.
 • Calculator handles everyday arithmetic with brackets, powers and percent.
 • Clock shows the local time and date and has a stopwatch.
 

@@ -1,0 +1,189 @@
+// The cryptography of account sync. Monocypher supplies Ed25519 device
+// keys, X25519 for connecting a device, BLAKE2b and XChaCha20-Poly1305;
+// liboqs supplies the random bytes.
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+Oqs :: #import "oqs/Oqs";
+
+c :: #system_library "c";
+Ed25519KeyPairRaw :: (secret_key: *u8, public_key: *u8, seed: *u8) #foreign c "crypto_ed25519_key_pair";
+Ed25519SignRaw :: (signature: *u8, secret_key: *u8, message: *u8, size: usize) #foreign c "crypto_ed25519_sign";
+X25519PublicRaw :: (public_key: *u8, secret_key: *u8) #foreign c "crypto_x25519_public_key";
+X25519Raw :: (shared: *u8, secret_key: *u8, public_key: *u8) #foreign c "crypto_x25519";
+Blake2bRaw :: (hash: *u8, hash_size: usize, message: *u8, size: usize) #foreign c "crypto_blake2b";
+AeadLockRaw :: (cipher: *u8, mac: *u8, key: *u8, nonce: *u8, ad: *u8, ad_size: usize,
+    plain: *u8, size: usize) #foreign c "crypto_aead_lock";
+AeadUnlockRaw :: (plain: *u8, mac: *u8, key: *u8, nonce: *u8, ad: *u8, ad_size: usize,
+    cipher: *u8, size: usize) -> s32 #foreign c "crypto_aead_unlock";
+WipeRaw :: (secret: *void, size: usize) #foreign c "crypto_wipe";
+
+KEY_SIZE :: 32
+NONCE_SIZE :: 24
+MAC_SIZE :: 16
+
+// Monocypher reads an empty message's pointer without dereferencing it.
+Data :: (text: string) -> *u8 {
+    descriptor := cast(*TextDescriptor)(*text)
+    return descriptor.data
+}
+
+#program_export
+RandomFill :: (output: []u8) {
+    Oqs.RandomBytes(output)
+}
+
+#program_export
+Wipe :: (bytes: []u8) {
+    if bytes.count > 0 {
+        WipeRaw(cast(*void)*bytes[0], cast(usize)bytes.count)
+    }
+}
+
+// BLAKE2b of message into all of output (1 to 64 bytes).
+#program_export
+Blake2b :: (message: string, output: []u8) -> bool {
+    if output.count < 1 || output.count > 64 {
+        return false
+    }
+    Blake2bRaw(*output[0], cast(usize)output.count, Data(message), cast(usize)message.count)
+    return true
+}
+
+#program_export
+X25519Public :: (secret: []u8, public_key: []u8) -> bool {
+    if secret.count != KEY_SIZE || public_key.count != KEY_SIZE {
+        return false
+    }
+    X25519PublicRaw(*public_key[0], *secret[0])
+    return true
+}
+
+#program_export
+X25519Shared :: (secret: []u8, their_public: []u8, shared: []u8) -> bool {
+    if secret.count != KEY_SIZE || their_public.count != KEY_SIZE || shared.count != KEY_SIZE {
+        return false
+    }
+    X25519Raw(*shared[0], *secret[0], *their_public[0])
+    // An all-zero secret means a low-order public key.
+    sum: u8 = 0
+    for index: 0..31 {
+        sum |= shared[index]
+    }
+    return sum != cast(u8)0
+}
+
+// nonce, ciphertext and MAC in output: NONCE_SIZE + plain.count + MAC_SIZE
+// bytes, or -1.
+#program_export
+Seal :: (key: []u8, ad: string, plain: string, output: []u8) -> s64 {
+    total := NONCE_SIZE + plain.count + MAC_SIZE
+    if key.count != KEY_SIZE || output.count < total {
+        return -1
+    }
+    RandomFill(output[0:NONCE_SIZE])
+    AeadLockRaw(*output[NONCE_SIZE], *output[NONCE_SIZE + plain.count], *key[0], *output[0],
+        Data(ad), cast(usize)ad.count, Data(plain), cast(usize)plain.count)
+    return total
+}
+
+// The plain text of a sealed box in output, or -1 when it was altered.
+#program_export
+Open :: (key: []u8, ad: string, sealed: []u8, output: []u8) -> s64 {
+    if key.count != KEY_SIZE || sealed.count < NONCE_SIZE + MAC_SIZE {
+        return -1
+    }
+    size := sealed.count - NONCE_SIZE - MAC_SIZE
+    if output.count < size + 1 {
+        return -1
+    }
+    if AeadUnlockRaw(*output[0], *sealed[NONCE_SIZE + size], *key[0], *sealed[0], Data(ad),
+        cast(usize)ad.count, *sealed[NONCE_SIZE], cast(usize)size) != 0 {
+        return -1
+    }
+    output[size] = cast(u8)0
+    return size
+}
+
+// An Ed25519 key from its 32-byte seed.
+DeviceKey :: struct {
+    secret: [64]u8
+    public_key: [32]u8
+}
+
+#program_export
+DeviceKeyFromSeed :: (seed: []u8, key: *DeviceKey) -> bool {
+    if seed.count != KEY_SIZE {
+        return false
+    }
+    copy: [32]u8
+    for index: 0..31 {
+        copy[index] = seed[index]
+    }
+    Ed25519KeyPairRaw(*key.secret[0], *key.public_key[0], *copy[0])
+    Wipe(copy[:])
+    return true
+}
+
+#program_export
+DeviceSign :: (key: *DeviceKey, message: string, signature: []u8) -> bool {
+    if signature.count != 64 {
+        return false
+    }
+    Ed25519SignRaw(*signature[0], *key.secret[0], Data(message), cast(usize)message.count)
+    return true
+}
+
+HexDigit :: (value: u8) -> u8 {
+    return ifx value < cast(u8)10 then cast(u8)48 + value else cast(u8)87 + value
+}
+
+// Lowercase hex of bytes, NUL-terminated in output.
+#program_export
+HexOf :: (bytes: []u8, output: []u8) -> string {
+    if output.count < bytes.count * 2 + 1 {
+        if output.count > 0 {
+            output[0] = cast(u8)0
+        }
+        return ""
+    }
+    index: s64 = 0
+    while index < bytes.count {
+        output[index * 2] = HexDigit(bytes[index] >> cast(u8)4)
+        output[index * 2 + 1] = HexDigit(bytes[index] & cast(u8)15)
+        index += 1
+    }
+    output[bytes.count * 2] = cast(u8)0
+    return TextView(output[0:bytes.count * 2])
+}
+
+Nibble :: (byte: u8) -> s32 {
+    if byte >= cast(u8)48 && byte <= cast(u8)57 {
+        return cast(s32)(byte - cast(u8)48)
+    }
+    if byte >= cast(u8)97 && byte <= cast(u8)102 {
+        return cast(s32)(byte - cast(u8)87)
+    }
+    if byte >= cast(u8)65 && byte <= cast(u8)70 {
+        return cast(s32)(byte - cast(u8)55)
+    }
+    return -1
+}
+
+// The bytes of hex text in output; their count, or -1.
+#program_export
+BytesOfHex :: (hex: string, output: []u8) -> s64 {
+    if hex.count % 2 != 0 || hex.count / 2 > output.count {
+        return -1
+    }
+    index: s64 = 0
+    while index < hex.count / 2 {
+        high := Nibble(hex[index * 2])
+        low := Nibble(hex[index * 2 + 1])
+        if high < 0 || low < 0 {
+            return -1
+        }
+        output[index] = cast(u8)(high * 16 + low)
+        index += 1
+    }
+    return hex.count / 2
+}

@@ -154,8 +154,11 @@ try:
     after = time.time()
     expected = {totp(FIXTURE_SECRET, before), totp(FIXTURE_SECRET, after)}
     assert copied in expected, f"Auth copied {copied!r}, expected one of {sorted(expected)}"
-    saved = (data / "apps/auth/accounts.txt").read_text()
-    assert FIXTURE_SECRET in saved and (data / "apps/auth/accounts.txt").stat().st_mode & 0o077 == 0
+    # The account is a synced record, kept privately and unsynced without
+    # an account.
+    records = data / "records/auth.txt"
+    saved = records.read_text()
+    assert FIXTURE_SECRET in saved and "\tV\t1\t" in saved and records.stat().st_mode & 0o077 == 0
     home()
 
     # Profile: a name and dark appearance are saved privately.

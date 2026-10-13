@@ -1,0 +1,333 @@
+// The Daochi account that syncs Werkzeug between the owner's devices. The
+// private account/keys.txt holds the account's ML-DSA key, this device's
+// Ed25519 seed and the vault key that encrypts every record; the server
+// stores only ciphertext. Devices share the account and vault keys only
+// through a connection the owner confirms with a code (device_link.zi).
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/file"
+#import "daochi_client/keys"
+#import "daochi_client/auth"
+#import "daochi_client/client"
+#import "daochi_client/sync"
+#import "daochi_client/crypto"
+#import "files"
+#import "platform"
+#import "sync_keys"
+
+ACCOUNT_SERVER :: "https://api.waozi.xyz"
+ACCOUNT_APP :: "werkzeug"
+ACCOUNT_FILE_LIMIT :: 12288
+
+Account :: struct {
+    ready: bool
+    server: [256]u8
+    keys: AccountKeys
+    client_id: [40]u8
+    device_seed: [32]u8
+    vault: [32]u8
+    vault_id: [17]u8
+    device: DeviceKey
+    device_public_hex: [65]u8
+    device_key_id: [65]u8
+}
+
+account: Account;
+// Changes with each account change, so sync logs in again.
+account_generation: s32;
+
+// The server a new account uses. Desktop tests point it at a local node
+// with WERKZEUG_SYNC_SERVER.
+DefaultServer :: () -> string {
+    #if !#defined(ANDROID_BUILD) && !#defined(PLATFORM_WEB) {
+        override := EnvironmentText("WERKZEUG_SYNC_SERVER")
+        if override != "" {
+            return override
+        }
+    }
+    return ACCOUNT_SERVER
+}
+
+AccountReady :: () -> bool {
+    return account.ready
+}
+
+AccountId :: () -> string {
+    return TextUntilNul(account.keys.public_id[:])
+}
+
+AccountServer :: () -> string {
+    return TextUntilNul(account.server[:])
+}
+
+AccountVault :: () -> []u8 {
+    return account.vault[:]
+}
+
+AccountVaultId :: () -> string {
+    return TextUntilNul(account.vault_id[:])
+}
+
+AccountPath :: (output: []u8) -> string {
+    folder: [PATH_LIMIT]u8
+    path := PathJoin(folder[:], DataRoot(), "account")
+    if path == "" || !EnsureDirectory(path) {
+        return ""
+    }
+    return PathJoin(output, path, "keys.txt")
+}
+
+// The key id names the vault key in each record, so a later key can
+// replace it.
+SetVaultId :: () {
+    digest: [8]u8
+    unused Blake2b(TextView(account.vault[:]), digest[:])
+    unused HexOf(digest[:], account.vault_id[:])
+}
+
+// Derives the device's Ed25519 key and its Daochi key id from the seed.
+SetDevice :: () -> bool {
+    if !DeviceKeyFromSeed(account.device_seed[:], *account.device) {
+        return false
+    }
+    unused HexOf(account.device.public_key[:], account.device_public_hex[:])
+    Sha256Hex(*account.device.public_key[0], 32, *account.device_key_id[0])
+    return account.device_key_id[0] != cast(u8)0
+}
+
+Append :: (output: []u8, used: s64, parts: []string) -> s64 {
+    if used < 0 {
+        return -1
+    }
+    next: s64 = 0
+    while next < parts.count {
+        part := parts[next]
+        if used + part.count >= output.count {
+            return -1
+        }
+        index: s64 = 0
+        while index < part.count {
+            output[used] = part[index]
+            used += 1
+            index += 1
+        }
+        next += 1
+    }
+    return used
+}
+
+SaveAccount :: () -> bool {
+    path_bytes: [PATH_LIMIT]u8
+    path := AccountPath(path_bytes[:])
+    if path == "" {
+        return false
+    }
+    seed_hex: [65]u8
+    vault_hex: [65]u8
+    text: [ACCOUNT_FILE_LIMIT]u8
+    lines: [7]string = .["server=", AccountServer(), "\nclient=", TextUntilNul(account.client_id[:]),
+    "\ndevice=", HexOf(account.device_seed[:], seed_hex[:]), "\nvault="]
+    used := Append(text[:], 0, lines[:])
+    rest: [6]string = .[HexOf(account.vault[:], vault_hex[:]), "\npublic=",
+    TextUntilNul(account.keys.public_key_hex[:]), "\nprivate=",
+    TextUntilNul(account.keys.private_key_hex[:]), "\n"]
+    used = Append(text[:], used, rest[:])
+    saved := used > 0 && WritePrivate(path, TextView(text[0:used]))
+    Wipe(text[:])
+    Wipe(seed_hex[:])
+    Wipe(vault_hex[:])
+    return saved
+}
+
+// The value of key= in a keys.txt line, or "".
+LineValue :: (line: string, key: string) -> string {
+    if line.count <= key.count || line[0:key.count] != key {
+        return ""
+    }
+    return line[key.count:line.count]
+}
+
+AccountFromText :: (text: string, target: *Account) -> bool {
+    target.* = Account.{}
+    found: s32 = 0
+    start: s64 = 0
+    index: s64 = 0
+    while index <= text.count {
+        if index == text.count || text[index] == cast(u8)10 {
+            line := text[start:index]
+            value := LineValue(line, "server=")
+            if value != "" && CopyCString(value, target.server[:]) {
+                found |= 1
+            }
+            value = LineValue(line, "client=")
+            if value != "" && CopyCString(value, target.client_id[:]) {
+                found |= 2
+            }
+            value = LineValue(line, "device=")
+            if value != "" && BytesOfHex(value, target.device_seed[:]) == 32 {
+                found |= 4
+            }
+            value = LineValue(line, "vault=")
+            if value != "" && BytesOfHex(value, target.vault[:]) == 32 {
+                found |= 8
+            }
+            value = LineValue(line, "public=")
+            if value != "" && CopyCString(value, target.keys.public_key_hex[:]) {
+                found |= 16
+            }
+            value = LineValue(line, "private=")
+            if value != "" && CopyCString(value, target.keys.private_key_hex[:]) {
+                found |= 32
+            }
+            start = index + 1
+        }
+        index += 1
+    }
+    if found != 63 {
+        return false
+    }
+    // The account id is the SHA-256 of the public key, never trusted text.
+    public_key: [AccountPublicKeyBytes]u8
+    if BytesOfHex(TextUntilNul(target.keys.public_key_hex[:]), public_key[:]) != AccountPublicKeyBytes {
+        return false
+    }
+    Sha256Hex(*public_key[0], AccountPublicKeyBytes, *target.keys.public_id[0])
+    return true
+}
+
+LoadAccount :: () {
+    account = Account.{}
+    path_bytes: [PATH_LIMIT]u8
+    path := AccountPath(path_bytes[:])
+    text: [ACCOUNT_FILE_LIMIT]u8
+    count := ifx path == "" then -1 else ReadPrivate(path, text[:])
+    if count > 0 && AccountFromText(TextView(text[0:count]), *account) {
+        SetVaultId()
+        account.ready = SetDevice()
+    }
+    Wipe(text[:])
+    if !account.ready {
+        account = Account.{}
+    }
+}
+
+NewClientId :: (output: []u8) {
+    random: [12]u8
+    RandomFill(random[:])
+    hex: [25]u8
+    parts: [2]string = .["werkzeug-", HexOf(random[:], hex[:])]
+    used := Append(output, 0, parts[:])
+    output[ifx used < 0 then 0 else used] = cast(u8)0
+}
+
+// A new account with fresh keys, saved on this device.
+CreateAccount :: () -> bool {
+    created: Account
+    if CreateAccountKeys(*created.keys) == 0 || !CopyCString(DefaultServer(), created.server[:]) {
+        return false
+    }
+    NewClientId(created.client_id[:])
+    RandomFill(created.device_seed[:])
+    RandomFill(created.vault[:])
+    account = created
+    SetVaultId()
+    account.ready = SetDevice() && SaveAccount()
+    Wipe(created.vault[:])
+    Wipe(created.device_seed[:])
+    if !account.ready {
+        account = Account.{}
+        return false
+    }
+    account_generation += 1
+    return true
+}
+
+// Joins an account another device shared: its keys and vault, with this
+// device's own key and client id.
+JoinAccount :: (server: string, public_hex: string, private_hex: string, vault: []u8) -> bool {
+    joined: Account
+    if !CopyCString(server, joined.server[:]) || !CopyCString(public_hex, joined.keys.public_key_hex[:]) ||
+    !CopyCString(private_hex, joined.keys.private_key_hex[:]) || vault.count != 32 {
+        return false
+    }
+    public_key: [AccountPublicKeyBytes]u8
+    if BytesOfHex(public_hex, public_key[:]) != AccountPublicKeyBytes {
+        return false
+    }
+    Sha256Hex(*public_key[0], AccountPublicKeyBytes, *joined.keys.public_id[0])
+    for index: 0..31 {
+        joined.vault[index] = vault[index]
+    }
+    NewClientId(joined.client_id[:])
+    RandomFill(joined.device_seed[:])
+    account = joined
+    SetVaultId()
+    account.ready = SetDevice() && SaveAccount()
+    Wipe(joined.vault[:])
+    Wipe(joined.device_seed[:])
+    if !account.ready {
+        account = Account.{}
+        return false
+    }
+    account_generation += 1
+    return true
+}
+
+// Forgets the account on this device; its records stay on the device.
+ForgetAccount :: () -> bool {
+    path_bytes: [PATH_LIMIT]u8
+    path := AccountPath(path_bytes[:])
+    Wipe(account.vault[:])
+    Wipe(account.device_seed[:])
+    account = Account.{}
+    account_generation += 1
+    return path == "" || RemoveFile(path) || !PathExists(path)
+}
+
+DigestBody :: (body: string, output: []u8) -> bool {
+    if body.count == 0 || output.count < 65 {
+        return false
+    }
+    descriptor := cast(*TextDescriptor)(*body)
+    Sha256Hex(descriptor.data, body.count, *output[0])
+    return output[0] != cast(u8)0
+}
+
+RandomNonceHex :: (context: *void, output: []u8) -> bool {
+    unused context
+    if output.count < 65 {
+        return false
+    }
+    random: [32]u8
+    RandomFill(random[:])
+    unused HexOf(random[:], output)
+    Wipe(random[:])
+    return true
+}
+
+SignDevice :: (context: *void, message: string, output: []u8) -> bool {
+    unused context
+    signature: [64]u8
+    if message.count == 0 || output.count < 129 || !DeviceSign(*account.device, message, signature[:]) {
+        return false
+    }
+    unused HexOf(signature[:], output)
+    return true
+}
+
+AccountClient :: () -> Client {
+    client: Client
+    client.server_url = AccountServer()
+    client.app_id = ACCOUNT_APP
+    client.identity = Identity.{.account_id = AccountId(), .public_key = TextUntilNul(account.keys.public_key_hex[:]),
+        .client_id = TextUntilNul(account.client_id[:]), .signing_context = cast(*void)*account.keys}
+    client.digest = DigestBody
+    client.signer = SignAccountMessage
+    return client
+}
+
+AccountDevice :: () -> Device {
+    return Device.{.key_id = TextUntilNul(account.device_key_id[:]),
+        .public_key_hex = TextUntilNul(account.device_public_hex[:]), .signer = SignDevice}
+}
