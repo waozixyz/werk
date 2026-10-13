@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Drive Werkzeug and its four apps on the harness's private Xvfb display.
+"""Drive Werk and its four apps on the harness's private Xvfb display.
 
 Uses disposable data and cache folders and fixture secrets only. Run
-through scripts/werkzeug_gui_test.sh, which starts the private display.
+through scripts/werk_gui_test.sh, which starts the private display.
 """
 from pathlib import Path
 import base64
@@ -14,9 +14,9 @@ import struct
 import subprocess
 import time
 
-assert os.environ.get("WERKZEUG_TEST_PRIVATE_DISPLAY") == "1", "Run scripts/werkzeug_gui_test.sh"
+assert os.environ.get("WERK_TEST_PRIVATE_DISPLAY") == "1", "Run scripts/werk_gui_test.sh"
 root = Path(__file__).resolve().parents[1]
-output = root / "build/werkzeug-gui-test"
+output = root / "build/werk-gui-test"
 shutil.rmtree(output, ignore_errors=True)
 data = output / "data"
 cache = output / "cache"
@@ -24,9 +24,9 @@ data.mkdir(parents=True)
 cache.mkdir(parents=True)
 environment = dict(os.environ)
 environment.pop("WAYLAND_DISPLAY", None)
-environment["WERKZEUG_DATA"] = str(data)
+environment["WERK_DATA"] = str(data)
 environment["XDG_CACHE_HOME"] = str(cache)
-environment["WERKZEUG_ASSETS"] = str(root / "build")
+environment["WERK_ASSETS"] = str(root / "build")
 app = None
 window = None
 
@@ -41,10 +41,10 @@ def command(*args):
 
 def start():
     global app, window
-    app = subprocess.Popen([str(root / "build/werkzeug")], env=environment)
+    app = subprocess.Popen([str(root / "build/werk")], env=environment)
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        assert app.poll() is None, "Werkzeug exited before showing its window"
+        assert app.poll() is None, "Werk exited before showing its window"
         found = subprocess.run(["xdotool", "search", "--onlyvisible", "--pid", str(app.pid)],
                                env=environment, capture_output=True, text=True)
         if found.returncode == 0:
@@ -53,7 +53,7 @@ def start():
             time.sleep(0.5)
             return
         time.sleep(0.1)
-    raise AssertionError("Werkzeug did not show its window")
+    raise AssertionError("Werk did not show its window")
 
 
 def stop():
@@ -172,6 +172,6 @@ try:
     assert "name=Fixture Person\n" in settings and "theme_mode=2\n" in settings, settings
     assert (data / "profile/settings.txt").stat().st_mode & 0o077 == 0
     stop()
-    print("Werkzeug GUI test: home, Pass, Calculator, Clock, Auth and Profile ran on a private display")
+    print("Werk GUI test: home, Pass, Calculator, Clock, Auth and Profile ran on a private display")
 finally:
     stop()

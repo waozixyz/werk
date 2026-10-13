@@ -5,7 +5,7 @@
 #import "pass_text"
 #import "text_buffer"
 #import "number_text"
-#import "werkzeug_app"
+#import "werk_app"
 
 Profile :: struct {
     name: [64]u8

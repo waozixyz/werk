@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the Werkzeug mark (Pass option 7) from the canonical vector for all distribution sizes."""
+"""Render the Werk mark (Pass option 7) from the canonical vector for all distribution sizes."""
 from pathlib import Path
 import io
 import cairosvg
@@ -20,7 +20,7 @@ for density, size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxh
 for path, size in outputs.items():
     render(size, '#ffffff' if 'launcher' in path or '/icons/' in path else None).save(ROOT / path)
 font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-name = 'Werkzeug'
+name = 'Werk'
 for path, size in [('assets/app/readme-banner.png',(1536,512)), ('assets/app/readme-square-630x500.png',(630,500)), ('showcase/banner.png',(1536,1024)), ('web/site/images/social.png',(1536,1024))]:
     w,h=size; image=Image.new('RGB',size,'#f7f3ff'); d=ImageDraw.Draw(image)
     icon_size=int(min(w*.24,h*.55))
@@ -34,4 +34,4 @@ for path, size in [('assets/app/readme-banner.png',(1536,512)), ('assets/app/rea
     image.paste(mark,(left,top),mark)
     d.text((left+icon_size+gap, (h-(box[3]-box[1]))/2-box[1]),name,font=font,fill='#291747')
     image.save(ROOT/path)
-print('Rendered Werkzeug brand assets')
+print('Rendered Werk brand assets')

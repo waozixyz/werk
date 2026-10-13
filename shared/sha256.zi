@@ -1,4 +1,4 @@
-// SHA-256, HMAC-SHA-256 and PBKDF2, shared by Werkzeug and its apps.
+// SHA-256, HMAC-SHA-256 and PBKDF2, shared by Werk and its apps.
 Sha256State :: struct {
     state: [8]u32
     bit_length: u64

@@ -1,4 +1,4 @@
-#import "werkzeug"
+#import "werk"
 #import "profile"
 #import "platform"
 #import "android"
@@ -21,7 +21,7 @@ WriteLog :: (priority: s32, tag: *u8, message: *u8) -> s32 #foreign log_library 
 Report :: (message: string) {
     tag: [16]u8
     text: [128]u8
-    if CopyCString("Werkzeug", tag[:]) && CopyCString(message, text[:]) {
+    if CopyCString("Werk", tag[:]) && CopyCString(message, text[:]) {
         unused WriteLog(6, *tag[0], *text[0])
     }
 }
@@ -46,7 +46,7 @@ main :: () -> s32 {
     thread_adapter: AttributeInit = NativeThreadAttributes
     unused thread_adapter
     title: [16]u8
-    unused CopyCString("Werkzeug", title[:])
+    unused CopyCString("Werk", title[:])
     InitWindow(0, 0, *title[0])
     if !IsWindowReady() {
         return 1
@@ -69,7 +69,7 @@ main :: () -> s32 {
         Render.CloseRaylib()
         return 1
     }
-    WerkzeugStart()
+    WerkStart()
     ok: bool = true
     while ok && Render.PollRaylib() {
         width: s32
@@ -108,7 +108,7 @@ main :: () -> s32 {
             Report("Could not begin frame")
         }
         if ok {
-            ok = WerkzeugFrame(session, bounds) == 0
+            ok = WerkFrame(session, bounds) == 0
             if !ok {
                 Report("Could not compose frame")
             }
@@ -120,7 +120,7 @@ main :: () -> s32 {
             }
         }
         AndroidFieldsEnd()
-        ShowKeyboard(WerkzeugKeyboard())
+        ShowKeyboard(WerkKeyboard())
         ok = Render.EndRaylibFrame() && ok
         if !ok {
             Report("Could not present frame")

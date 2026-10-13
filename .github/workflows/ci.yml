@@ -106,9 +106,9 @@ jobs:
         run: make package-deb
       - uses: actions/upload-artifact@v4
         with:
-          name: werkzeug-linux-${{ matrix.arch }}
+          name: werk-linux-${{ matrix.arch }}
           path: |
-            build/werkzeug
+            build/werk
             build/apps
             build/pfp.png
           if-no-files-found: error

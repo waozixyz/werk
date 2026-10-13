@@ -250,7 +250,7 @@ CreateKey :: (env: *JniEnv) -> bool {
 ConfirmDevice :: (session: *ActivityJniSession) -> bool {
     keyguard := Service(session, "keyguard")
     args: [2]JniValue
-    args[0] = ArgumentObject(TextObject(session.env, "Werkzeug"))
+    args[0] = ArgumentObject(TextObject(session.env, "Werk"))
     args[1] = ArgumentObject(TextObject(session.env, "Unlock your saved master password"))
     intent := ObjectCall(session.env, keyguard, "createConfirmDeviceCredentialIntent", "(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/Intent;", args[:])
     if intent == null { return false }
@@ -381,7 +381,7 @@ AndroidClipboardWrite :: (value: string) -> bool {
     session: ActivityJniSession
     if activity_jni_attach(*session) == 0 { return false }
     args: [2]JniValue
-    args[0] = ArgumentObject(TextObject(session.env, "Werkzeug"))
+    args[0] = ArgumentObject(TextObject(session.env, "Werk"))
     args[1] = ArgumentObject(TextObject(session.env, value))
     clip := StaticCall(session.env, "android/content/ClipData", "newPlainText", "(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;", args[:])
     args[0] = ArgumentObject(clip)

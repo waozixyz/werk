@@ -1,4 +1,4 @@
-// Runs the Werkzeug apps. Each app is its own bundle: the host checks every
+// Runs the Werk apps. Each app is its own bundle: the host checks every
 // capability it asks for, answers its calls and draws its widgets into the
 // host's session. An app's files, assets and secret belong to it alone.
 #import "std/bundle_host"
@@ -83,7 +83,7 @@ AppCount :: () -> s32 {
 }
 
 // Whether a capability's module is this one. Bundles may report the module
-// with a package prefix, such as "werkzeug_werkzeug_app".
+// with a package prefix, such as "werk_werk_app".
 ModuleIs :: (value: string, name: string) -> bool {
     if value == name {
         return true
@@ -108,7 +108,7 @@ AppFunction :: (function: string) -> bool {
 }
 
 AppAllows :: (context: *void, module: string, function: string) -> bool {
-    if ModuleIs(module, "werkzeug_app") {
+    if ModuleIs(module, "werk_app") {
         return AppFunction(function)
     }
     return WidgetHostSupports(module, function)
@@ -292,7 +292,7 @@ SecurePollCall :: (arguments: *HostValue, result: *HostValue) -> s32 {
 
 AppCall :: (context: *void, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
-    if !ModuleIs(TextFromCString(module), "werkzeug_app") {
+    if !ModuleIs(TextFromCString(module), "werk_app") {
         #if #defined(ANDROID_BUILD) {
             return AndroidWidgetCall(context, module, function, arguments, count, result)
         } else {

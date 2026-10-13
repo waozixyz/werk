@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pass's settings, profiles and secure master against a mock Werkzeug host,
+# Pass's settings, profiles and secure master against a mock Werk host,
 # natively and as a portable bundle.
 set -eu
 ziran=${1:?pass the ziran command}
@@ -15,7 +15,7 @@ env -u DISPLAY -u WAYLAND_DISPLAY build/pass-state-test/native
 binds=""
 for name in ReadStoreHost WriteStoreHost ClipboardCopyHost SecureAvailableHost SecureSavedHost \
     SecureRequestHost SecureForgetHost SecurePollHost; do
-    binds="$binds --bind werkzeug_app:$name=pass_state_host:$name"
+    binds="$binds --bind werk_app:$name=pass_state_host:$name"
 done
 "$ziran" bundle $args --entry pass_state_test:PassStateAnswer $binds \
     -o build/pass-state-test/portable.zib tests/pass_state_test.zi tests/pass_state_host.zi

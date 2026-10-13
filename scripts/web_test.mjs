@@ -1,4 +1,4 @@
-// Exercise the built site's Werkzeug app in a private headless browser with a
+// Exercise the built site's Werk app in a private headless browser with a
 // disposable profile: the home screen, a tool opened by ?app=, Calculator
 // typing, and Pass alone by ?mini as embedding pages use it.
 import {spawn} from 'node:child_process';
@@ -32,7 +32,7 @@ await new Promise(done => server.listen(0, '127.0.0.1', done));
 const base = `http://127.0.0.1:${server.address().port}/app/`;
 const environment = {...process.env};
 for (const key of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS']) delete environment[key];
-const browser = spawn(process.env.WERKZEUG_WEB_BROWSER || 'chromium', ['--headless=new', '--no-sandbox',
+const browser = spawn(process.env.WERK_WEB_BROWSER || 'chromium', ['--headless=new', '--no-sandbox',
   '--disable-gpu', '--disable-dev-shm-usage', '--no-first-run', '--remote-debugging-port=0',
   '--user-data-dir=' + profile, '--window-size=420,760', 'about:blank'],
   {env: environment, detached: true, stdio: ['ignore', 'ignore', 'pipe']});
@@ -108,7 +108,7 @@ try {
       await delay(200);
     }
     await screenshot(name + '-failure');
-    throw Error(`Werkzeug did not draw ${query || 'home'}: ${exceptions.join(' ')} ${diagnostics}`);
+    throw Error(`Werk did not draw ${query || 'home'}: ${exceptions.join(' ')} ${diagnostics}`);
   };
   const type = async text => {
     for (const character of text) {
@@ -126,7 +126,7 @@ try {
   await screenshot('calculator-typed');
   await open('?mini', 'pass-mini');
   if (exceptions.length) throw Error('Page exceptions: ' + exceptions.join(' '));
-  console.log('Werkzeug web: home, Calculator and Pass in mini mode drew in a private headless browser');
+  console.log('Werk web: home, Calculator and Pass in mini mode drew in a private headless browser');
 } finally {
   socket?.close();
   try {

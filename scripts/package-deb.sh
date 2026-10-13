@@ -4,26 +4,26 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 version=$(sed -n '1p' "$root/VERSION")
 arch=${DEB_ARCH:-$(dpkg --print-architecture)}
-stage="$root/build/package/deb/werkzeug"
+stage="$root/build/package/deb/werk"
 out="$root/build/release"
 
 test -n "$version"
 rm -rf "$stage"
-mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/lib/werkzeug/apps" "$stage/usr/share/applications" \
-	"$stage/usr/share/metainfo" "$stage/usr/share/icons/hicolor/512x512/apps" "$stage/usr/share/doc/werkzeug" "$out"
-cp "$root/build/werkzeug" "$stage/usr/bin/werkzeug"
-cp "$root"/build/apps/*.zib "$stage/usr/lib/werkzeug/apps/"
-cp "$root/build/pfp.png" "$stage/usr/lib/werkzeug/pfp.png"
-cp "$root/packaging/linux/xyz.waozi.werkzeug.desktop" "$stage/usr/share/applications/xyz.waozi.werkzeug.desktop"
-cp "$root/packaging/linux/xyz.waozi.werkzeug.appdata.xml" "$stage/usr/share/metainfo/xyz.waozi.werkzeug.appdata.xml"
-cp "$root/assets/app/icon.png" "$stage/usr/share/icons/hicolor/512x512/apps/werkzeug.png"
-cp "$root/LICENSE" "$root/README.md" "$stage/usr/share/doc/werkzeug/"
+mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/lib/werk/apps" "$stage/usr/share/applications" \
+	"$stage/usr/share/metainfo" "$stage/usr/share/icons/hicolor/512x512/apps" "$stage/usr/share/doc/werk" "$out"
+cp "$root/build/werk" "$stage/usr/bin/werk"
+cp "$root"/build/apps/*.zib "$stage/usr/lib/werk/apps/"
+cp "$root/build/pfp.png" "$stage/usr/lib/werk/pfp.png"
+cp "$root/packaging/linux/xyz.waozi.werk.desktop" "$stage/usr/share/applications/xyz.waozi.werk.desktop"
+cp "$root/packaging/linux/xyz.waozi.werk.appdata.xml" "$stage/usr/share/metainfo/xyz.waozi.werk.appdata.xml"
+cp "$root/assets/app/icon.png" "$stage/usr/share/icons/hicolor/512x512/apps/werk.png"
+cp "$root/LICENSE" "$root/README.md" "$stage/usr/share/doc/werk/"
 find "$stage" -type d -exec chmod 0755 {} \;
-chmod 0755 "$stage/usr/bin/werkzeug"
+chmod 0755 "$stage/usr/bin/werk"
 find "$stage/usr/share" "$stage/usr/lib" -type f -exec chmod 0644 {} \;
 installed=$(du -sk "$stage" | awk '{print $1}')
 cat > "$stage/DEBIAN/control" <<CONTROL
-Package: werkzeug
+Package: werk
 Version: $version
 Architecture: $arch
 Maintainer: Waozi <waozi@proton.me>
@@ -37,4 +37,4 @@ Description: small private tools: passwords, two-factor codes, calculator, clock
  shows two-factor sign-in codes, and Calculator and Clock cover everyday sums
  and time. Everything stays on the device.
 CONTROL
-dpkg-deb --root-owner-group --build "$stage" "$out/werkzeug_${version}_${arch}.deb"
+dpkg-deb --root-owner-group --build "$stage" "$out/werk_${version}_${arch}.deb"

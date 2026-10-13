@@ -1,6 +1,6 @@
 // The browser host. ?app=ID opens that tool at start; ?mini opens Pass on
 // its own, for pages that embed it.
-#import "werkzeug"
+#import "werk"
 #import "browser_storage"
 #import "std/text_buffer"
 Browser :: #import "kryon/Canvas";
@@ -40,12 +40,12 @@ main :: () -> s32 {
         Browser.CloseCanvas()
         return 1
     }
-    WerkzeugStart()
+    WerkStart()
     query := BrowserQuery()
     if QueryValue(query, "mini") != "" {
-        unused WerkzeugOpen("pass", true)
+        unused WerkOpen("pass", true)
     } else if QueryValue(query, "app") != "" {
-        unused WerkzeugOpen(QueryValue(query, "app"), false)
+        unused WerkOpen(QueryValue(query, "app"), false)
     }
     ok: bool = true
     while ok && Browser.PollCanvas() {
@@ -67,7 +67,7 @@ main :: () -> s32 {
         viewport := Browser.CanvasViewport()
         ok = BeginFrame(session, cast(u64)1, viewport) == FrameStatus.FrameOk
         if ok {
-            ok = WerkzeugFrame(session, viewport) == 0
+            ok = WerkFrame(session, viewport) == 0
         }
         if ok {
             ok = EndFrame(session) == FrameStatus.FrameOk

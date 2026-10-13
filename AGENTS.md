@@ -1,13 +1,13 @@
-# Werkzeug repository rules
+# Werk repository rules
 
-Werkzeug (formerly Pass) is a public repository. Read `~/Projects/AGENTS.md`
+Werk (formerly Pass) is a public repository. Read `~/Projects/AGENTS.md`
 first.
 
 ## Tools are separate apps
 
 - Each tool lives in `apps/<tool>/` and builds into its own bundle,
   `build/apps/<tool>.zib`. A tool reaches the host only through
-  `shared/werkzeug_app.zi`; the host (`src/apps.zi`) checks every call a
+  `shared/werk_app.zi`; the host (`src/apps.zi`) checks every call a
   bundle asks for and keeps each tool's files, assets and secret separate.
 - Tools never import another tool's modules. Code two tools need goes in
   `shared/`, as SHA-256 and PBKDF2 do.
@@ -26,7 +26,7 @@ first.
 - Keep Pass's on-disk formats and the Android package `xyz.waozi.pass`:
   existing installations update in place and keep their saved master
   password. `src/migrate.zi` moves Pass's old files once; keep it.
-- Every file Werkzeug writes is private (0600 in 0700 folders).
+- Every file Werk writes is private (0600 in 0700 folders).
 
 ## Platforms and tests
 
