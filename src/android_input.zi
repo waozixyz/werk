@@ -4,9 +4,9 @@
 #import "android"
 #import "android_jni"
 #import "android_dispatch"
-#import "text"
-#import "text_buffer"
-#import "utf8"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/utf8"
 
 AndroidTextSelection :: struct { valid: bool; cursor: s32; anchor: s32 }
 input_view: *void;
@@ -135,7 +135,7 @@ AndroidTextRead :: (id: s32, output: []u8) -> AndroidTextSelection {
     if !input_available { return result }
     UiLock()
     if input_field == id {
-        result.valid = CopyText(TextUntilNul(input_value[:]), output)
+        result.valid = CopyCString(TextUntilNul(input_value[:]), output)
         result.cursor = input_cursor; result.anchor = input_anchor
         observed_value = input_value; observed_cursor = input_cursor; observed_anchor = input_anchor
     }
@@ -149,7 +149,7 @@ AndroidTextSubmit :: (id: s32, value: string, cursor: s32, anchor: s32, secure: 
     // already have newer IME input; that must never be overwritten as an edit.
     if requested_field != id || value != TextUntilNul(observed_value[:]) { input_dirty = true }
     if cursor != observed_cursor || anchor != observed_anchor { selection_dirty = true }
-    requested_field = id; CopyText(value, requested_value[:])
+    requested_field = id; CopyCString(value, requested_value[:])
     requested_cursor = cursor; requested_anchor = anchor; requested_secure = secure
     UiUnlock()
     UiSchedule(UiInputSync)

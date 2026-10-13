@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Pass
-Comment=Generate deterministic passwords locally
-Exec=pass-gui
-Icon=pass
-Terminal=false
-Categories=System;Security;
-StartupNotify=true

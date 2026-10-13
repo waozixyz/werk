@@ -2,7 +2,7 @@
 // WebAssembly program. Emscripten supplies only the generated JS loader.
 #import "web"
 
-CacheName :: "pass-ziran-v2";
+CacheName :: "werkzeug-v1";
 FetchJob :: struct {
     active: bool
     immutable: bool

@@ -30,7 +30,9 @@ def check_apk(path):
                 assert all(re.fullmatch(r"Lxyz/waozi/pass/R(?:\$[^;]+)?;", item) for item in classes), f"{path}: packaged application bytecode: {classes}"
         for font in ["ui.ttf", "emoji.ttf"]:
             assert "assets/fonts/" + font in names, f"{path}: missing {font}"
-        assert "assets/fingerprint.png" in names, f"{path}: missing fingerprint images"
+        for app in ["pass", "auth", "calculator", "clock"]:
+            assert f"assets/apps/{app}.zib" in names, f"{path}: missing the {app} app"
+        assert "assets/pfp.png" in names, f"{path}: missing profile pictures"
         assert any(name.endswith("/libmain.so") for name in names), f"{path}: no NativeActivity payload"
     print(f"{path}: native Ziran app; only generated resource classes")
 

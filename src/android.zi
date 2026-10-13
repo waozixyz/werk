@@ -1,11 +1,13 @@
 // NativeActivity, AndroidKeyStore, and device authentication are called
 // directly through JNI. No application Java or C implementation is needed.
 #import "android_jni"
-#import "c_string"
-#import "byte_text_linux"
-#import "text_buffer"
-#import "utf8"
-#import "pass_core"
+#import "std/c_string"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/timer_linux"
+#import "std/utf8"
+#import "kryon/key_input"
+#import "files"
 
 libc :: #system_library "libc";
 ChangeDirectory :: (path: *u8) -> s32 #foreign libc "chdir";
@@ -13,10 +15,21 @@ android :: #system_library "android";
 ShowKeyboard :: (activity: *NativeActivity, flags: u32) #foreign android "ANativeActivity_showSoftInput";
 HideKeyboard :: (activity: *NativeActivity, flags: u32) #foreign android "ANativeActivity_hideSoftInput";
 
-store :: #system_library "pass_host";
-ReadStore :: (name: string, output: []u8) -> s32 #foreign store;
-WriteStore :: (name: string, value: string) -> bool #foreign store;
-Now :: () -> float64 #foreign store;
+// The saved master password stays where Pass kept it, so an update keeps
+// it unlocked by the same device key.
+SECURE_FILE :: ".pass-master"
+
+Now :: () -> float64 {
+    return cast(float64)MonotonicMilliseconds() / 1000.0
+}
+
+ReadStore :: (name: string, output: []u8) -> s32 {
+    return ReadPrivate(name, output)
+}
+
+WriteStore :: (name: string, value: string) -> bool {
+    return WritePrivate(name, value)
+}
 
 keyboard_visible: bool;
 secure_pending: s32;
@@ -28,12 +41,7 @@ AndroidInitialize :: () -> bool {
     return path != null && ChangeDirectory(path) == 0
 }
 
-// Android has no mini mode.
-#program_export
-HostOpenFullApp :: () {}
-
-#program_export
-HostKeyboard :: (visible: bool) {
+AndroidKeyboard :: (visible: bool) {
     if visible == keyboard_visible { return }
     app := NativeApp()
     if app == null || app.activity == null { return }
@@ -102,7 +110,7 @@ CopyJavaText :: (env: *JniEnv, value: *void, output: []u8) -> s32 {
                 index += 1
             }
         }
-        next := MasterEmojiAppendUtf8(output, used, codepoint)
+        next := TypedTextAppend(output[0:output.count - 1], used, cast(s32)codepoint)
         if next == used { used = -1; break }
         used = next; index += 1
     }
@@ -179,8 +187,7 @@ AndroidReadPreference :: (name: string, output: []u8) -> s32 {
     return count
 }
 
-#program_export
-SecureAvailable :: () -> bool {
+AndroidSecureAvailable :: () -> bool {
     session: ActivityJniSession
     if activity_jni_attach(*session) == 0 { return false }
     args := NoArguments()
@@ -189,10 +196,9 @@ SecureAvailable :: () -> bool {
     activity_jni_detach(*session)
     return available
 }
-#program_export
-SecureSaved :: () -> bool {
+AndroidSecureSaved :: () -> bool {
     bytes: [2105]u8
-    return ReadStore(".pass-master", bytes[:]) > 0
+    return ReadStore(SECURE_FILE, bytes[:]) > 0
 }
 
 KeyStore :: (env: *JniEnv) -> *void {
@@ -244,7 +250,7 @@ CreateKey :: (env: *JniEnv) -> bool {
 ConfirmDevice :: (session: *ActivityJniSession) -> bool {
     keyguard := Service(session, "keyguard")
     args: [2]JniValue
-    args[0] = ArgumentObject(TextObject(session.env, "Pass"))
+    args[0] = ArgumentObject(TextObject(session.env, "Werkzeug"))
     args[1] = ArgumentObject(TextObject(session.env, "Unlock your saved master password"))
     intent := ObjectCall(session.env, keyguard, "createConfirmDeviceCredentialIntent", "(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/Intent;", args[:])
     if intent == null { return false }
@@ -252,9 +258,8 @@ ConfirmDevice :: (session: *ActivityJniSession) -> bool {
     return VoidCall(session.env, session.activity, "startActivityForResult", "(Landroid/content/Intent;I)V", args[:])
 }
 
-#program_export
-SecureRequest :: (master: string, save: bool) -> bool {
-    if secure_pending != 0 || !SecureAvailable() { return false }
+AndroidSecureRequest :: (master: string, save: bool) -> bool {
+    if secure_pending != 0 || !AndroidSecureAvailable() { return false }
     session: ActivityJniSession
     if activity_jni_attach(*session) == 0 { return false }
     ok: bool = true
@@ -299,13 +304,12 @@ TrySecure :: (session: *ActivityJniSession, output: []u8) -> s32 {
         if iv == null || env.functions.GetArrayLength(env, iv) != 12 { return 3 }
         env.functions.GetByteArrayRegion(env, iv, 0, 12, *bytes[0])
         prefix = 12
-        value := TextUntilNul(secure_master[:])
-        length = cast(s32)value.count
+        length = cast(s32)TextUntilNul(secure_master[:]).count
         data := env.functions.NewByteArray(env, length)
         env.functions.SetByteArrayRegion(env, data, 0, length, *secure_master[0])
         args[0] = ArgumentObject(data)
     } else {
-        hex_count := ReadStore(".pass-master", hex[:])
+        hex_count := ReadStore(SECURE_FILE, hex[:])
         if hex_count < 56 || hex_count % 2 != 0 { return 3 }
         length = hex_count / 2
         if length > 1052 { return 3 }
@@ -335,7 +339,7 @@ TrySecure :: (session: *ActivityJniSession, output: []u8) -> s32 {
         length += prefix
         index: s32 = 0
         while index < length { hex[index * 2] = HexDigit(bytes[index] >> cast(u8)4); hex[index * 2 + 1] = HexDigit(bytes[index] & cast(u8)15); index += 1 }
-        if !WriteStore(".pass-master", TextView(hex[0:length * 2])) { return 3 }
+        if !WriteStore(SECURE_FILE, TextView(hex[0:length * 2])) { return 3 }
     } else {
         if length >= cast(s32)output.count { return 3 }
         index: s32 = 0
@@ -346,8 +350,7 @@ TrySecure :: (session: *ActivityJniSession, output: []u8) -> s32 {
     return 2
 }
 
-#program_export
-SecurePoll :: (output: []u8) -> s32 {
+AndroidSecurePoll :: (output: []u8) -> s32 {
     if secure_pending == 0 { return 0 }
     result: s32 = 3
     if Now() < secure_deadline {
@@ -363,8 +366,7 @@ SecurePoll :: (output: []u8) -> s32 {
     return result
 }
 
-#program_export
-SecureForget :: () -> bool {
+AndroidSecureForget :: () -> bool {
     session: ActivityJniSession
     if activity_jni_attach(*session) == 0 { return false }
     args: [1]JniValue
@@ -372,14 +374,14 @@ SecureForget :: () -> bool {
     ok := VoidCall(session.env, KeyStore(session.env), "deleteEntry", "(Ljava/lang/String;)V", args[:])
     activity_jni_detach(*session)
     secure_pending = 0; secure_master = .{}
-    return WriteStore(".pass-master", "") && ok
+    return WriteStore(SECURE_FILE, "") && ok
 }
 
 AndroidClipboardWrite :: (value: string) -> bool {
     session: ActivityJniSession
     if activity_jni_attach(*session) == 0 { return false }
     args: [2]JniValue
-    args[0] = ArgumentObject(TextObject(session.env, "Pass"))
+    args[0] = ArgumentObject(TextObject(session.env, "Werkzeug"))
     args[1] = ArgumentObject(TextObject(session.env, value))
     clip := StaticCall(session.env, "android/content/ClipData", "newPlainText", "(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;", args[:])
     args[0] = ArgumentObject(clip)

@@ -1,0 +1,113 @@
+// On Android a framework EditText owns the input method (composition,
+// autocorrect, suggestions). The focused text field of whichever app is
+// open is kept in step with it; every other widget call goes straight to
+// the widget host.
+#import "std/bundle_host"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "kryon/hosted_values"
+#import "kryon/widget_codec"
+#import "kryon/widget_host"
+using UI :: #import "kryon/Widgets";
+#import "android_input"
+
+using HostValueKind;
+
+props_codec: WidgetTextFieldPropsCodec;
+synced_codec: WidgetTextFieldPropsCodec;
+result_codec: WidgetTextFieldResultCodec;
+answer_codec: WidgetTextFieldResultCodec;
+editor_text: [1024]u8;
+editor_mask: [1024]u8;
+// Whether a focused field was drawn this frame; the editor closes otherwise.
+field_seen: bool;
+
+AndroidFieldsBegin :: () {
+    field_seen = false
+}
+
+AndroidFieldsEnd :: () {
+    if !field_seen {
+        AndroidTextHide()
+    }
+}
+
+Characters :: (text: string) -> s32 {
+    count: s32 = 0
+    index: s64 = 0
+    while index < text.count {
+        if (text[index] & cast(u8)0xC0) != cast(u8)0x80 {
+            count += 1
+        }
+        index += 1
+    }
+    return count
+}
+
+AndroidWidgetCall :: (context: *void, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if count != 2 || TextFromCString(module) != "text_field_widget" ||
+    TextFromCString(function) != "TextFieldHostedHost" || !WidgetValidTextFieldProps(arguments[1]) {
+        return WidgetHostCall(context, module, function, arguments, count, result)
+    }
+    props := WidgetDecodeTextFieldProps(arguments[1], *props_codec)
+    if !props.focused {
+        return WidgetHostCall(context, module, function, arguments, count, result)
+    }
+    original := props.value
+    selection := AndroidTextRead(props.focus_id, editor_text[:])
+    typed := TextUntilNul(editor_text[:])
+    changed := selection.valid && typed != original
+    if selection.valid {
+        props.value = typed
+        props.cursor = selection.cursor
+        props.anchor = selection.anchor
+        if props.secure {
+            masked := Characters(typed)
+            if masked > 1023 {
+                masked = 1023
+            }
+            index: s32 = 0
+            while index < masked {
+                editor_mask[index] = cast(u8)42
+                index += 1
+            }
+            props.display_value = TextView(editor_mask[0:masked])
+        }
+    }
+    // The editor delivers the typing; the field only draws and selects.
+    props.input = TextFieldInput.{}
+    synced: [2]HostValue = .[arguments[0], WidgetEncodeTextFieldProps(props, *synced_codec)]
+    if WidgetHostCall(context, module, function, *synced[0], 2, result) == 0 {
+        return 0
+    }
+    answer := WidgetDecodeTextFieldResult(result.*, *result_codec)
+    value := original
+    if changed {
+        answer.edit = TextFieldEdit.{.start = 0, .end = cast(s32)original.count, .replacement = typed, .changed = true}
+        value = typed
+    }
+    AndroidTextSubmit(props.focus_id, value, answer.cursor, answer.anchor, props.secure)
+    // The app keeps the field focused, so the editor stays with it.
+    field_seen = true
+    result.* = WidgetEncodeTextFieldResult(answer, *answer_codec)
+    return 1
+}
+
+// Keeps one of Werkzeug's own fields in step with the editor: typing there
+// replaces the text in buffer, and the field's text is sent back.
+AndroidFieldSync :: (id: s32, buffer: []u8, cursor: s32, anchor: s32) {
+    selection := AndroidTextRead(id, editor_text[:])
+    if selection.valid {
+        typed := TextUntilNul(editor_text[:])
+        if typed.count < buffer.count {
+            index: s64 = 0
+            while index < buffer.count {
+                buffer[index] = ifx index < typed.count then typed[index] else cast(u8)0
+                index += 1
+            }
+        }
+    }
+    AndroidTextSubmit(id, TextUntilNul(buffer), cursor, anchor, false)
+    field_seen = true
+}

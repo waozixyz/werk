@@ -13,7 +13,11 @@
 using UI :: #import "kryon/Widgets";
 #import "app_protocol"
 #import "platform"
+#import "files"
 #import "sha256"
+#if #defined(ANDROID_BUILD) {
+    #import "android_fields"
+}
 
 using HostValueKind;
 
@@ -204,10 +208,35 @@ ReadStoreCall :: (app: *App, arguments: *HostValue, result: *HostValue) -> s32 {
     return 1
 }
 
+// A secret the device unlocked is copied into the app's buffer, then wiped.
+SecurePollCall :: (arguments: *HostValue, result: *HostValue) -> s32 {
+    output := arguments[0]
+    if output.kind != cast(s32)HostSlice || (output.length > cast(usize)0 && output.elements == null) {
+        return 0
+    }
+    secret: [1024]u8
+    status := SecurePoll(secret[:])
+    index: s64 = 0
+    while status == 2 && index < cast(s64)output.length && index < 1024 {
+        output.elements[index].bits = cast(u64)secret[index]
+        output.elements[index].integer = cast(s64)secret[index]
+        index += 1
+    }
+    for wipe: 0..1023 {
+        secret[wipe] = cast(u8)0
+    }
+    result.* = HostScalar("s32", cast(s64)status)
+    return 1
+}
+
 AppCall :: (context: *void, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
     if !ModuleIs(TextFromCString(module), "werkzeug_app") {
-        return WidgetHostCall(context, module, function, arguments, count, result)
+        #if #defined(ANDROID_BUILD) {
+            return AndroidWidgetCall(context, module, function, arguments, count, result)
+        } else {
+            return WidgetHostCall(context, module, function, arguments, count, result)
+        }
     }
     app := cast(*App)context
     name := TextFromCString(function)
@@ -286,8 +315,7 @@ AppCall :: (context: *void, module: *u8, function: *u8,
         return 1
     }
     if name == "SecurePollHost" && count == 1 {
-        result.* = HostScalar("s32", 0)
-        return 1
+        return SecurePollCall(arguments, result)
     }
     if app_mode != APP_FRAME {
         return 0
@@ -369,7 +397,7 @@ LoadApp :: (id: string, path: string) -> bool {
     if app_count >= APP_LIMIT {
         return false
     }
-    bytes, found := ReadEntireFile(path)
+    bytes, found := ReadBundle(path)
     if !found {
         return false
     }

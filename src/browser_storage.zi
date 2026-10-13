@@ -1,0 +1,93 @@
+// Browser storage: Werkzeug's files live in IndexedDB through Emscripten's
+// IDBFS, in the same /pass-data database Pass used, so Pass's saved
+// profiles and settings carry over. Without storage (private windows,
+// embedded previews) the tools still work; nothing is kept.
+#import "web"
+
+BROWSER_DATA :: "/pass-data"
+
+sync_done: bool;
+sync_failed: bool;
+browser_persistent: bool;
+
+StorageSynced :: (context: s32, error: s32, second: s32, third: s32) {
+    sync_failed = !WebIsUndefined(WebValueOf(error))
+    sync_done = true
+}
+
+// Copies IndexedDB into memory (populate) or memory into IndexedDB.
+BrowserSync :: (populate: bool) -> bool {
+    scope := WebScope()
+    fs := WebGetObject(WebModule, WebName("FS"))
+    callback := WebFunction(StorageSynced, 0)
+    sync_done = false
+    sync_failed = false
+    WebCall2(fs, WebName("syncfs"), WebBool(populate), WebObject(callback))
+    ok := !WebFailed()
+    while ok && !sync_done {
+        WebSleep(1)
+    }
+    WebRelease(callback)
+    WebEnd(scope)
+    return ok && !sync_failed
+}
+
+// Mounts the data folder and registers the offline worker.
+BrowserStorageOpen :: () -> bool {
+    scope := WebScope()
+    fs := WebGetObject(WebModule, WebName("FS"))
+    backend := WebGetObject(WebModule, WebName("IDBFS"))
+    WebCall1(fs, WebName("mkdir"), WebText(BROWSER_DATA))
+    if WebFailed() {
+        WebEnd(scope)
+        return false
+    }
+    options := WebNewObject()
+    arguments: [3]WebValue = .[WebObject(backend), WebObject(options), WebText(BROWSER_DATA)]
+    WebCall(fs, WebName("mount"), *arguments[0], 3)
+    mounted := !WebFailed()
+    WebEnd(scope)
+    scope = WebScope()
+    navigator := WebGetObject(WebGlobal, WebName("navigator"))
+    worker := WebGetObject(navigator, WebName("serviceWorker"))
+    if worker != 0 {
+        WebCall1(worker, WebName("register"), WebText("sw.js"))
+    }
+    WebEnd(scope)
+    browser_persistent = mounted && BrowserSync(true)
+    return true
+}
+
+// Saves written files to IndexedDB; false when the browser keeps nothing.
+BrowserStorageSave :: () -> bool {
+    return browser_persistent && BrowserSync(false)
+}
+
+BrowserDark :: () -> bool {
+    scope := WebScope()
+    media := WebAsObject(WebCall1(WebGlobal, WebName("matchMedia"), WebText("(prefers-color-scheme: dark)")))
+    dark := WebAsBool(WebGet(media, WebName("matches")))
+    WebEnd(scope)
+    return dark
+}
+
+page_text: [4096]u8;
+
+// The page address's query, such as "?app=pass".
+BrowserQuery :: () -> string {
+    page_text[0] = cast(u8)0
+    scope := WebScope()
+    location := WebGetObject(WebGlobal, WebName("location"))
+    if location != 0 && !WebFailed() {
+        value := WebGet(location, WebName("search"))
+        if value.tag == WebStringTag {
+            WebCopyString(WebAsObject(value), page_text[:])
+        }
+    }
+    WebEnd(scope)
+    index: s32 = 0
+    while index < 4095 && page_text[index] != cast(u8)0 {
+        index += 1
+    }
+    return TextView(page_text[0:index])
+}

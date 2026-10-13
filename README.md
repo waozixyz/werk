@@ -1,50 +1,104 @@
 <p align="center">
-  <img src="assets/app/readme-banner.png" alt="Pass" width="100%">
-</p>
-
-<p align="center">
   <a href="https://f-droid.org/packages/xyz.waozi.pass/">
     <img src="assets/app/badge-f-droid.png" alt="Get it on F-Droid" height="56">
   </a>
 </p>
 
-# Pass
+# Werkzeug
 
-Website and browser app: [pass.waozi.xyz](https://pass.waozi.xyz/)
+Small private tools in one app. The home screen opens each one:
 
-The browser generator also works when browser storage is blocked or unavailable.
-Profiles and settings require browser storage to be saved between visits.
+- **Pass**: a stateless password generator. The same site, login, master
+  password and settings always give the same password, so there is no
+  password database to keep. It is an independent implementation of the
+  LessPass algorithm; compatibility does not imply endorsement by or
+  affiliation with the LessPass project.
+- **Auth**: two-factor sign-in codes (TOTP, RFC 6238, with SHA-1, SHA-256 or
+  SHA-512 and 6 to 8 digits). Add accounts by pasting `otpauth://` links, one
+  or many such as an authenticator's plain-text export, or by entering the
+  secret key. Tap a code to copy it; it is cleared from the clipboard after
+  30 seconds.
+- **Calculator**: arithmetic with brackets, powers and percent, by keypad or
+  keyboard.
+- **Clock**: the local time and date, and a stopwatch that keeps running
+  while the app is closed.
 
-Pass is a stateless password generator: the same site, login, master
-password, and settings produce the same result without a password database.
-It is a new, independently written implementation of the LessPass generation
-algorithm. Compatibility does not imply endorsement by or affiliation with the
-LessPass project.
+The profile holds your name, a picture and the appearance every tool shares:
+system, light or dark, an accent color and Material or Classic widgets.
 
-## Install
+Werkzeug was previously Pass. On its first start it moves Pass's saved
+profiles, settings and theme into the new layout; the Android app keeps
+Pass's package, so it updates in place and keeps a saved master password.
 
-Prebuilt CLI and desktop downloads are available from
-[pass.waozi.xyz](https://pass.waozi.xyz/#downloads). To build from a checkout:
+## Privacy
+
+Everything is computed on the device. Werkzeug makes no network requests and
+has no accounts. Each tool keeps its own files, readable only by your user:
+
+| Platform | Data |
+|---|---|
+| Linux | `$XDG_DATA_HOME/werkzeug` (or `~/.local/share/werkzeug`) |
+| Android | the app's private storage |
+| Browser | IndexedDB on this site |
+
+Auth's secret keys are stored in its private `accounts.txt` as `otpauth`
+links, protected by the file permissions of your account or the Android app
+sandbox. Back up that file, or keep your original export, to move accounts to
+another device.
+
+## Tools are separate apps
+
+Each tool lives in `apps/<tool>/` and is built into its own portable bundle,
+`build/apps/<tool>.zib`. All four are preinstalled. A tool reaches the host
+only through the calls in `shared/werkzeug_app.zi` (its private files,
+clipboard, clock, key derivation and device-protected secret), and the host
+checks every call a bundle asks for before it runs. Tools never import each
+other.
+
+## Build and test
+
+Dependencies and the compiler are pinned in `ziran.lock`. Desktop builds need
+SDL2, Cairo, FreeType, Fontconfig and Pango development packages; browser
+builds need Emscripten; Android builds need JDK 21 and the SDK/NDK versions in
+`droid/app/build.gradle`. Desktop tests use Xvfb, xdotool, xclip and
+ImageMagick on private displays.
 
 ```sh
-make cli
+make gui            # build/werkzeug and the app bundles in build/apps
+make test           # Pass core and CLI, Pass state, Auth codes, Calculator
+make gui-smoke      # light and dark home screens on a private Xvfb display
+make gui-test       # every tool, clipboard and profile on a private display
+make site           # build/site: browser app and offline worker
+make web-smoke      # private headless Chromium
+make android-debug  # ARM32, ARM64 and universal APKs
+make android-emulator # the x86_64 APK for a private emulator
 ```
 
-## Use
+For development with the real project repositories, create an ignored
+`ziran.local.toml`:
+
+```toml
+[overrides]
+kryon = "../../kryonlabs/kryon"
+ziran = "../../ziranlang/ziran"
+```
+
+## The `pass` command
 
 ```text
 pass [OPTIONS] SITE LOGIN [MASTER_PASSWORD]
 pass [OPTIONS] PROFILE SITE
 ```
 
-The default password has 16 characters and includes lowercase letters,
-uppercase letters, digits, and symbols. Length must be between 5 and 35,
-matching LessPass clients. The default counter is 1.
+`make cli` builds it and `make install-cli` installs it. The default password
+has 16 characters and includes lowercase letters, uppercase letters, digits
+and symbols. Length must be between 5 and 35, matching LessPass clients. The
+default counter is 1.
 
 Passing a master password as an argument can expose it to process inspection
 and shell history. Omitting it is safer: `pass` first checks
 `LESSPASS_MASTER_PASSWORD`, then reads one line from standard input. Use
-`--prompt` to bypass the environment and read from standard input. For example:
+`--prompt` to bypass the environment and read from standard input:
 
 ```sh
 pass --prompt example.com alice
@@ -63,90 +117,20 @@ profile defaults. Profiles and vaults are read without changing them.
 `--copy` or a profile's `copy` setting copies through `xclip` on X11;
 `--clear-after 90s` releases that clipboard selection after the given time
 without erasing a later copy from another application. Use `--no-copy` to
-print the generated password instead.
-
-The app adds clipboard clearing, profiles, settings,
-master-password masking, and Android device authentication. Profiles and
-settings keep their existing storage formats. A master password saved by the
-old Android host must be saved again with the new host; generation does not
-require storing a master password.
-
-Run `pass --help` for all flags.
-
-## Build and test
-
-Every maintained Pass implementation is Ziran: password derivation, CLI,
-Kryon screens, persistence, clipboard policy, Android JNI calls, and browser
-offline caching. C, WebAssembly, and the browser JavaScript loaders are
-compiler outputs under `build/`. Shell, Python, and Gradle files orchestrate
-builds, packaging, and tests.
-
-Dependencies and the compiler are pinned in `ziran.lock`. Desktop builds need
-SDL2, Cairo, FreeType, Fontconfig, and Pango development packages; browser builds
-need Emscripten; Android builds need JDK 21 and the SDK/NDK versions in
-`droid/app/build.gradle`.
-Desktop input and resize checks also use Xvfb, xdotool, xclip, and ImageMagick.
-
-```sh
-make test           # native core/CLI, independent reference, portable runtime
-make gui            # build/pass-gui
-make gui-smoke      # private Xvfb display
-make gui-input-test # compact/wide layout, cursors, input, profiles and restart on private Xvfb
-make site           # build/site: browser app and generated offline worker
-make web-smoke      # private headless Chromium
-make android-debug  # ARM32, ARM64 and universal APKs
-make android-emulator # build the x86_64 APK
-make android-input-test # keyboard, Generate/Copy and persistence in a private emulator
-```
-
-`ziran build`, `ziran run`, and `ziran check` select the desktop profile.
-That profile uses `src/desktop.zi`, preserving Pass's storage, clipboard,
-fingerprint, and mini-window capabilities. `ziran install` installs `pass-gui`;
-`make install` also installs the command-line password generator.
-
-The Android app supports API 21 and newer and declares no Internet permission.
-Optional master-password storage uses AndroidKeyStore and device
-credential authentication on API 23 and newer. Browser profiles/settings use
-IndexedDB; offline use requires an initial successful online load.
-
-For development with the real project repositories, create an ignored
-`ziran.local.toml`:
-
-```toml
-[overrides]
-kryon = "../../kryonlabs/kryon"
-ziran = "../../ziranlang/ziran"
-```
-
-`make plan9-c` generates the native Plan 9 GUI, CLI, and libdraw fingerprint
-asset from Ziran sources. Transfer the checkout with `build/plan9` to Plan 9,
-then run `mk` and `mk install`. Run `pass-gui` inside Rio, or
-`pass-gui --mini` for the compact window. The GUI uses native libdraw and
-libthread, including keyboard input, mouse input, resizing, and `/dev/snarf`.
-Profiles and settings are stored privately in `$home/lib/pass`; `PASS_DATA`
-and `PASS_ASSETS` can override the data and asset directories. Optional
-master-password storage requires Android's device credential service.
-
-`make plan9-test` builds and exercises the native compiler, CLI, and GUI in
-an isolated headless q9 VM. Set `TAIJI_ROOT` to the existing Plan 9 tree when
-it is outside the default project location. The test uses disposable build
-artifacts and does not touch a running q9 session or the desktop display.
+print the generated password instead. Run `pass --help` for all flags.
 
 ## Source layout
 
 ```text
-pass_core.zi           password derivation and fingerprint
-src/cli.zi             command-line entry point
-src/app.zi             shared Kryon screens
-src/runtime.zi         settings, profiles, clipboard and secure actions
-src/theme.zi           native Kryon style rules
-src/host.zi            storage and platform capabilities
-src/desktop.zi         desktop lifecycle
-src/plan9.zi           native Plan 9 libdraw lifecycle
-src/plan9_host.zi      native Plan 9 storage and clock
-src/browser.zi         browser lifecycle
-src/service_worker.zi  offline caching
-src/android*.zi        NativeActivity, JNI and Android lifecycle
+apps/pass/          Pass: LessPass core, settings and profiles, screens, CLI
+apps/auth/          Auth: TOTP, otpauth links, accounts and screens
+apps/calculator/    Calculator
+apps/clock/         Clock and stopwatch
+shared/             the app interface, protocol and SHA-256/PBKDF2
+src/werkzeug.zi     home screen, profile screen and the bar above a tool
+src/apps.zi         loads, checks and runs the app bundles
+src/platform.zi     files, clock, clipboard and secrets per platform
+src/desktop.zi, src/android_main.zi, src/browser.zi   platform main loops
 ```
 
 ## License

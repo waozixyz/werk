@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0] - 2026-10-13
+
+- Pass is now Werkzeug: a home screen of small private tools, each its own app and all preinstalled.
+- Add Auth for two-factor sign-in codes from otpauth links or secret keys; copied codes clear after 30 seconds.
+- Add Calculator, and Clock with a stopwatch.
+- Add a profile with your name, a picture and the appearance every tool shares.
+- Keep your Pass profiles, settings, theme and saved master password when updating.
+
 ## [0.2.10] - 2026-10-05
 
 - Introduce the purple password asterisk and keyhole logo across Pass, website icons, Android launchers, and app listings.

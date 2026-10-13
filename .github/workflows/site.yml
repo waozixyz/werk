@@ -56,12 +56,12 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: pass-browser-diagnostics
+          name: werkzeug-browser-diagnostics
           path: build/web-test/*.png
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
-          name: pass-site
+          name: werkzeug-site
           path: build/site
           if-no-files-found: error
 
@@ -73,7 +73,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: pass-site
+          name: werkzeug-site
           path: build/site
       - name: Deploy Preview To Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: pass-site
+          name: werkzeug-site
           path: build/site
       - name: Deploy Production To Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

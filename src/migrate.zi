@@ -1,0 +1,144 @@
+// Brings the settings and profiles Pass saved before it became part of
+// Werkzeug into the Pass app's own folder, once, and its theme into the
+// profile. The old files are left in place.
+#import "std/file"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "files"
+#import "platform"
+#if #defined(ANDROID_BUILD) {
+    #import "android"
+}
+
+PASS_SETTING_KEYS :: 15
+
+PassSettingKey :: (index: s32) -> string {
+    keys: [PASS_SETTING_KEYS]string = .["auto_copy", "clear_after_seconds", "show_fingerprint", "length",
+    "counter", "lower", "upper", "digits", "symbols", "exclude", "theme_source", "theme_mode", "theme_id",
+    "theme_style", "style_pack"]
+    return keys[index]
+}
+
+// Pass's file name for a setting: .kryon_pass_KEY.txt.
+PassSettingFile :: (output: []u8, key: string) -> string {
+    parts: [3]string = .[".kryon_pass_", key, ".txt"]
+    used: s64 = 0
+    for part: 0..2 {
+        index: s64 = 0
+        while index < parts[part].count && used < output.count - 1 {
+            output[used] = parts[part][index]
+            used += 1
+            index += 1
+        }
+    }
+    output[used] = cast(u8)0
+    return TextView(output[0:used])
+}
+
+// Where Pass kept its files: Android's internal folder, or the desktop
+// app's working folder.
+LegacyFolder :: () -> string {
+    #if #defined(ANDROID_BUILD) {
+        return DataRoot()
+    } else {
+        return "."
+    }
+}
+
+ReadLegacy :: (name: string, output: []u8) -> s32 {
+    path: [PATH_LIMIT]u8
+    count := ReadPrivate(PathJoin(path[:], LegacyFolder(), name), output)
+    #if #defined(ANDROID_BUILD) {
+        // The first Android versions kept settings in shared preferences.
+        if count < 0 {
+            count = AndroidReadPreference(name, output)
+        }
+    }
+    return count
+}
+
+CopyLegacy :: (folder: string, name: string) -> bool {
+    value: [65536]u8
+    count := ReadLegacy(name, value[:])
+    if count < 0 {
+        return false
+    }
+    target: [PATH_LIMIT]u8
+    copied := WritePrivate(PathJoin(target[:], folder, name), TextView(value[0:count]))
+    for index: 0..65535 {
+        value[index] = cast(u8)0
+    }
+    return copied
+}
+
+LegacyNumber :: (key: string) -> s32 {
+    name: [96]u8
+    value: [32]u8
+    count := ReadLegacy(PassSettingFile(name[:], key), value[:])
+    if count <= 0 {
+        return -1
+    }
+    number: s32 = 0
+    index: s32 = 0
+    while index < count {
+        if value[index] < cast(u8)48 || value[index] > cast(u8)57 {
+            return -1
+        }
+        number = number * 10 + cast(s32)(value[index] - cast(u8)48)
+        index += 1
+    }
+    return number
+}
+
+// Pass's theme becomes the profile's appearance when there is no profile.
+MigrateTheme :: () {
+    folder: [PATH_LIMIT]u8
+    profile_folder := PathJoin(folder[:], DataRoot(), "profile")
+    path: [PATH_LIMIT]u8
+    settings := PathJoin(path[:], profile_folder, "settings.txt")
+    mode := LegacyNumber("theme_mode")
+    if mode < 0 || PathExists(settings) || !EnsureDirectory(profile_folder) {
+        return
+    }
+    accent := LegacyNumber("theme_id")
+    style := LegacyNumber("theme_style")
+    text: [256]u8
+    used: s64 = 0
+    lines: [3]string = .["theme_mode=", "accent=", "material="]
+    values: [3]s32 = .[mode, accent, ifx style == 1 then 0 else 1]
+    for line: 0..2 {
+        if values[line] < 0 || values[line] > 99 {
+            continue
+        }
+        index: s64 = 0
+        while index < lines[line].count {
+            text[used] = lines[line][index]
+            used += 1
+            index += 1
+        }
+        if values[line] >= 10 {
+            text[used] = cast(u8)(48 + values[line] / 10)
+            used += 1
+        }
+        text[used] = cast(u8)(48 + values[line] % 10)
+        text[used + 1] = cast(u8)10
+        used += 2
+    }
+    unused WritePrivate(settings, TextView(text[0:used]))
+}
+
+MigratePassData :: () {
+    apps: [PATH_LIMIT]u8
+    folder: [PATH_LIMIT]u8
+    pass_folder := PathJoin(folder[:], PathJoin(apps[:], DataRoot(), "apps"), "pass")
+    if pass_folder == "" || DirectoryExists(pass_folder) || !EnsureDirectory(pass_folder) {
+        return
+    }
+    for index: 0..PASS_SETTING_KEYS - 1 {
+        name: [96]u8
+        unused CopyLegacy(pass_folder, PassSettingFile(name[:], PassSettingKey(cast(s32)index)))
+    }
+    unused CopyLegacy(pass_folder, "profiles.tsv")
+    unused CopyLegacy(pass_folder, "settings.cfg")
+    MigrateTheme()
+}

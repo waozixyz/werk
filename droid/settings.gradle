@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "pass"
+rootProject.name = "werkzeug"
 include ':app'

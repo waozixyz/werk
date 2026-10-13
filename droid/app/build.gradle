@@ -42,8 +42,8 @@ android {
         applicationId 'xyz.waozi.pass'
         minSdk 21
         targetSdk 36
-        versionCode 11
-        versionName "0.2.10"
+        versionCode 12
+        versionName "0.3.0"
         // Default to the two realistic phone targets; override with
         // -Pabi=x86_64 etc. for emulator builds.
         def abis = project.findProperty('abi') ?: 'armeabi-v7a,arm64-v8a'
@@ -98,10 +98,17 @@ def prepareFonts = tasks.register('prepareFonts', Copy) {
 android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/passAssets'))
 tasks.named('preBuild').configure { dependsOn prepareFonts }
 
+// The tool apps are portable bundles, built once for every ABI.
+def makeApps = tasks.register('makeApps', Exec) {
+    workingDir '../..'
+    commandLine 'make', 'apps'
+}
 android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/appAssets'))
 def prepareImages = tasks.register('prepareImages', Copy) {
-    from('../../assets/app/fingerprint.png')
+    dependsOn makeApps
     from('../../assets/app/icon.png')
+    from("${System.getenv('KRYON_DIR')}/icons/pfp.png")
+    from('../../build/apps') { include '*.zib'; into 'apps' }
     into layout.buildDirectory.dir('generated/appAssets')
 }
 tasks.named('preBuild').configure { dependsOn prepareImages }

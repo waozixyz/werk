@@ -1,13 +1,11 @@
-Pass derives strong, repeatable passwords on your device. The same site, login, master password, and settings always produce the same result, so there is no password database to back up, sync, or lose.
+Werkzeug holds small private tools in one app. Everything is computed on your device: it makes no network requests, keeps no accounts, and tracks nothing.
 
-Everything is computed locally. The app makes no network requests, keeps no accounts, and tracks nothing.
+• Pass derives strong, repeatable passwords. The same site, login, master password, and settings always produce the same result, so there is no password database to back up, sync, or lose. It is LessPass-compatible, with configurable length, counter, character classes and excluded characters, and an optional master password kept behind device authentication.
+• Auth shows two-factor sign-in codes (TOTP with SHA-1, SHA-256 or SHA-512). Add accounts from otpauth links, including an authenticator's plain-text export, or by secret key. Copied codes are cleared from the clipboard after 30 seconds.
+• Calculator handles everyday arithmetic with brackets, powers and percent.
+• Clock shows the local time and date and has a stopwatch.
 
-Features:
-
-• Deterministic, LessPass-compatible password generation
-• Configurable length, counter, character classes, and excluded characters
-• Optional device authentication with the master password held in secure storage
-• No analytics, no tracking, no network access
+A profile with your name and picture sets the appearance every tool shares. Werkzeug was previously called Pass; updating keeps your profiles, settings and saved master password.
 
 Pass is an independent implementation of the LessPass algorithm. Compatibility does not imply endorsement by or affiliation with the LessPass project.
 

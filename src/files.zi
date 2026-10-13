@@ -1,0 +1,132 @@
+// Private files: names an app may use, folders created 0700 and files
+// replaced whole with mode 0600.
+#import "std/file"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#if #defined(PLATFORM_WEB) {
+    #import "browser_storage"
+}
+
+PATH_LIMIT :: 1024
+
+// base + "/" + name in output; "" when it does not fit.
+PathJoin :: (output: []u8, base: string, name: string) -> string {
+    used: s64 = 0
+    if base.count + name.count + 2 > output.count {
+        output[0] = cast(u8)0
+        return ""
+    }
+    while used < base.count {
+        output[used] = base[used]
+        used += 1
+    }
+    output[used] = cast(u8)47
+    used += 1
+    index: s64 = 0
+    while index < name.count {
+        output[used] = name[index]
+        used += 1
+        index += 1
+    }
+    output[used] = cast(u8)0
+    return TextView(output[0:used])
+}
+
+// A file or folder name an app may use: no separators, no "." or "..".
+SafeName :: (name: string) -> bool {
+    if name.count == 0 || name.count > 128 || name == "." || name == ".." {
+        return false
+    }
+    index: s64 = 0
+    while index < name.count {
+        byte := name[index]
+        if byte == cast(u8)47 || byte == cast(u8)92 || byte < cast(u8)32 || byte == cast(u8)127 {
+            return false
+        }
+        index += 1
+    }
+    return true
+}
+
+// Creates every missing folder of path, privately.
+EnsureDirectory :: (path: string) -> bool {
+    if path.count == 0 || path.count >= PATH_LIMIT {
+        return false
+    }
+    index: s64 = 1
+    while index <= path.count {
+        if index == path.count || path[index] == cast(u8)47 {
+            if !CreatePrivateDirectory(path[0:index]) {
+                return false
+            }
+        }
+        index += 1
+    }
+    return true
+}
+
+// Reads a whole private file into output and returns its length, or -1
+// when it is missing, unreadable or larger than output.
+ReadPrivate :: (path: string, output: []u8) -> s32 {
+    if output.count < 2 {
+        return -1
+    }
+    file := OpenRead(path)
+    if !file.valid {
+        return -1
+    }
+    size := FileSize(file)
+    if size < 0 || size >= output.count {
+        unused CloseFile(file)
+        return -1
+    }
+    count := ReadAt(file, output[0:size], 0)
+    unused CloseFile(file)
+    if count != size {
+        return -1
+    }
+    output[size] = cast(u8)0
+    return cast(s32)size
+}
+
+// Replaces a private file whole: a crash leaves the old or the new file,
+// never a mix.
+WritePrivate :: (path: string, value: string) -> bool {
+    temporary: [PATH_LIMIT]u8
+    if path.count + 5 >= PATH_LIMIT {
+        return false
+    }
+    used: s64 = 0
+    while used < path.count {
+        temporary[used] = path[used]
+        used += 1
+    }
+    suffix := ".new"
+    index: s64 = 0
+    while index < suffix.count {
+        temporary[used] = suffix[index]
+        used += 1
+        index += 1
+    }
+    temporary_path := TextView(temporary[0:used])
+    unused RemoveFile(temporary_path)
+    file := OpenExclusivePrivate(temporary_path)
+    if !file.valid {
+        return false
+    }
+    ok := WriteTextAt(file, value, 0) == value.count && SyncFile(file)
+    if !CloseFile(file) {
+        ok = false
+    }
+    if !ok || !RenamePath(temporary_path, path) {
+        unused RemoveFile(temporary_path)
+        return false
+    }
+    #if #defined(PLATFORM_WEB) {
+        // Data reaches IndexedDB only once synced; the cache stays in memory.
+        if path.count > BROWSER_DATA.count && path[0:BROWSER_DATA.count] == BROWSER_DATA {
+            return BrowserStorageSave()
+        }
+    }
+    return true
+}
