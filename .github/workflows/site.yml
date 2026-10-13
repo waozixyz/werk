@@ -50,7 +50,7 @@ jobs:
           test -s build/site/app/index.wasm
       - name: Verify browser input, storage, cache upgrades, and offline launch
         env:
-          PASS_WEB_SMOKE_BROWSER: google-chrome
+          WERK_WEB_BROWSER: google-chrome
         run: bash scripts/web_smoke.sh
       - name: Upload browser failure diagnostics
         if: failure()

@@ -12,7 +12,7 @@ ${CC:-cc} -std=c99 -O2 -I"$ziran_root/include" -Ibuild/core-test/c build/core-te
 build/core-test/native
 "$ziran" bundle $paths --root . --entry pass_core_test:PortableAnswer -o build/core-test/core.zib apps/pass/pass_core_test.zi
 test "$("$ziran" run build/core-test/core.zib)" = 42
-"$ziran" ir --root . $paths -o build/core-test/ir apps/pass/pass_core_test.zi
+"$ziran" ir --root apps/pass $paths -o build/core-test/ir apps/pass/pass_core_test.zi
 "$ziran" bundle --root build/core-test/ir --entry pass_core_test:PortableAnswer -o build/core-test/saved.zib build/core-test/ir/pass_core_test.zir
 test "$("$ziran" run build/core-test/saved.zib)" = 42
 echo 'Pass core: native, source bundle, and saved IR tests pass'

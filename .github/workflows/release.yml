@@ -153,6 +153,8 @@ jobs:
           export KRYON_DIR="$(./scripts/ziran.sh pkg path Kryon --locked)"
           export ZIRAN_ROOT="$(./scripts/ziran.sh pkg path ziran --locked)"
           export RAYLIB_DIR="$(./scripts/ziran.sh pkg path raylib --locked)/src"
+          export LIBOQS_DIR="$(./scripts/ziran.sh pkg path liboqs --locked)"
+          export MONOCYPHER_DIR="$(./scripts/ziran.sh pkg path monocypher --locked)"
           ./droid/gradlew -p droid assembleRelease \
             -PsplitApks=true \
             -Pkeystore.path="$HOME/.android/pass-release.keystore" \
