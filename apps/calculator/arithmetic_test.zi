@@ -16,6 +16,7 @@ Refuses :: (expression: string) -> bool {
 
 #program_export
 Run :: () -> s32 {
+    degrees = false
     if !Shows("12+30×2", "72") || !Shows("12+30*2", "72") || !Shows("(1+2)×3", "9") {
         return 1
     }
@@ -28,8 +29,48 @@ Run :: () -> s32 {
     if !Shows("0.1+0.2", "0.3") || !Shows("10^20", "1e20") || !Shows("2^-2", "0.25") {
         return 4
     }
-    if !Refuses("1÷0") || !Refuses("2^0.5") || !Refuses("3+") || !Refuses("4)") {
+    if !Refuses("1÷0") || !Refuses("3+") || !Refuses("4)") || !Refuses("(−8)^0.5") {
         return 5
+    }
+    // Powers, roots and logarithms.
+    if !Shows("2^0.5", "1.414213562") || !Shows("√144", "12") || !Shows("√(2)", "1.414213562") ||
+    !Shows("∛27", "3") || !Shows("∛(−8)", "-2") || !Shows("3²", "9") || !Shows("2³", "8") {
+        return 6
+    }
+    if !Shows("ln(e)", "1") || !Shows("log(1000)", "3") || !Shows("e^(2)", "7.389056099") ||
+    !Shows("10^(3)", "1000") || !Shows("exp(1)", "2.718281828") || !Refuses("ln(−1)") || !Refuses("√(−4)") {
+        return 7
+    }
+    // Factorials, reciprocals, constants, Ans and E notation.
+    if !Shows("5!", "120") || !Shows("0!", "1") || !Shows("4⁻¹", "0.25") || !Shows("2π", "6.283185307") ||
+    !Shows("π", "3.141592654") || !Refuses("2.5!") || !Refuses("171!") || !Refuses("0⁻¹") {
+        return 8
+    }
+    last_answer = 21.0
+    if !Shows("Ans×2", "42") || !Shows("6.02E23", "6.02e23") || !Shows("1E−3", "0.001") || !Shows("2(3+4)", "14") ||
+    !Shows("abs(−7)", "7") || !Shows("3sqrt(16)", "12") {
+        return 9
+    }
+    // Radians.
+    if !Shows("sin(π÷2)", "1") || !Shows("cos(0)", "1") || !Shows("tan(π÷4)", "1") ||
+    !Shows("sin⁻¹(1)", "1.570796327") || !Shows("atan(1)×4", "3.141592654") {
+        return 10
+    }
+    // Degrees, with exact quarter turns.
+    degrees = true
+    if !Shows("sin(30)", "0.5") || !Shows("sin(180)", "0") || !Shows("cos(90)", "0") || !Shows("cos(−60)", "0.5") ||
+    !Shows("tan(45)", "1") || !Refuses("tan(90)") || !Shows("sin(390)", "0.5") || !Shows("sin 30 + 1", "1.5") {
+        return 11
+    }
+    if !Shows("sin⁻¹(0.5)", "30") || !Shows("cos⁻¹(0)", "90") || !Shows("tan⁻¹(1)", "45") || !Refuses("asin(2)") {
+        return 12
+    }
+    degrees = false
+    // Hyperbolic functions and their inverses.
+    if !Shows("sinh(1)", "1.175201194") || !Shows("cosh(0)", "1") || !Shows("tanh(1)", "0.761594156") ||
+    !Shows("sinh⁻¹(1)", "0.881373587") || !Shows("cosh⁻¹(2)", "1.316957897") ||
+    !Shows("tanh⁻¹(0.5)", "0.549306144") || !Refuses("acosh(0.5)") || !Refuses("atanh(1)") {
+        return 13
     }
     return 0
 }

@@ -1,6 +1,6 @@
 // Exercise the built site's Werkzeug app in a private headless browser with a
 // disposable profile: the home screen, a tool opened by ?app=, Calculator
-// typing, and Pass alone by ?mini as embedding pages use it.
+// typing, Clock, and Pass alone by ?mini as embedding pages use it.
 import {spawn} from 'node:child_process';
 import {readFile, writeFile, mkdir, mkdtemp} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -132,9 +132,12 @@ try {
   await type('12+30*2=');
   await delay(400);
   await screenshot('calculator-typed');
+  // Clock reads the local time zone every frame; a broken time binding
+  // froze the page here.
+  await open('?app=clock', 'clock');
   await open('?mini', 'pass-mini');
   if (exceptions.length) throw Error('Page exceptions: ' + exceptions.join(' '));
-  console.log('Werkzeug web: home, Calculator and Pass in mini mode drew in a private headless browser');
+  console.log('Werkzeug web: home, Calculator, Clock and Pass in mini mode drew in a private headless browser');
 } finally {
   socket?.close();
   try {

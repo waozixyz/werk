@@ -1,5 +1,8 @@
-// Calculator: a keypad and keyboard calculator for ordinary arithmetic with
-// brackets. It keeps the expression and the last result in memory only.
+// Calculator: a keypad and keyboard calculator. Basic covers ordinary
+// arithmetic with brackets; Scientific adds trigonometry in degrees or
+// radians, hyperbolic functions, powers, roots, logarithms, factorials and
+// constants. It keeps the expression in memory; the mode and angle unit are
+// saved.
 #import "session"
 #import "geometry"
 #import "text_props"
@@ -26,8 +29,13 @@ EXPRESSION_LIMIT :: 256
 expression: [EXPRESSION_LIMIT]u8;
 expression_length: s32;
 result_text: [64]u8;
-// The expression shows the last result, which typing a digit replaces.
+// The expression shows the last result, which typing a number replaces.
 showing_result: bool;
+loaded: bool;
+scientific: bool;
+// One-shot shifts for the next scientific function key.
+second: bool;
+hyperbolic: bool;
 
 ExpressionText :: () -> string {
     return TextView(expression[0:expression_length])
@@ -39,10 +47,26 @@ Clear :: () {
     showing_result = false
 }
 
+// Whether text begins a new value rather than continuing the last one: a
+// result is replaced by a number, constant or function, and continued by
+// an operator.
+StartsValue :: (text: string) -> bool {
+    first := text[0]
+    if first >= cast(u8)48 && first <= cast(u8)57 || first == cast(u8)46 || first == cast(u8)40 {
+        return true
+    }
+    if first >= cast(u8)97 && first <= cast(u8)122 || first == cast(u8)65 {
+        return true
+    }
+    count := cast(s32)text.count
+    return count >= 2 && text[0:2] == "π" || count >= 3 && (text[0:3] == "√" || text[0:3] == "∛")
+}
+
 Append :: (text: string) {
-    starts_number := text[0] >= cast(u8)48 && text[0] <= cast(u8)57 || text[0] == cast(u8)46 ||
-    text[0] == cast(u8)40
-    if showing_result && starts_number {
+    if text.count == 0 {
+        return
+    }
+    if showing_result && StartsValue(text) {
         expression_length = 0
     }
     showing_result = false
@@ -80,6 +104,7 @@ Evaluate :: () {
         CopyResult(answer.error)
         return
     }
+    last_answer = answer.value
     formatted: [64]u8
     text := FormatNumber(answer.value, formatted[:])
     expression_length = 0
@@ -97,7 +122,28 @@ CopyResult :: (text: string) {
     result_text[index] = cast(u8)0
 }
 
-// Typed characters and keys act like the keypad.
+// calculator.txt holds "scientific degrees" as 0 or 1 each.
+LoadSettings :: () {
+    buffer: [16]u8
+    count := ReadStore("calculator.txt", buffer[:])
+    if count >= 3 {
+        scientific = buffer[0] == cast(u8)49
+        degrees = buffer[2] == cast(u8)49
+    } else {
+        degrees = true
+    }
+}
+
+SaveSettings :: () {
+    buffer: [3]u8
+    buffer[0] = cast(u8)(ifx scientific then 49 else 48)
+    buffer[1] = cast(u8)32
+    buffer[2] = cast(u8)(ifx degrees then 49 else 48)
+    unused WriteStore("calculator.txt", TextView(buffer[0:3]))
+}
+
+// Typed characters and keys act like the keypad; letters spell functions
+// such as sin and sqrt.
 Keyboard :: () {
     key := AppKey()
     if key == 257 || key == 335 {
@@ -115,7 +161,8 @@ Keyboard :: () {
         byte := typed[index]
         if byte >= cast(u8)48 && byte <= cast(u8)57 || byte == cast(u8)46 || byte == cast(u8)40 ||
         byte == cast(u8)41 || byte == cast(u8)43 || byte == cast(u8)45 || byte == cast(u8)37 ||
-        byte == cast(u8)94 {
+        byte == cast(u8)94 || byte == cast(u8)33 || byte >= cast(u8)97 && byte <= cast(u8)122 ||
+        byte >= cast(u8)65 && byte <= cast(u8)90 {
             Append(typed[index:index + 1])
         }
         if byte == cast(u8)42 {
@@ -134,42 +181,185 @@ Keyboard :: () {
     }
 }
 
-KEYS :: 20
+ACTION_INSERT :: 0
+ACTION_CLEAR :: 1
+ACTION_DELETE :: 2
+ACTION_EVALUATE :: 3
+ACTION_SECOND :: 4
+ACTION_HYPERBOLIC :: 5
+ACTION_NEGATE :: 6
 
 Key :: struct {
     label: string
     input: string
+    action: s32
     accent: bool
+    // A function key whose 2nd or hyp shift is used up when pressed.
+    shifted: bool
 }
 
-KeyAt :: (index: s32) -> Key {
-    labels: [KEYS]string = .["C", "(", ")", "÷",
+BASIC_KEYS :: 20
+
+BasicKey :: (index: s32) -> Key {
+    labels: [BASIC_KEYS]string = .["C", "(", ")", "÷",
     "7", "8", "9", "×",
     "4", "5", "6", "−",
     "1", "2", "3", "+",
-    "Delete", "0", ".", "="]
-    inputs: [KEYS]string = .["", "(", ")", "÷",
+    "", "0", ".", "="]
+    inputs: [BASIC_KEYS]string = .["", "(", ")", "÷",
     "7", "8", "9", "×",
     "4", "5", "6", "-",
     "1", "2", "3", "+",
     "", "0", ".", ""]
-    return Key.{.label = labels[index], .input = inputs[index], .accent = index == 19}
-}
-
-Press :: (index: s32) {
+    key := Key.{.label = labels[index], .input = inputs[index]}
     if index == 0 {
-        Clear()
-        return
+        key.action = ACTION_CLEAR
     }
     if index == 16 {
-        Backspace()
-        return
+        key.action = ACTION_DELETE
     }
     if index == 19 {
-        Evaluate()
-        return
+        key.action = ACTION_EVALUATE
+        key.accent = true
     }
-    Append(KeyAt(index).input)
+    return key
+}
+
+// Eight rows of five; = spans the last two columns.
+SCIENTIFIC_KEYS :: 39
+
+ScientificKey :: (index: s32) -> Key {
+    labels: [SCIENTIFIC_KEYS]string = .["2nd", "hyp", "sin", "cos", "tan",
+    "x²", "xʸ", "√x", "ln", "log",
+    "(", ")", "1/x", "n!", "π",
+    "C", "", "%", "÷", "e",
+    "7", "8", "9", "×", "EE",
+    "4", "5", "6", "−", "Ans",
+    "1", "2", "3", "+", "|x|",
+    "±", "0", ".", "="]
+    inputs: [SCIENTIFIC_KEYS]string = .["", "", "", "", "",
+    "²", "^", "√(", "ln(", "log(",
+    "(", ")", "⁻¹", "!", "π",
+    "", "", "%", "÷", "e",
+    "7", "8", "9", "×", "E",
+    "4", "5", "6", "-", "Ans",
+    "1", "2", "3", "+", "abs(",
+    "", "0", ".", ""]
+    key := Key.{.label = labels[index], .input = inputs[index]}
+    if index == 0 {
+        key.action = ACTION_SECOND
+        key.accent = second
+    }
+    if index == 1 {
+        key.action = ACTION_HYPERBOLIC
+        key.accent = hyperbolic
+    }
+    if index >= 2 && index <= 4 {
+        names: [3]string = .["sin", "cos", "tan"]
+        hyperbolic_names: [3]string = .["sinh", "cosh", "tanh"]
+        inverse_names: [3]string = .["sin⁻¹", "cos⁻¹", "tan⁻¹"]
+        inverse_hyperbolic_names: [3]string = .["sinh⁻¹", "cosh⁻¹", "tanh⁻¹"]
+        name := names[index - 2]
+        if hyperbolic {
+            name = ifx second then inverse_hyperbolic_names[index - 2] else hyperbolic_names[index - 2]
+        } else if second {
+            name = inverse_names[index - 2]
+        }
+        key.label = name
+        key.shifted = true
+    }
+    if second {
+        if index == 5 {
+            key.label = "x³"
+            key.input = "³"
+        }
+        if index == 6 {
+            key.label = "ʸ√x"
+            key.input = "^(1÷"
+        }
+        if index == 7 {
+            key.label = "∛x"
+            key.input = "∛("
+        }
+        if index == 8 {
+            key.label = "eˣ"
+            key.input = "e^("
+        }
+        if index == 9 {
+            key.label = "10ˣ"
+            key.input = "10^("
+        }
+    }
+    if index >= 5 && index <= 9 {
+        key.shifted = true
+    }
+    if index == 15 {
+        key.action = ACTION_CLEAR
+    }
+    if index == 16 {
+        key.action = ACTION_DELETE
+    }
+    if index == 35 {
+        key.action = ACTION_NEGATE
+    }
+    if index == 38 {
+        key.action = ACTION_EVALUATE
+        key.accent = true
+    }
+    return key
+}
+
+Press :: (key: Key) {
+    if key.action == ACTION_CLEAR {
+        Clear()
+    } else if key.action == ACTION_DELETE {
+        Backspace()
+    } else if key.action == ACTION_EVALUATE {
+        Evaluate()
+    } else if key.action == ACTION_SECOND {
+        second = !second
+    } else if key.action == ACTION_HYPERBOLIC {
+        hyperbolic = !hyperbolic
+    } else if key.action == ACTION_NEGATE {
+        Append("−")
+    } else if key.input != "" {
+        Append(key.input)
+    } else {
+        // A trigonometric key: its name and an opening bracket.
+        text: [24]u8
+        used: s32 = AppendTo(text[:], 0, key.label)
+        used = AppendTo(text[:], used, "(")
+        Append(TextView(text[0:used]))
+    }
+    if key.shifted {
+        second = false
+        hyperbolic = false
+    }
+}
+
+Tab :: (session: Session, id: s32, label: string, bounds: Rectangle, active: bool) -> bool {
+    props := ButtonProps.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
+        .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+    if active {
+        props.tone = ButtonTone.ButtonToneAccent
+        props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
+    }
+    return Button(session, props) != 0
+}
+
+DrawKey :: (session: Session, index: s32, key: Key, bounds: Rectangle) {
+    props := ButtonProps.{.key = cast(u64)(100 + index), .id = 100 + index, .bounds = bounds,
+        .label = key.label,
+        .tone = cast(ButtonTone)(ifx key.accent then ButtonToneAccent else ButtonToneNeutral),
+        .emphasis = cast(ButtonEmphasis)(ifx key.accent then ButtonEmphasisFilled else ButtonEmphasisSoft)}
+    // Delete is an icon on a key as wide as the others.
+    if key.action == ACTION_DELETE {
+        props.icon_shape = DeleteBack.Shape
+        props.label = ""
+    }
+    if Button(session, props) != 0 {
+        Press(key)
+    }
 }
 
 Draw :: () {
@@ -177,52 +367,74 @@ Draw :: () {
     area := AppBounds()
     gap: float32 = 8.0
     width := area.width - 32.0
-    if width > 420.0 {
-        width = 420.0
+    if width > 460.0 {
+        width = 460.0
     }
     left := area.x + (area.width - width) * 0.5
-    top := area.y + 16.0
-    display := Rectangle.{left, top, width, 112.0}
-    Box(session, BoxProps.{.key = cast(u64)1, .bounds = display, .radius = 12.0})
+    top := area.y + 12.0
+    half := (width - gap) / 2.0
+    if Tab(session, 1, "Basic", Rectangle.{left, top, half, 36.0}, !scientific) && scientific {
+        scientific = false
+        SaveSettings()
+    }
+    if Tab(session, 2, "Scientific", Rectangle.{left + half + gap, top, half, 36.0}, scientific) && !scientific {
+        scientific = true
+        SaveSettings()
+    }
+    top += 36.0 + gap
+    display_height: float32 = ifx scientific then 104.0 else 112.0
+    display := Rectangle.{left, top, width, display_height}
+    Box(session, BoxProps.{.key = cast(u64)3, .bounds = display, .radius = 12.0})
     shown := ExpressionText()
     if shown == "" {
         shown = "0"
     }
-    Text(session, TextProps.{.key = cast(u64)2,
-            .bounds = Rectangle.{left + 16.0, top + 16.0, width - 32.0, 48.0},
-            .text = shown, .font = 32, .align = TextAlign.TextAlignEnd, .wrap = TextWrap.TextWrapEllipsis})
-    Text(session, TextProps.{.key = cast(u64)3,
-            .bounds = Rectangle.{left + 16.0, top + 72.0, width - 32.0, 24.0},
+    font: s32 = 32
+    if shown.count > 18 {
+        font = 24
+    }
+    if shown.count > 28 {
+        font = 18
+    }
+    Text(session, TextProps.{.key = cast(u64)4,
+            .bounds = Rectangle.{left + 16.0, top + 14.0, width - 32.0, 48.0},
+            .text = shown, .font = font, .align = TextAlign.TextAlignEnd, .wrap = TextWrap.TextWrapEllipsis})
+    Text(session, TextProps.{.key = cast(u64)5,
+            .bounds = Rectangle.{left + 16.0, top + display_height - 36.0, width - 32.0, 24.0},
             .text = TextUntilNul(result_text[:]), .font = 16, .align = TextAlign.TextAlignEnd})
-    pad_top := top + 112.0 + gap * 2.0
-    rows: float32 = 5.0
-    key_width := (width - gap * 3.0) / 4.0
-    key_height := (area.y + area.height - 16.0 - pad_top - gap * (rows - 1.0)) / rows
+    if scientific {
+        // The angle unit, switched by tapping it.
+        unit := ButtonProps.{.key = cast(u64)6, .id = 6, .bounds = Rectangle.{left + 10.0, top + display_height - 38.0, 64.0, 28.0},
+            .label = ifx degrees then "DEG" else "RAD", .size = ControlSize.ControlSizeSmall,
+            .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+        if Button(session, unit) != 0 {
+            degrees = !degrees
+            SaveSettings()
+        }
+    }
+    pad_top := top + display_height + gap * 2.0
+    columns: s32 = ifx scientific then 5 else 4
+    rows: s32 = ifx scientific then 8 else 5
+    key_width := (width - gap * cast(float32)(columns - 1)) / cast(float32)columns
+    key_height := (area.y + area.height - 16.0 - pad_top - gap * cast(float32)(rows - 1)) / cast(float32)rows
     if key_height > 72.0 {
         key_height = 72.0
     }
-    if key_height < 36.0 {
-        key_height = 36.0
+    if key_height < 34.0 {
+        key_height = 34.0
     }
+    count: s32 = ifx scientific then SCIENTIFIC_KEYS else BASIC_KEYS
     index: s32 = 0
-    while index < KEYS {
-        key := KeyAt(index)
-        column := cast(float32)(index % 4)
-        row := cast(float32)(index / 4)
+    while index < count {
+        key := ifx scientific then ScientificKey(index) else BasicKey(index)
+        column := cast(float32)(index % columns)
+        row := cast(float32)(index / columns)
         bounds := Rectangle.{left + column * (key_width + gap), pad_top + row * (key_height + gap),
             key_width, key_height}
-        props := ButtonProps.{.key = cast(u64)(100 + index), .id = 100 + index, .bounds = bounds,
-            .label = key.label,
-            .tone = cast(ButtonTone)(ifx key.accent then ButtonToneAccent else ButtonToneNeutral),
-            .emphasis = cast(ButtonEmphasis)(ifx key.accent then ButtonEmphasisFilled else ButtonEmphasisSoft)}
-        // Delete is an icon on a key as wide as the others.
-        if index == 16 {
-            props.icon_shape = DeleteBack.Shape
-            props.label = ""
+        if scientific && index == SCIENTIFIC_KEYS - 1 {
+            bounds.width = key_width * 2.0 + gap
         }
-        if Button(session, props) != 0 {
-            Press(index)
-        }
+        DrawKey(session, index, key, bounds)
         index += 1
     }
 }
@@ -232,6 +444,10 @@ Main :: () -> s32 {
     if AppMode() == APP_IDENTIFY {
         AppDescribe("Calculator", Icon.Shape)
         return APP_PROTOCOL
+    }
+    if !loaded {
+        LoadSettings()
+        loaded = true
     }
     Keyboard()
     Draw()

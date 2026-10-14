@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.0] - 2026-10-13
+
+- Add a Scientific mode to Calculator: sin, cos and tan in degrees or radians with their inverses and hyperbolic forms, powers and roots, ln and log, factorials, π, e, Ans and E notation.
+- Fix the web version freezing when Clock opens, and count the stopwatch's tenths of a second there again.
+
 ## [0.3.1] - 2026-10-13
 
 - Fix the web version on itch.io, which opened to a blank page.

@@ -1,8 +1,12 @@
 // Evaluates calculator expressions: + − × ÷ (also - * /), ^ for powers,
-// a postfix % for percent, unary signs and brackets. Brackets left open at
-// the end are closed there.
+// postfix %, ², ³, ! and ⁻¹, unary signs, brackets, the functions sin cos tan
+// and their inverses (sin⁻¹ or asin) and hyperbolic forms, ln, log, √, ∛,
+// abs and exp, the constants π, e and Ans, and E for a power of ten, as in
+// 6.02E23. A number, constant or function next to another multiplies, so
+// 2π and 3sin(30) work. Brackets left open at the end are closed there.
 #import "text_buffer"
 #import "number_text"
+#import "math"
 
 Answer :: struct {
     valid: bool
@@ -13,6 +17,13 @@ Answer :: struct {
 source: string;
 position: s32;
 failure: string;
+// Trigonometric angles are degrees when set, otherwise radians.
+degrees: bool;
+// The last result, for Ans.
+last_answer: float64;
+
+PI_VALUE :: 3.141592653589793
+E_VALUE :: 2.718281828459045
 
 EvaluateExpression :: (text: string) -> Answer {
     source = text
@@ -23,11 +34,17 @@ EvaluateExpression :: (text: string) -> Answer {
     if failure == "" && position < cast(s32)source.count {
         failure = "Cannot read this expression"
     }
+    if failure == "" && value != value {
+        failure = "Not a real number"
+    }
     if failure == "" && !Finite(value) {
         failure = "Result is too large"
     }
     if failure != "" {
         return Answer.{.error = failure}
+    }
+    if value == 0.0 {
+        value = 0.0
     }
     return Answer.{.valid = true, .value = value}
 }
@@ -42,7 +59,7 @@ SkipSpaces :: () {
     }
 }
 
-// Whether the next character is the given one, consuming it when it is.
+// Whether the next text is the given one, consuming it when it is.
 Take :: (symbol: string) -> bool {
     SkipSpaces()
     end := position + cast(s32)symbol.count
@@ -51,6 +68,13 @@ Take :: (symbol: string) -> bool {
     }
     position = end
     return true
+}
+
+// Whether the next text is the given one, without consuming it.
+Peek :: (symbol: string) -> bool {
+    SkipSpaces()
+    end := position + cast(s32)symbol.count
+    return end <= cast(s32)source.count && source[position:end] == symbol
 }
 
 ParseSum :: () -> float64 {
@@ -79,11 +103,30 @@ ParseProduct :: () -> float64 {
                 return 0.0
             }
             value /= divisor
+        } else if StartsFactor() {
+            value *= ParsePower()
         } else {
             return value
         }
     }
     return value
+}
+
+// A factor follows without an operator, so the two multiply.
+StartsFactor :: () -> bool {
+    SkipSpaces()
+    if position >= cast(s32)source.count {
+        return false
+    }
+    byte := source[position]
+    if IsDigit(byte) || byte == cast(u8)46 || byte == cast(u8)40 {
+        return true
+    }
+    // Letters start functions and constants; E alone is a number's exponent.
+    if byte >= cast(u8)97 && byte <= cast(u8)122 || byte == cast(u8)65 {
+        return true
+    }
+    return Peek("π") || Peek("√") || Peek("∛")
 }
 
 ParseSigned :: () -> float64 {
@@ -97,7 +140,7 @@ ParseSigned :: () -> float64 {
 }
 
 ParsePower :: () -> float64 {
-    base := ParsePercent()
+    base := ParsePostfix()
     if failure == "" && Take("^") {
         exponent := ParseSigned()
         return Power(base, exponent)
@@ -105,10 +148,26 @@ ParsePower :: () -> float64 {
     return base
 }
 
-ParsePercent :: () -> float64 {
+ParsePostfix :: () -> float64 {
     value := ParseAtom()
-    while failure == "" && Take("%") {
-        value /= 100.0
+    while failure == "" {
+        if Take("%") {
+            value /= 100.0
+        } else if Take("²") {
+            value *= value
+        } else if Take("³") {
+            value = value * value * value
+        } else if Take("⁻¹") {
+            if value == 0.0 {
+                failure = "Cannot divide by zero"
+                return 0.0
+            }
+            value = 1.0 / value
+        } else if Take("!") {
+            value = Factorial(value)
+        } else {
+            return value
+        }
     }
     return value
 }
@@ -118,15 +177,249 @@ ParseAtom :: () -> float64 {
         return 0.0
     }
     if Take("(") {
-        value := ParseSum()
-        // A bracket still open at the end closes there.
-        SkipSpaces()
-        if !Take(")") && position < cast(s32)source.count {
-            failure = "Missing closing bracket"
+        return Bracketed()
+    }
+    if Take("π") || Take("pi") {
+        return PI_VALUE
+    }
+    if Take("Ans") {
+        return last_answer
+    }
+    if Take("√") || Take("sqrt") {
+        return Root(Argument(), 2)
+    }
+    if Take("∛") || Take("cbrt") {
+        return Root(Argument(), 3)
+    }
+    // Longer names first: sinh⁻¹ before sinh before sin.
+    names: [21]string = .["sinh⁻¹", "cosh⁻¹", "tanh⁻¹", "asinh", "acosh", "atanh",
+    "sin⁻¹", "cos⁻¹", "tan⁻¹", "asin", "acos", "atan",
+    "sinh", "cosh", "tanh", "sin", "cos", "tan", "ln", "log", "abs"]
+    operations: [21]s32 = .[10, 11, 12, 10, 11, 12, 4, 5, 6, 4, 5, 6, 7, 8, 9, 1, 2, 3, 13, 14, 15]
+    index: s32 = 0
+    while index < 21 {
+        if Take(names[index]) {
+            return Apply(operations[index], Argument())
         }
-        return value
+        index += 1
+    }
+    if Take("exp") {
+        return Exponential(Argument())
+    }
+    if Take("e") {
+        return E_VALUE
     }
     return ParseNumber()
+}
+
+Bracketed :: () -> float64 {
+    value := ParseSum()
+    // A bracket still open at the end closes there.
+    SkipSpaces()
+    if !Take(")") && position < cast(s32)source.count && failure == "" {
+        failure = "Missing closing bracket"
+    }
+    return value
+}
+
+// A function's argument: a bracketed expression, or the signed value that
+// follows, as in √9 or sin 30.
+Argument :: () -> float64 {
+    if Take("(") {
+        return Bracketed()
+    }
+    return ParseSigned()
+}
+
+Apply :: (operation: s32, value: float64) -> float64 {
+    if failure != "" {
+        return 0.0
+    }
+    if operation == 1 {
+        return Sine(value)
+    }
+    if operation == 2 {
+        return Cosine(value)
+    }
+    if operation == 3 {
+        return Tangent(value)
+    }
+    if operation >= 4 && operation <= 6 {
+        if operation != 6 && (value > 1.0 || value < -1.0) {
+            failure = "Not a real number"
+            return 0.0
+        }
+        angle := ifx operation == 4 then Asin(value) else ifx operation == 5 then Acos(value) else Atan(value)
+        return ifx degrees then angle * 180.0 / PI_VALUE else angle
+    }
+    if operation == 7 {
+        return Sinh(value)
+    }
+    if operation == 8 {
+        return Cosh(value)
+    }
+    if operation == 9 {
+        return Tanh(value)
+    }
+    if operation == 10 {
+        return Asinh(value)
+    }
+    if operation == 11 {
+        return Checked(Acosh(value))
+    }
+    if operation == 12 {
+        if value >= 1.0 || value <= -1.0 {
+            failure = ifx value == 1.0 || value == -1.0 then "Result is too large" else "Not a real number"
+            return 0.0
+        }
+        return Atanh(value)
+    }
+    if operation == 13 || operation == 14 {
+        if value <= 0.0 {
+            failure = ifx value == 0.0 then "Result is too large" else "Not a real number"
+            return 0.0
+        }
+        return ifx operation == 13 then Log(value) else Log10Exact(value)
+    }
+    return ifx value < 0.0 then 0.0 - value else value
+}
+
+// A NaN from a function outside its domain is an error, not a value.
+Checked :: (value: float64) -> float64 {
+    if value != value && failure == "" {
+        failure = "Not a real number"
+        return 0.0
+    }
+    return value
+}
+
+// log10 exactly for powers of ten, which people expect to be whole.
+Log10Exact :: (value: float64) -> float64 {
+    result := Log10(value)
+    nearest := cast(float64)RoundToInteger(result)
+    if nearest - result < 1.0e-12 && result - nearest < 1.0e-12 && Power(10.0, nearest) == value {
+        return nearest
+    }
+    return result
+}
+
+// An angle in degrees, reduced to [0, 360).
+Degrees360 :: (value: float64) -> float64 {
+    turns := cast(float64)RoundToInteger(value / 360.0)
+    reduced := value - turns * 360.0
+    if reduced < 0.0 {
+        reduced += 360.0
+    }
+    return reduced
+}
+
+Radians :: (value: float64) -> float64 {
+    return ifx degrees then value * PI_VALUE / 180.0 else value
+}
+
+// In degrees, whole quarter turns give exact results: sin 180° is 0.
+Sine :: (value: float64) -> float64 {
+    if degrees && value < 1.0e15 && value > -1.0e15 {
+        reduced := Degrees360(value)
+        if reduced == 0.0 || reduced == 180.0 {
+            return 0.0
+        }
+        if reduced == 90.0 {
+            return 1.0
+        }
+        if reduced == 270.0 {
+            return -1.0
+        }
+        if reduced == 30.0 || reduced == 150.0 {
+            return 0.5
+        }
+        if reduced == 210.0 || reduced == 330.0 {
+            return -0.5
+        }
+    }
+    return Sin(Radians(value))
+}
+
+Cosine :: (value: float64) -> float64 {
+    if degrees && value < 1.0e15 && value > -1.0e15 {
+        reduced := Degrees360(value)
+        if reduced == 90.0 || reduced == 270.0 {
+            return 0.0
+        }
+        if reduced == 0.0 {
+            return 1.0
+        }
+        if reduced == 180.0 {
+            return -1.0
+        }
+        if reduced == 60.0 || reduced == 300.0 {
+            return 0.5
+        }
+        if reduced == 120.0 || reduced == 240.0 {
+            return -0.5
+        }
+    }
+    return Cos(Radians(value))
+}
+
+Tangent :: (value: float64) -> float64 {
+    if degrees && value < 1.0e15 && value > -1.0e15 {
+        reduced := Degrees360(value)
+        if reduced == 90.0 || reduced == 270.0 {
+            failure = "Undefined"
+            return 0.0
+        }
+        if reduced == 0.0 || reduced == 180.0 {
+            return 0.0
+        }
+        if reduced == 45.0 || reduced == 225.0 {
+            return 1.0
+        }
+        if reduced == 135.0 || reduced == 315.0 {
+            return -1.0
+        }
+    }
+    return Tan(Radians(value))
+}
+
+Root :: (value: float64, degree: s32) -> float64 {
+    if failure != "" {
+        return 0.0
+    }
+    if degree == 2 {
+        if value < 0.0 {
+            failure = "Not a real number"
+            return 0.0
+        }
+        return Sqrt(value)
+    }
+    return Cbrt(value)
+}
+
+Exponential :: (value: float64) -> float64 {
+    if failure != "" {
+        return 0.0
+    }
+    return Exp(value)
+}
+
+Factorial :: (value: float64) -> float64 {
+    whole := RoundToInteger(value)
+    if value < 0.0 || cast(float64)whole != value {
+        failure = "Factorial needs a whole number"
+        return 0.0
+    }
+    if whole > 170 {
+        failure = "Result is too large"
+        return 0.0
+    }
+    result: float64 = 1.0
+    factor: s64 = 2
+    while factor <= whole {
+        result *= cast(float64)factor
+        factor += 1
+    }
+    return result
 }
 
 ParseNumber :: () -> float64 {
@@ -150,6 +443,29 @@ ParseNumber :: () -> float64 {
     }
     if digits == 0 {
         failure = ifx position >= cast(s32)source.count then "Incomplete expression" else "Cannot read this expression"
+        return value
+    }
+    // E and a whole power of ten: 6.02E23, 1E−5.
+    if position < cast(s32)source.count && source[position] == cast(u8)69 {
+        position += 1
+        negative := false
+        if Take("-") || Take("−") {
+            negative = true
+        } else {
+            unused Take("+")
+        }
+        power: s64 = 0
+        power_digits: s32 = 0
+        while position < cast(s32)source.count && IsDigit(source[position]) && power < 100000 {
+            power = power * 10 + cast(s64)(source[position] - cast(u8)48)
+            position += 1
+            power_digits += 1
+        }
+        if power_digits == 0 {
+            failure = ifx position >= cast(s32)source.count then "Incomplete expression" else "Cannot read this expression"
+            return value
+        }
+        value *= Power(10.0, cast(float64)(ifx negative then 0 - power else power))
     }
     return value
 }
@@ -158,35 +474,22 @@ IsDigit :: (byte: u8) -> bool {
     return byte >= cast(u8)48 && byte <= cast(u8)57
 }
 
-// Whole exponents multiply exactly; others are refused rather than
-// approximated.
+// Whole exponents multiply exactly; others use the real power, which a
+// negative base does not have.
 Power :: (base: float64, exponent: float64) -> float64 {
-    whole := cast(s64)exponent
-    if cast(float64)whole != exponent || whole > 4096 || whole < -4096 {
-        failure = "Powers must be whole numbers"
+    if failure != "" {
         return 0.0
     }
-    negative := whole < 0
-    if negative {
-        whole = 0 - whole
+    if base == 0.0 && exponent < 0.0 {
+        failure = "Cannot divide by zero"
+        return 0.0
     }
-    result: float64 = 1.0
-    factor := base
-    while whole > 0 {
-        if whole % 2 == 1 {
-            result *= factor
-        }
-        factor *= factor
-        whole /= 2
+    whole := cast(float64)RoundToInteger(exponent) == exponent && exponent < 1.0e15 && exponent > -1.0e15
+    if base < 0.0 && !whole {
+        failure = "Not a real number"
+        return 0.0
     }
-    if negative {
-        if result == 0.0 {
-            failure = "Cannot divide by zero"
-            return 0.0
-        }
-        return 1.0 / result
-    }
-    return result
+    return Pow(base, exponent)
 }
 
 // Up to ten significant digits; very large and very small numbers use an
