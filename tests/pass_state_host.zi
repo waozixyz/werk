@@ -90,6 +90,12 @@ AppNowHost :: () -> float64 { return 0.0 }
 #program_export
 AppLocalOffsetHost :: () -> s32 { return 0 }
 #program_export
+AppZoneOffsetHost :: (zone: string, utc: float64) -> s32 { return 0 }
+#program_export
+AppAlertHost :: (ringing: bool) {}
+#program_export
+AppScheduleWakeHost :: (id: s32, utc: float64) -> bool { return true }
+#program_export
 AppAssetPathHost :: (name: string) -> string { return "" }
 #program_export
 AppPbkdf2Sha256Host :: (password: string, salt: string, iterations: s32) -> string { return "" }

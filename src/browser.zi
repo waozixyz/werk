@@ -1,5 +1,5 @@
-// The browser host. ?app=ID opens that tool at start; ?mini opens Pass on
-// its own, for pages that embed it.
+// The browser host. ?app=ID opens a tool at start. Embedded ?mini opens
+// Pass first unless ?app selects another, with navigation to every tool.
 #import "werk"
 #import "browser_storage"
 #import "std/text_buffer"
@@ -43,7 +43,11 @@ main :: () -> s32 {
     WerkStart()
     query := BrowserQuery()
     if QueryValue(query, "mini") != "" {
-        unused WerkOpen("pass", true)
+        selected := QueryValue(query, "app")
+        if selected == "" {
+            selected = "pass"
+        }
+        unused WerkOpen(selected, true)
     } else if QueryValue(query, "app") != "" {
         unused WerkOpen(QueryValue(query, "app"), false)
     }

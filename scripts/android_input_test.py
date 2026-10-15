@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Drive only a private emulator; never choose a connected phone implicitly."""
 from pathlib import Path
+import csv
+import io
 import os
 import re
 import subprocess
@@ -26,6 +28,17 @@ def shell(*arguments, check=True):
 
 def shot(name):
     (output / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p").stdout)
+
+def tap_label(word):
+    shot("label")
+    data = subprocess.check_output(["tesseract", str(output / "label.png"), "stdout", "--psm", "11", "-c", "tessedit_create_tsv=1"],
+                                   stderr=subprocess.DEVNULL, text=True)
+    for item in csv.DictReader(io.StringIO(data), delimiter="\t"):
+        if item["text"].strip().lower() == word.lower():
+            tap(int(item["left"]) + int(item["width"]) // 2,
+                int(item["top"]) + int(item["height"]) // 2)
+            return
+    raise AssertionError(f"Could not find {word!r} in the private emulator")
 
 def alive():
     if not shell("pidof", package, check=False).strip():
@@ -118,7 +131,26 @@ try:
     tap(int(28 * zoom), top + int(28 * zoom)); time.sleep(0.5); alive()
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "name=Ada Lovelace\n" in settings, f"Profile name typed out of order: {settings!r}"
-    print("Werkzeug Android: home, Pass keyboard, masked master, profiles, generation, restart and profile name pass")
+    tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.5)
+    tap(width // 2, top + int(694 * zoom))
+    shell("input", "keycombination", "113", "29")
+    type_text("https://sync.example.invalid:8443/")
+    shell("input", "keyevent", "4"); time.sleep(0.5)
+    tap_label("Save")
+    settings = shell("run-as", package, "cat", "files/profile/settings.txt")
+    assert "node=https://sync.example.invalid:8443\n" in settings, "Custom node was not saved"
+    assert adb("shell", "run-as", package, "test", "-f", "files/account/keys.txt", check=False).returncode != 0
+    shot("custom-node")
+    # Updating this same package preserves both the tool's files and the
+    # profile. No owner phone is selected by this harness.
+    shell("am", "force-stop", package)
+    adb("install", "-r", str(apk))
+    shell("am", "start", "-n", package + "/android.app.NativeActivity")
+    time.sleep(1); alive()
+    assert shell("run-as", package, "cat", "files/profile/settings.txt") == settings
+    assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected
+    shot("updated")
+    print("Werkzeug Android: input, profiles, custom node and in-place package update preserved private data")
 except BaseException:
     shot("failure")
     raise

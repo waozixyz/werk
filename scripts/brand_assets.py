@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Render the Werkzeug mark, a wrench with a keyhole, from the canonical vector for all distribution sizes."""
+"""Resize the owner-selected modular W bitmap for all distribution sizes."""
 from pathlib import Path
-import io
-import cairosvg
 from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
-SVG = ROOT / 'assets/app/icon.svg'
+SOURCE = ROOT / 'assets/app/logo.png'
 def render(size, background=None):
-    image = Image.open(io.BytesIO(cairosvg.svg2png(url=str(SVG), output_width=size, output_height=size))).convert('RGBA')
+    image = Image.open(SOURCE).convert('RGBA').resize((size, size), Image.Resampling.LANCZOS)
     if background:
         base = Image.new('RGBA', image.size, background); base.alpha_composite(image); image = base
     return image
@@ -29,7 +27,7 @@ for path, size in [('assets/app/readme-banner.png',(1536,512)), ('assets/app/rea
         box=d.textbbox((0,0),name,font=font); tw=box[2]; gap=icon_size*.18
         if icon_size+gap+tw <= w*.86: break
         icon_size-=2
-    mark=render(int(icon_size*1.5)); mark=mark.crop(mark.getbbox())  # the mark without the icon's padding
+    mark=render(icon_size)
     left=int((w-mark.width-gap-tw)/2); top=int((h-mark.height)/2)
     image.paste(mark,(left,top),mark)
     d.text((left+mark.width+gap, (h-(box[3]-box[1]))/2-box[1]),name,font=font,fill='#291747')

@@ -9,6 +9,9 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/SystemTheme"
 #import "platform"
 #import "files"
+#import "node_url"
+
+DEFAULT_NODE :: "https://api.waozi.xyz"
 
 PROFILE_NAME_LIMIT :: 40
 // Pictures of Kryon's profile picture atlas, five to a row.
@@ -22,6 +25,7 @@ Profile :: struct {
     theme_mode: s32
     accent: s32
     material: bool
+    node: [256]u8
 }
 
 profile: Profile;
@@ -30,6 +34,11 @@ palette: Palette;
 
 ProfileName :: () -> string {
     return TextUntilNul(profile.name[:])
+}
+
+ProfileNode :: () -> string {
+    value := TextUntilNul(profile.node[:])
+    return ifx value == "" then DEFAULT_NODE else value
 }
 
 Accent :: (index: s32) -> u32 {
@@ -78,6 +87,13 @@ ParseInteger :: (text: string) -> s32 {
 }
 
 ApplyProfileSetting :: (key: string, value: string) {
+    if key == "node" {
+        normalized := NodeOrigin(value)
+        if normalized != "" {
+            unused CopyCString(normalized, profile.node[:])
+        }
+        return
+    }
     if key == "name" {
         count := value.count
         if count > PROFILE_NAME_LIMIT {
@@ -160,6 +176,9 @@ SaveProfile :: () -> bool {
     used: s64 = 0
     // A name never holds a line break: the field keeps one line.
     used = AppendLine(text[:], used, "name", ProfileName())
+    if used >= 0 {
+        used = AppendLine(text[:], used, "node", ProfileNode())
+    }
     if used >= 0 {
         used = AppendLine(text[:], used, "picture", FormatInteger(cast(s64)profile.picture, number[:]))
     }

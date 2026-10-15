@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <title>Werkzeug — a wrench with a keyhole</title>
-  <g fill="#8254ff" fill-rule="evenodd" transform="translate(-10 10)">
-    <path d="M425.9 145.5A118 118 0 1 1 366.5 86.1L288.5 164.1A42 42 0 0 0 347.9 223.5Z"/>
-    <path d="M239.0 202.3L309.7 273.0L181.0 401.7A50 50 0 0 1 110.3 331.0ZM159.8 324.2a21 21 0 0 0 -11.2 38.7l-5.2 23.0h32.8l-5.2 -23.0a21 21 0 0 0 -11.2 -38.7Z"/>
-  </g>
-</svg>

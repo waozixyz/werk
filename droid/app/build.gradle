@@ -23,7 +23,8 @@ android {
     // Sign release builds only when a keystore is actually available: CI and
     // local release builds pass -Pkeystore.* properties, while clean checkouts
     // (for example an F-Droid builder) produce an unsigned APK instead.
-    def signRelease = !project.hasProperty('fDroidBuild') \
+    def fdroidBuild = (project.findProperty('fDroidBuild') ?: 'false').toString().toBoolean()
+    def signRelease = !fdroidBuild \
         && releaseKeystore != null && releaseKeystore.exists() \
         && releasePassword != ""
 

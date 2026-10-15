@@ -7,6 +7,8 @@ Werkzeug holds small private tools in one app. Everything is computed on your de
 
 A profile with your name and picture sets the appearance every tool shares. Werkzeug was previously called Pass; updating keeps your profiles, settings and saved master password.
 
+Every tool works without a Daochi account. In Profile → Sync you can choose your own node before connecting an account, or pause sync without forgetting your keys and local records. Sync stays off after restarting until you turn it on again.
+
 Pass is an independent implementation of the LessPass algorithm. Compatibility does not imply endorsement by or affiliation with the LessPass project.
 
 Source code: https://github.com/waozixyz/werk

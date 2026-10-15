@@ -5,6 +5,8 @@ Uses disposable data and cache folders and fixture secrets only. Run
 through scripts/werk_gui_test.sh, which starts the private display.
 """
 from pathlib import Path
+import csv
+import io
 import base64
 import hashlib
 import hmac
@@ -82,6 +84,24 @@ def key(name):
 def capture(name):
     time.sleep(0.4)
     command("import", "-window", window, str(output / f"{name}.png"))
+
+
+def click_word(word, toggle=False):
+    capture("control")
+    text = command("tesseract", str(output / "control.png"), "stdout", "--psm", "11",
+                   "-c", "tessedit_create_tsv=1")
+    for item in csv.DictReader(io.StringIO(text), delimiter="\t"):
+        if item["text"].strip().lower() == word.lower():
+            click(350 if toggle else int(item["left"]) + int(item["width"]) // 2,
+                  int(item["top"]) + int(item["height"]) // 2)
+            return
+    raise AssertionError(f"Could not find {word!r} in the private test window")
+
+
+def scroll_down():
+    command("xdotool", "mousemove", "--window", window, "210", "650")
+    command("xdotool", "click", "--window", window, "--repeat", "12", "--delay", "70", "5")
+    time.sleep(0.4)
 
 
 def clipboard():
@@ -171,6 +191,47 @@ try:
     settings = (data / "profile/settings.txt").read_text()
     assert "name=Fixture Person\n" in settings and "theme_mode=2\n" in settings, settings
     assert (data / "profile/settings.txt").stat().st_mode & 0o077 == 0
+    # Optional sync needs no account. Invalid origins are rejected before
+    # any connection; the chosen node survives restarting the application.
+    click(210, 694)
+    key("ctrl+a")
+    type_text("https://example.invalid/path")
+    click(210, 744)
+    assert "node=https://api.waozi.xyz\n" in (data / "profile/settings.txt").read_text()
+    capture("node-invalid")
+    click(210, 694)
+    key("ctrl+a")
+    type_text("https://sync.example.invalid:8443/")
+    click(210, 744)
+    assert "node=https://sync.example.invalid:8443\n" in (data / "profile/settings.txt").read_text()
+    assert not (data / "account/keys.txt").exists(), "Choosing a node created an account"
+    capture("node-saved")
+    stop()
+    start()
+    click(390, 28)
+    capture("node-restarted")
+    assert "node=https://sync.example.invalid:8443\n" in (data / "profile/settings.txt").read_text()
+    assert not (data / "account/keys.txt").exists()
+    # OCR uses light controls; the dark appearance was checked above.
+    click(210, 324)
+    scroll_down()
+    click_word("Create")
+    account_file = data / "account/keys.txt"
+    assert account_file.exists() and "paused=0\n" in account_file.read_text()
+    click_word("Daochi", toggle=True)
+    assert "paused=1\n" in account_file.read_text(), "Profile's sync switch did not pause"
+    capture("sync-paused")
+    stop()
+    start()
+    assert "paused=1\n" in account_file.read_text()
+    click(390, 28)
+    capture("sync-paused-restarted")
+    scroll_down()
+    click_word("Forget")
+    click_word("forget")
+    assert not account_file.exists()
+    assert records.read_text() == saved, "Forgetting an account changed local Auth records"
+    capture("account-forgotten")
     stop()
     print("Werkzeug GUI test: home, Pass, Calculator, Clock, Auth and Profile ran on a private display")
 finally:

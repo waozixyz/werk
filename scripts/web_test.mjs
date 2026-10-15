@@ -1,7 +1,7 @@
 // Exercise the built site's Werkzeug app in a private headless browser with a
 // disposable profile: the home screen, a tool opened by ?app=, Calculator
-// typing, Clock, and Pass alone by ?mini as embedding pages use it.
-import {spawn} from 'node:child_process';
+// typing, Clock, and every tool plus navigation in embedded mini mode.
+import {spawn, spawnSync} from 'node:child_process';
 import {readFile, writeFile, mkdir, mkdtemp} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {resolve, join, extname} from 'node:path';
@@ -93,6 +93,19 @@ try {
     const shot = await command('Page.captureScreenshot', {format: 'png'});
     await writeFile(join(output, name + '.png'), Buffer.from(shot.data, 'base64'));
   };
+  const expectText = async (name, expected) => {
+    await screenshot(name);
+    const result = spawnSync('tesseract', [join(output, name + '.png'), 'stdout', '--psm', '11'],
+      {env: environment, encoding: 'utf8', timeout: 20000});
+    if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
+    if (!result.stdout.toLowerCase().includes(expected.toLowerCase()))
+      throw Error(`${name}: expected ${expected}, saw ${result.stdout}`);
+  };
+  const click = async (x, y) => {
+    await command('Input.dispatchMouseEvent', {type: 'mousePressed', x, y, button: 'left', clickCount: 1});
+    await command('Input.dispatchMouseEvent', {type: 'mouseReleased', x, y, button: 'left', clickCount: 1});
+    await delay(350);
+  };
   // The canvas has drawn a frame with something besides the background.
   const painted = `(() => {
     const canvas = document.querySelector('canvas');
@@ -127,17 +140,35 @@ try {
   };
   await command('Runtime.enable');
   await command('Page.enable');
+  await command('Emulation.setDeviceMetricsOverride', {width: 420, height: 760, deviceScaleFactor: 1, mobile: false});
   await open('', 'home');
   await open('?app=calculator', 'calculator');
   await type('12+30*2=');
   await delay(400);
-  await screenshot('calculator-typed');
+  await expectText('calculator-typed', '72');
   // Clock reads the local time zone every frame; a broken time binding
   // froze the page here.
   await open('?app=clock', 'clock');
   await open('?mini', 'pass-mini');
+  await expectText('pass-mini', 'Pass');
+  for (const [index, app] of ['pass', 'auth', 'calculator', 'clock'].entries()) {
+    await open('?mini&app=' + app, app + '-mini-direct');
+    await expectText(app + '-mini-direct', app);
+    await click(28, 28);
+    await expectText(app + '-mini-home', 'Werkzeug');
+    await click(142 + (index % 2) * 136, 132 + Math.floor(index / 2) * 136);
+    await expectText(app + '-mini-reopened', app);
+  }
+  await command('Emulation.setDeviceMetricsOverride', {width: 280, height: 480, deviceScaleFactor: 1, mobile: false});
+  await open('?mini&app=unknown', 'mini-narrow-home');
+  await expectText('mini-narrow-home', 'Werkzeug');
+  await click(206, 264);
+  await expectText('mini-narrow-clock', 'Clock');
+  await click(28, 28);
+  await click(250, 28);
+  await expectText('mini-narrow-profile', 'Profile');
   if (exceptions.length) throw Error('Page exceptions: ' + exceptions.join(' '));
-  console.log('Werkzeug web: home, Calculator, Clock and Pass in mini mode drew in a private headless browser');
+  console.log('Werkzeug web: Calculator result, every mini tool, Home, Profile and narrow navigation verified in private Chromium');
 } finally {
   socket?.close();
   try {

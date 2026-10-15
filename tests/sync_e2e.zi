@@ -12,6 +12,8 @@
 #import "records"
 #import "sync"
 #import "device_link"
+#import "profile"
+#import "node_url"
 
 RECORD_ID :: "e2e0000000000000000000000000000a"
 // RFC 6238's test key; never a real secret.
@@ -158,13 +160,97 @@ Remove :: () -> s32 {
     return ifx SyncUntilDone() then 0 else 1
 }
 
+// Offline preferences use a reserved, unreachable origin. No operation in
+// these modes may start a network request.
+Preferences :: () -> s32 {
+    invalid: [12]string = .["", "sync.example", "ftp://sync.example", "https://user:pass@sync.example",
+    "https://sync.example/path", "https://sync.example?x=1", "https://sync.example#fragment",
+    "https://sync.example:0", "https://sync.example:65536", "https://sync.example:abc",
+    "http://sync.example", "https://sync.example\n"]
+    for index: 0..11 {
+        if NodeOrigin(invalid[index]) != "" {
+            Say("accepted an invalid node")
+            return 1
+        }
+    }
+    if NodeOrigin("https://sync.example:8443/") != "https://sync.example:8443" ||
+    NodeOrigin("http://localhost:8989") == "" || NodeOrigin("http://[::1]:8989") == "" {
+        Say("rejected a valid node")
+        return 1
+    }
+    LoadAccount()
+    SyncNow()
+    SyncFrame()
+    if AccountReady() || SyncRunning() {
+        Say("a fresh profile started syncing")
+        return 1
+    }
+    unused CopyCString("https://sync.example.invalid", profile.node[:])
+    if !SaveProfile() {
+        return 1
+    }
+    LoadProfile()
+    if DefaultServer() != "https://sync.example.invalid" || !CreateAccount() ||
+    AccountServer() != "https://sync.example.invalid" || !AccountSyncEnabled() {
+        Say("the selected node was not used")
+        return 1
+    }
+    if !RecordPut("auth", RECORD_ID, RECORD_LINK, Now()) || !SetAccountSyncEnabled(false) {
+        return 1
+    }
+    Say("custom node saved and account paused")
+    return 0
+}
+
+Paused :: () -> s32 {
+    LoadAccount()
+    if !AccountReady() || AccountSyncEnabled() || AccountServer() != "https://sync.example.invalid" {
+        Say("paused account did not survive restart")
+        return 1
+    }
+    SyncSoon()
+    SyncNow()
+    SyncFrame()
+    LinkShow()
+    LinkFrame()
+    if SyncRunning() || LinkPhaseNow() != LinkPhase.LinkIdle {
+        Say("paused account started a request")
+        return 1
+    }
+    record: [1024]u8
+    if RecordValue("auth", RECORD_ID, record[:]) < 0 {
+        Say("pausing lost a local record")
+        return 1
+    }
+    if !SetAccountSyncEnabled(true) {
+        return 1
+    }
+    LoadAccount()
+    if !AccountSyncEnabled() {
+        return 1
+    }
+    if !ForgetAccount() || AccountReady() || RecordValue("auth", RECORD_ID, record[:]) < 0 {
+        Say("forgetting lost a local record")
+        return 1
+    }
+    Say("pause survived restart, blocked sync and linking, and retained local records")
+    return 0
+}
+
 #program_export
 main :: (argc: s32, argv: **u8) -> s32 {
     if argc < 2 {
         Say("usage: sync_e2e create|show FILE|join FILE|add|remove|present|absent")
         return 2
     }
+    LoadProfile()
     mode := TextFromCString(argv[1])
+    if mode == "preferences" {
+        return Preferences()
+    }
+    if mode == "paused" {
+        return Paused()
+    }
     path := ifx argc >= 3 then TextFromCString(argv[2]) else ""
     if mode == "create" {
         return Create()

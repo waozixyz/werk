@@ -196,7 +196,7 @@ CloseLink :: () -> bool {
 
 // On the connected device: shows a new code and waits for the new device.
 LinkShow :: () {
-    if !AccountReady() {
+    if !AccountSyncEnabled() {
         return
     }
     LinkReset()
@@ -369,6 +369,10 @@ LinkData :: (output: []u8) -> string {
 
 // Advances the connection; call once per frame.
 LinkFrame :: () {
+    if AccountReady() && !AccountSyncEnabled() {
+        LinkCancel()
+        return
+    }
     if link_phase != LinkPhase.LinkShowing && link_phase != LinkPhase.LinkJoining {
         return
     }

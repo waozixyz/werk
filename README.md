@@ -52,6 +52,17 @@ Profile → Sync keeps Auth's accounts on all your devices through a
 [Daochi](https://github.com/kryonlabs/daochi) account, `api.waozi.xyz` by
 default. Sync is off until you create or connect an account.
 
+Every tool works without Daochi. Set your own HTTPS node in Profile → Sync
+before creating or connecting an account; HTTP is supported for a local node
+on localhost. Both devices must use the same node to connect. With an account
+connected, the sync switch pauses all sync and device linking, preserves your
+keys and local records, and stays off after restarting. Forget the account on
+this device to choose a different node; local records remain available.
+
+The embedded web app (`/app/?mini`) also provides Home and Profile, so all
+four tools are reachable. Use `?mini&app=auth`, `calculator` or `clock` to
+open a particular tool first. Browser sync is currently unavailable.
+
 - Each record is sealed on the device with XChaCha20-Poly1305 under a random
   vault key that never leaves your devices unencrypted. The seal covers the
   account, the record and the time of the change, so the server can neither
@@ -94,8 +105,18 @@ make gui-test       # every tool, clipboard and profile on a private display
 make site           # build/site: browser app and offline worker
 make web-smoke      # private headless Chromium
 make android-debug  # ARM32, ARM64 and universal APKs
+make android-fdroid # unsigned F-Droid candidate, same Android ID and version
 make android-emulator # the x86_64 APK for a private emulator
 ```
+
+F-Droid metadata is maintained in `packaging/fdroid`. The `android-fdroid`
+target disables developer signing even when a release keystore is configured
+and writes `build/werk-VERSION-fdroid-unsigned.apk`. It adds no version or
+package suffix, preserving existing installations and reference-APK checks.
+The unsigned candidate is for builders, not installation. Werkzeug currently
+has no built-in updater: F-Droid or your chosen installer handles updates.
+Android requires the same signing certificate for an in-place update; the
+F-Droid recipe retains the developer-signature reproducibility requirement.
 
 For development with the real project repositories, create an ignored
 `ziran.local.toml`:

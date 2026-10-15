@@ -1,3 +1,4 @@
+- Give Werkzeug a purple modular W logo across the app, Android launcher and website.
+- Reach every Werkzeug tool from the embedded mini app, including its home screen and profile.
+- Choose your own Daochi node in Profile and pause optional sync without forgetting your account or local records.
 - Add a Scientific mode to Calculator: sin, cos and tan in degrees or radians with their inverses and hyperbolic forms, powers and roots, ln and log, factorials, π, e, Ans and E notation.
-- Fix the web version freezing when Clock opens, and count the stopwatch's tenths of a second there again.
-- Show π, √, Greek, Cyrillic and other characters on phones older than Android 10, which showed them as question marks.

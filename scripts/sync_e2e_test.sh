@@ -30,6 +30,12 @@ ${CC:-cc} -std=c99 -O2 -Wno-unused-variable -I"$("$ziran" pkg path ziran)/includ
     $(pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo) -l:libcurl.so.4 -lm -lpthread \
     -o "$work/sync_e2e"
 
+mkdir -p "$work/preferences"
+for mode in preferences paused; do
+    env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS -u WERK_SYNC_SERVER \
+        WERK_DATA="$work/preferences" "$work/sync_e2e" "$mode"
+done
+
 port=$((20000 + $$ % 20000))
 server=http://127.0.0.1:$port
 secret=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')

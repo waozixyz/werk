@@ -1,0 +1,71 @@
+// A Daochi node is an origin, without credentials or request parameters.
+// Plain HTTP is restricted to loopback for a locally hosted node.
+NodeOrigin :: (text: string) -> string {
+    end := text.count
+    if end > 0 && text[end - 1] == cast(u8)47 {
+        end -= 1
+    }
+    value := text[0:end]
+    start: s64 = 0
+    secure := false
+    if value.count > 8 && value[0:8] == "https://" {
+        start = 8
+        secure = true
+    } else if value.count > 7 && value[0:7] == "http://" {
+        start = 7
+    } else {
+        return ""
+    }
+    host_end := start
+    if value[start] == cast(u8)91 {
+        host_end += 1
+        while host_end < value.count && value[host_end] != cast(u8)93 {
+            ch := value[host_end]
+            if !(ch >= cast(u8)48 && ch <= cast(u8)57 || ch >= cast(u8)97 && ch <= cast(u8)102 ||
+                ch >= cast(u8)65 && ch <= cast(u8)70 || ch == cast(u8)58) {
+                return ""
+            }
+            host_end += 1
+        }
+        if host_end >= value.count || host_end <= start + 2 {
+            return ""
+        }
+        host_end += 1
+    } else {
+        while host_end < value.count && value[host_end] != cast(u8)58 {
+            ch := value[host_end]
+            if !(ch >= cast(u8)48 && ch <= cast(u8)57 || ch >= cast(u8)97 && ch <= cast(u8)122 ||
+                ch >= cast(u8)65 && ch <= cast(u8)90 || ch == cast(u8)45 || ch == cast(u8)46) {
+                return ""
+            }
+            host_end += 1
+        }
+    }
+    if host_end == start || value[start] == cast(u8)46 || value[start] == cast(u8)45 ||
+    value[host_end - 1] == cast(u8)46 || value[host_end - 1] == cast(u8)45 {
+        return ""
+    }
+    host := value[start:host_end]
+    if !secure && host != "localhost" && host != "127.0.0.1" && host != "[::1]" {
+        return ""
+    }
+    if host_end < value.count {
+        if value[host_end] != cast(u8)58 || host_end + 1 == value.count {
+            return ""
+        }
+        port: s64 = 0
+        index := host_end + 1
+        while index < value.count {
+            ch := value[index]
+            if ch < cast(u8)48 || ch > cast(u8)57 || port > 65535 {
+                return ""
+            }
+            port = port * 10 + cast(s64)(ch - cast(u8)48)
+            index += 1
+        }
+        if port < 1 || port > 65535 {
+            return ""
+        }
+    }
+    return value
+}

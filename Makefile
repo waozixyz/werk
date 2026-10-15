@@ -144,6 +144,13 @@ android-emulator: apps
 	python3 scripts/android_apk_check.py build/werk-android-emulator.apk
 android-release: apps
 	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
+.PHONY: android-fdroid
+# F-Droid owns signing and updates. Keep the same package/version as the
+# reference release; the suffix belongs to the unsigned output filename.
+android-fdroid:
+	$(MAKE) android-release GRADLE_ARGS="$(GRADLE_ARGS) -PfDroidBuild=true"
+	cp droid/app/build/outputs/apk/release/app-universal-release-unsigned.apk build/werk-$(shell cat VERSION)-fdroid-unsigned.apk
+	python3 scripts/android_apk_check.py build/werk-$(shell cat VERSION)-fdroid-unsigned.apk
 android-smoke:
 	bash scripts/android_smoke.sh
 android-input-test:

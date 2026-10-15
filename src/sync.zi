@@ -329,7 +329,7 @@ StartRound :: () -> bool {
 
 // Starts a sync unless one is running.
 SyncNow :: () {
-    if !AccountReady() || SyncRunning() {
+    if !AccountSyncEnabled() || SyncRunning() {
         return
     }
     if sync_since == 0 && sync_rounds == 0 {
@@ -459,7 +459,8 @@ FailureText :: (result: AuthResult, status: s32) -> string {
 
 // Advances a running sync; call once per frame. Starts one when due.
 SyncFrame :: () {
-    if !AccountReady() {
+    if !AccountSyncEnabled() {
+        CancelSyncNow()
         return
     }
     now := WallClock()

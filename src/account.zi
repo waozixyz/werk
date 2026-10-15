@@ -15,6 +15,8 @@
 #import "files"
 #import "platform"
 #import "sync_keys"
+#import "profile"
+#import "node_url"
 
 ACCOUNT_SERVER :: "https://api.waozi.xyz"
 // Daochi identifiers keep the full name, werkzeug, where files use werk: the
@@ -24,6 +26,7 @@ ACCOUNT_FILE_LIMIT :: 12288
 
 Account :: struct {
     ready: bool
+    paused: bool
     server: [256]u8
     keys: AccountKeys
     client_id: [40]u8
@@ -48,11 +51,29 @@ DefaultServer :: () -> string {
             return override
         }
     }
-    return ACCOUNT_SERVER
+    return ProfileNode()
 }
 
 AccountReady :: () -> bool {
     return account.ready
+}
+
+AccountSyncEnabled :: () -> bool {
+    return account.ready && !account.paused
+}
+
+SetAccountSyncEnabled :: (enabled: bool) -> bool {
+    if !account.ready {
+        return false
+    }
+    previous := account.paused
+    account.paused = !enabled
+    if !SaveAccount() {
+        account.paused = previous
+        return false
+    }
+    account_generation += 1
+    return true
 }
 
 AccountId :: () -> string {
@@ -131,9 +152,9 @@ SaveAccount :: () -> bool {
     lines: [7]string = .["server=", AccountServer(), "\nclient=", TextUntilNul(account.client_id[:]),
     "\ndevice=", HexOf(account.device_seed[:], seed_hex[:]), "\nvault="]
     used := Append(text[:], 0, lines[:])
-    rest: [6]string = .[HexOf(account.vault[:], vault_hex[:]), "\npublic=",
+    rest: [8]string = .[HexOf(account.vault[:], vault_hex[:]), "\npublic=",
     TextUntilNul(account.keys.public_key_hex[:]), "\nprivate=",
-    TextUntilNul(account.keys.private_key_hex[:]), "\n"]
+    TextUntilNul(account.keys.private_key_hex[:]), "\npaused=", ifx account.paused then "1\n" else "0\n"]
     used = Append(text[:], used, rest[:])
     saved := used > 0 && WritePrivate(path, TextView(text[0:used]))
     Wipe(text[:])
@@ -159,8 +180,11 @@ AccountFromText :: (text: string, target: *Account) -> bool {
         if index == text.count || text[index] == cast(u8)10 {
             line := text[start:index]
             value := LineValue(line, "server=")
-            if value != "" && CopyCString(value, target.server[:]) {
+            if NodeOrigin(value) != "" && CopyCString(NodeOrigin(value), target.server[:]) {
                 found |= 1
+            }
+            if line == "paused=1" {
+                target.paused = true
             }
             value = LineValue(line, "client=")
             if value != "" && CopyCString(value, target.client_id[:]) {
@@ -226,7 +250,8 @@ NewClientId :: (output: []u8) {
 // A new account with fresh keys, saved on this device.
 CreateAccount :: () -> bool {
     created: Account
-    if CreateAccountKeys(*created.keys) == 0 || !CopyCString(DefaultServer(), created.server[:]) {
+    server := NodeOrigin(DefaultServer())
+    if server == "" || CreateAccountKeys(*created.keys) == 0 || !CopyCString(server, created.server[:]) {
         return false
     }
     NewClientId(created.client_id[:])
@@ -249,7 +274,7 @@ CreateAccount :: () -> bool {
 // device's own key and client id.
 JoinAccount :: (server: string, public_hex: string, private_hex: string, vault: []u8) -> bool {
     joined: Account
-    if !CopyCString(server, joined.server[:]) || !CopyCString(public_hex, joined.keys.public_key_hex[:]) ||
+    if NodeOrigin(server) == "" || !CopyCString(NodeOrigin(server), joined.server[:]) || !CopyCString(public_hex, joined.keys.public_key_hex[:]) ||
     !CopyCString(private_hex, joined.keys.private_key_hex[:]) || vault.count != 32 {
         return false
     }
