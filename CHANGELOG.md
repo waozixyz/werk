@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.4.0] - 2026-10-13
+## [0.4.0] - 2026-10-15
 
 - Give Werkzeug a purple modular W logo across the app, Android launcher and website.
 - Reach every Werkzeug tool from the embedded mini app, including its home screen and profile.
