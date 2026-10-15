@@ -118,6 +118,9 @@ has no built-in updater: F-Droid or your chosen installer handles updates.
 Android requires the same signing certificate for an in-place update; the
 F-Droid recipe retains the developer-signature reproducibility requirement.
 
+The [F-Droid TODO](packaging/fdroid/TODO.md) records completed checks, the
+remaining submission/reproducibility steps and the prepared merge-request text.
+
 For development with the real project repositories, create an ignored
 `ziran.local.toml`:
 
