@@ -35,6 +35,11 @@ window = None
 # The RFC 6238 SHA-1 fixture key, never a real account.
 FIXTURE_SECRET = base64.b32encode(b"12345678901234567890").decode()
 FIXTURE_LINK = f"otpauth://totp/Fixture:alice@example.com?secret={FIXTURE_SECRET}&issuer=Fixture"
+# A Google Authenticator export of the same key, an RFC 6238 SHA-256 key and
+# a counter-based account (see apps/auth/exports_test.zi).
+MIGRATION_LINK = ("otpauth-migration://offline?data=CjoKFDEyMzQ1Njc4OTAxMjM0NTY3ODkwEhxFeGFtcGxlIENvOmFsaWNl"
+                  "QGV4YW1wbGUuY29tIAEoATACCjUKIDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyEgNib2IaBlNlY29uZCAC"
+                  "KAIwAgorChQxMjM0NTY3ODkwMTIzNDU2Nzg5MBIHY291bnRlchoESG90cCABKAEwARABGAEgACi5YA%3D%3D")
 
 
 def command(*args):
@@ -179,6 +184,38 @@ try:
     records = data / "records/auth.txt"
     saved = records.read_text()
     assert FIXTURE_SECRET in saved and "\tV\t1\t" in saved and records.stat().st_mode & 0o077 == 0
+    # A Google Authenticator export adds its new time-based account; the
+    # fixture key is already here and the counter-based one is skipped.
+    click(210, 56 + 12 + 20)
+    click(210, 56 + 12 + 24 + 20)
+    type_text(MIGRATION_LINK)
+    click(210, 56 + 12 + 76 + 20)
+    capture("auth-imported")
+    saved = records.read_text()
+    assert saved.count("\tV\t") == 2 and "Second:bob" in saved, saved.count("\tV\t")
+    # Edit renames the account and keeps the websites where it signs in, in
+    # the same record.
+    edit = (420 - 16 - 10 - 40 + 18, 56 + 64 + 16 + 18)
+    click(*edit)
+    capture("auth-edit")
+    click(210, 56 + 12 + 48 + 20)
+    key("ctrl+a")
+    type_text("renamed@example.com")
+    click(210, 56 + 12 + 48 + 56 + 24 + 20)
+    type_text("https://GitHub.com/login")
+    click(16 + 95, 56 + 12 + 48 + 56 + 24 + 56 + 20)
+    capture("auth-edited")
+    saved = records.read_text()
+    assert saved.count("\tV\t") == 2 and "Fixture:renamed%40example.com" in saved and "&sites=github.com" in saved
+    # Remove, inside Edit, needs a second tap.
+    click(*edit)
+    remove = (210, 56 + 12 + 48 + 56 + 24 + 56 + 64 + 20)
+    click(*remove)
+    assert "\tD\t" not in records.read_text(), "One tap removed an Auth account"
+    click(*remove)
+    capture("auth-removed")
+    saved = records.read_text()
+    assert saved.count("\tV\t") == 1 and saved.count("\tD\t") == 1 and "Second:bob" in saved
     home()
 
     # Profile: a name and dark appearance are saved privately.

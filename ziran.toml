@@ -2,7 +2,7 @@
 tool = "kryon"
 name = "Werkzeug"
 entry = "src/desktop.zi"
-module_roots = ["src", "shared", "apps/pass"]
+module_roots = ["src", "shared", "apps/pass", "apps/auth"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"

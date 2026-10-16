@@ -356,9 +356,44 @@ Base32Decode :: (text: string, output: []u8) -> s32 {
     return count
 }
 
+// Encodes bytes as Base32 without padding. Returns the length, or -1 when
+// it does not fit in output.
+Base32Encode :: (bytes: []u8, count: s32, output: []u8) -> s32 {
+    alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+    buffer: u32 = 0
+    bits: s32 = 0
+    used: s32 = 0
+    index: s32 = 0
+    while index < count {
+        buffer = (buffer << cast(u32)8) | cast(u32)bytes[index]
+        bits += 8
+        index += 1
+        while bits >= 5 {
+            bits -= 5
+            if used >= cast(s32)output.count - 1 {
+                return -1
+            }
+            output[used] = alphabet[cast(s64)((buffer >> cast(u32)bits) & cast(u32)31)]
+            used += 1
+        }
+    }
+    if bits > 0 {
+        if used >= cast(s32)output.count - 1 {
+            return -1
+        }
+        output[used] = alphabet[cast(s64)((buffer << cast(u32)(5 - bits)) & cast(u32)31)]
+        used += 1
+    }
+    output[used] = cast(u8)0
+    return used
+}
+
 Account :: struct {
     issuer: [64]u8
     name: [128]u8
+    // The websites where this account signs in, such as github.com,
+    // separated by spaces.
+    sites: [256]u8
     // The secret as Base32, kept to save it again.
     secret: [256]u8
     key: [KEY_LIMIT]u8
@@ -513,6 +548,80 @@ CopyLimited :: (text: string, output: []u8) -> bool {
     return true
 }
 
+// A host name such as github.com or account.proton.me.
+ValidHost :: (host: string) -> bool {
+    if host.count < 3 || host.count > 253 || host[0] == cast(u8)46 || host[0] == cast(u8)45 ||
+    host[host.count - 1] == cast(u8)46 {
+        return false
+    }
+    dot := false
+    index: s64 = 0
+    while index < host.count {
+        byte := Lower(host[index])
+        letter := byte >= cast(u8)97 && byte <= cast(u8)122
+        digit := byte >= cast(u8)48 && byte <= cast(u8)57
+        if byte == cast(u8)46 {
+            if host[index - 1] == cast(u8)46 {
+                return false
+            }
+            dot = true
+        } else if !letter && !digit && byte != cast(u8)45 {
+            return false
+        }
+        index += 1
+    }
+    return dot
+}
+
+// Reads websites separated by spaces or commas, each a host or an address
+// such as https://github.com/login, into lowercase hosts separated by
+// single spaces. False when one is not a website.
+NormalizeSites :: (text: string, output: []u8) -> bool {
+    used: s64 = 0
+    output[0] = cast(u8)0
+    start: s64 = 0
+    while start < text.count {
+        while start < text.count && (text[start] <= cast(u8)32 || text[start] == cast(u8)44) {
+            start += 1
+        }
+        end := start
+        while end < text.count && text[end] > cast(u8)32 && text[end] != cast(u8)44 {
+            end += 1
+        }
+        if end > start {
+            site := text[start:end]
+            if StartsWithIgnoringCase(site, "https://") {
+                site = site[8:site.count]
+            } else if StartsWithIgnoringCase(site, "http://") {
+                site = site[7:site.count]
+            }
+            host_end: s64 = 0
+            while host_end < site.count && site[host_end] != cast(u8)47 && site[host_end] != cast(u8)63 &&
+            site[host_end] != cast(u8)35 {
+                host_end += 1
+            }
+            host := site[0:host_end]
+            if !ValidHost(host) || used + host.count + 1 >= output.count {
+                output[0] = cast(u8)0
+                return false
+            }
+            if used > 0 {
+                output[used] = cast(u8)32
+                used += 1
+            }
+            index: s64 = 0
+            while index < host.count {
+                output[used] = Lower(host[index])
+                used += 1
+                index += 1
+            }
+            output[used] = cast(u8)0
+        }
+        start = end
+    }
+    return true
+}
+
 // Reads an otpauth://totp/ link. HOTP and other kinds are refused.
 ParseLink :: (link: string, account: *Account) -> bool {
     account.* = Account.{.kind = HASH_SHA1, .digits = 6, .period = 30}
@@ -558,8 +667,11 @@ ParseLink :: (link: string, account: *Account) -> bool {
         while equals < pair.count && pair[equals] != cast(u8)61 {
             equals += 1
         }
-        if equals < pair.count {
-            key := pair[0:equals]
+        key := pair[0:equals]
+        // Other apps add their own fields, such as Ente Auth's codeDisplay.
+        known := key == "secret" || key == "issuer" || key == "algorithm" || key == "digits" ||
+        key == "period" || key == "sites"
+        if equals < pair.count && known {
             value: [256]u8
             if !Unescape(pair[equals + 1:pair.count], value[:]) {
                 return false
@@ -589,6 +701,9 @@ ParseLink :: (link: string, account: *Account) -> bool {
                 if account.period < 1 || account.period > 300 {
                     return false
                 }
+            } else if key == "sites" {
+                // An unreadable list only loses the websites, not the account.
+                unused NormalizeSites(text, account.sites[:])
             }
         }
         position = end + 1
@@ -669,8 +784,29 @@ LinkText :: (account: *Account, output: []u8) -> string {
     }
     used = AppendText(output, used, "&period=")
     used = AppendText(output, used, TextView(period[8 - length:8]))
+    sites := TextUntilNul(account.sites[:])
+    if sites != "" {
+        used = AppendText(output, used, "&sites=")
+        used = AppendEscaped(output, used, sites)
+    }
     if used < 0 {
         return ""
     }
     return TextView(output[0:used])
+}
+
+// An account's record id: the first 16 bytes of its link's SHA-256 as hex,
+// so the same account added on two devices is one record.
+RecordIdFor :: (link: string, output: []u8) -> string {
+    hex := "0123456789abcdef"
+    digest := Sha256(link)
+    for at: 0..15 {
+        output[at * 2] = hex[cast(s64)(digest[at] >> cast(u8)4)]
+        output[at * 2 + 1] = hex[cast(s64)(digest[at] & cast(u8)15)]
+    }
+    output[32] = cast(u8)0
+    for at: 0..31 {
+        digest[at] = cast(u8)0
+    }
+    return TextView(output[0:32])
 }

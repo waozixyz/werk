@@ -93,6 +93,7 @@ gui-smoke: gui
 gui-test: gui
 	sh scripts/werk_gui_test.sh
 	sh scripts/migration_test.sh
+	python3 -I scripts/auth_command_test.py
 
 # The bundle runtime for the browser, built from the locked Ziran.
 WEB_AR ?= $(dir $(WEB_CC))emar

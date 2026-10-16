@@ -1,0 +1,256 @@
+// Reads the QR codes in a PNG or JPEG image, such as a screenshot of Google
+// Authenticator's export, with the system's GdkPixbuf and ZBar. Both load
+// only when used, so Werkzeug runs without them. Pixels and decoded text
+// stay in this process.
+#import "std/c_string"
+#import "std/text_buffer"
+
+QR_SIDE_LIMIT :: 4096
+// ZBar's Y800 (8-bit gray) format, its QR symbol type and enable setting.
+QR_GRAY :: 808466521
+QR_SYMBOL_ALL :: 0
+QR_SYMBOL_QR :: 64
+QR_CONFIG_ENABLE :: 0
+
+dl :: #system_library "dl";
+c :: #system_library "c";
+OpenLibrary :: (path: *u8, flags: s32) -> *void #foreign dl "dlopen";
+LibrarySymbol :: (library: *void, name: *u8) -> *void #foreign dl "dlsym";
+CopyMemory :: (target: *void, source: *void, size: usize) -> *void #foreign c "memcpy";
+Allocate :: (size: usize) -> *u8 #foreign c "malloc";
+Free :: (bytes: *u8) #foreign c "free";
+
+LoaderNew :: #type () -> *void #c_call;
+LoaderWrite :: #type (loader: *void, bytes: *u8, size: usize, error: *void) -> s32 #c_call;
+LoaderClose :: #type (loader: *void, error: *void) -> s32 #c_call;
+LoaderImage :: #type (loader: *void) -> *void #c_call;
+ImageNumber :: #type (image: *void) -> s32 #c_call;
+ImagePixels :: #type (image: *void) -> *u8 #c_call;
+Unref :: #type (object: *void) -> void #c_call;
+ScannerNew :: #type () -> *void #c_call;
+ScannerFree :: #type (scanner: *void) -> void #c_call;
+ScannerSet :: #type (scanner: *void, symbol: s32, config: s32, value: s32) -> s32 #c_call;
+GrayNew :: #type () -> *void #c_call;
+GrayFree :: #type (image: *void) -> void #c_call;
+GrayFormat :: #type (image: *void, format: u64) -> void #c_call;
+GraySize :: #type (image: *void, width: u32, height: u32) -> void #c_call;
+GrayData :: #type (image: *void, data: *void, length: u64, cleanup: *void) -> void #c_call;
+Scan :: #type (scanner: *void, image: *void) -> s32 #c_call;
+FirstSymbol :: #type (image: *void) -> *void #c_call;
+NextSymbol :: #type (symbol: *void) -> *void #c_call;
+SymbolData :: #type (symbol: *void) -> *u8 #c_call;
+SymbolLength :: #type (symbol: *void) -> u32 #c_call;
+
+loader_new: LoaderNew;
+loader_write: LoaderWrite;
+loader_close: LoaderClose;
+loader_image: LoaderImage;
+image_width: ImageNumber;
+image_height: ImageNumber;
+image_stride: ImageNumber;
+image_channels: ImageNumber;
+image_pixels: ImagePixels;
+unref: Unref;
+scanner_new: ScannerNew;
+scanner_free: ScannerFree;
+scanner_set: ScannerSet;
+gray_new: GrayNew;
+gray_free: GrayFree;
+gray_format: GrayFormat;
+gray_size: GraySize;
+gray_data: GrayData;
+scan: Scan;
+first_symbol: FirstSymbol;
+next_symbol: NextSymbol;
+symbol_data: SymbolData;
+symbol_length: SymbolLength;
+qr_loaded: bool;
+qr_ready: bool;
+
+Resolve :: (library: *void, slot: *void, name: string) -> bool {
+    bytes: [64]u8
+    if library == null || !CopyCString(name, bytes[:]) {
+        return false
+    }
+    found := LibrarySymbol(library, *bytes[0])
+    if found == null {
+        return false
+    }
+    unused CopyMemory(slot, cast(*void)*found, size_of(*void))
+    return true
+}
+
+OpenSystem :: (name: string) -> *void {
+    bytes: [64]u8
+    if !CopyCString(name, bytes[:]) {
+        return null
+    }
+    // RTLD_NOW
+    return OpenLibrary(*bytes[0], 2)
+}
+
+// True when the system has GdkPixbuf and ZBar.
+QrAvailable :: () -> bool {
+    if qr_loaded {
+        return qr_ready
+    }
+    qr_loaded = true
+    pixbuf := OpenSystem("libgdk_pixbuf-2.0.so.0")
+    zbar := OpenSystem("libzbar.so.0")
+    qr_ready = Resolve(pixbuf, cast(*void)*loader_new, "gdk_pixbuf_loader_new") &&
+    Resolve(pixbuf, cast(*void)*loader_write, "gdk_pixbuf_loader_write") &&
+    Resolve(pixbuf, cast(*void)*loader_close, "gdk_pixbuf_loader_close") &&
+    Resolve(pixbuf, cast(*void)*loader_image, "gdk_pixbuf_loader_get_pixbuf") &&
+    Resolve(pixbuf, cast(*void)*image_width, "gdk_pixbuf_get_width") &&
+    Resolve(pixbuf, cast(*void)*image_height, "gdk_pixbuf_get_height") &&
+    Resolve(pixbuf, cast(*void)*image_stride, "gdk_pixbuf_get_rowstride") &&
+    Resolve(pixbuf, cast(*void)*image_channels, "gdk_pixbuf_get_n_channels") &&
+    Resolve(pixbuf, cast(*void)*image_pixels, "gdk_pixbuf_get_pixels") &&
+    Resolve(pixbuf, cast(*void)*unref, "g_object_unref") &&
+    Resolve(zbar, cast(*void)*scanner_new, "zbar_image_scanner_create") &&
+    Resolve(zbar, cast(*void)*scanner_free, "zbar_image_scanner_destroy") &&
+    Resolve(zbar, cast(*void)*scanner_set, "zbar_image_scanner_set_config") &&
+    Resolve(zbar, cast(*void)*gray_new, "zbar_image_create") &&
+    Resolve(zbar, cast(*void)*gray_free, "zbar_image_destroy") &&
+    Resolve(zbar, cast(*void)*gray_format, "zbar_image_set_format") &&
+    Resolve(zbar, cast(*void)*gray_size, "zbar_image_set_size") &&
+    Resolve(zbar, cast(*void)*gray_data, "zbar_image_set_data") &&
+    Resolve(zbar, cast(*void)*scan, "zbar_scan_image") &&
+    Resolve(zbar, cast(*void)*first_symbol, "zbar_image_first_symbol") &&
+    Resolve(zbar, cast(*void)*next_symbol, "zbar_symbol_next") &&
+    Resolve(zbar, cast(*void)*symbol_data, "zbar_symbol_get_data") &&
+    Resolve(zbar, cast(*void)*symbol_length, "zbar_symbol_get_data_length")
+    return qr_ready
+}
+
+BigEndian :: (bytes: []u8, at: s64, count: s64) -> s64 {
+    value: s64 = 0
+    index: s64 = 0
+    while index < count {
+        value = value * 256 + cast(s64)bytes[at + index]
+        index += 1
+    }
+    return value
+}
+
+// The image's width and height from its PNG or JPEG header, before any
+// pixels are decoded; 0 for another format.
+ImageSide :: (bytes: []u8, count: s64) -> s64 {
+    if count > 24 && bytes[0] == cast(u8)0x89 && bytes[1] == cast(u8)80 && bytes[2] == cast(u8)78 &&
+    bytes[3] == cast(u8)71 {
+        width := BigEndian(bytes, 16, 4)
+        height := BigEndian(bytes, 20, 4)
+        return ifx width > height then width else height
+    }
+    if count > 4 && bytes[0] == cast(u8)0xff && bytes[1] == cast(u8)0xd8 {
+        at: s64 = 2
+        while at + 9 < count && bytes[at] == cast(u8)0xff {
+            marker := bytes[at + 1]
+            length := BigEndian(bytes, at + 2, 2)
+            // Start-of-frame markers carry the size; C4, C8 and CC do not.
+            if marker >= cast(u8)0xc0 && marker <= cast(u8)0xcf && marker != cast(u8)0xc4 &&
+            marker != cast(u8)0xc8 && marker != cast(u8)0xcc {
+                height := BigEndian(bytes, at + 5, 2)
+                width := BigEndian(bytes, at + 7, 2)
+                return ifx width > height then width else height
+            }
+            at += 2 + length
+        }
+    }
+    return 0
+}
+
+// True when bytes start like a PNG or JPEG image.
+LooksLikeImage :: (bytes: []u8, count: s64) -> bool {
+    return count > 4 && ((bytes[0] == cast(u8)0x89 && bytes[1] == cast(u8)80) ||
+        (bytes[0] == cast(u8)0xff && bytes[1] == cast(u8)0xd8))
+}
+
+// Writes the otpauth text of every QR code in the image into output, one per
+// line. Returns the byte count, 0 when none was found and -1 when the image
+// cannot be read here.
+QrText :: (bytes: []u8, count: s64, output: []u8) -> s64 {
+    side := ImageSide(bytes, count)
+    if side <= 0 || side > QR_SIDE_LIMIT || !QrAvailable() {
+        return -1
+    }
+    loader := loader_new()
+    if loader == null {
+        return -1
+    }
+    wrote := loader_write(loader, *bytes[0], cast(usize)count, null) != 0
+    closed := loader_close(loader, null) != 0
+    image := loader_image(loader)
+    if !wrote || !closed || image == null {
+        unref(loader)
+        return -1
+    }
+    width := image_width(image)
+    height := image_height(image)
+    stride := image_stride(image)
+    channels := image_channels(image)
+    pixels := image_pixels(image)
+    if width <= 0 || height <= 0 || width > QR_SIDE_LIMIT || height > QR_SIDE_LIMIT ||
+    (channels != 3 && channels != 4) || stride < width * channels || pixels == null {
+        unref(loader)
+        return -1
+    }
+    gray := Allocate(cast(usize)(width * height))
+    if gray == null {
+        unref(loader)
+        return -1
+    }
+    y: s32 = 0
+    while y < height {
+        x: s32 = 0
+        while x < width {
+            at := y * stride + x * channels
+            gray[y * width + x] = cast(u8)((cast(s32)pixels[at] * 77 + cast(s32)pixels[at + 1] * 150 +
+                cast(s32)pixels[at + 2] * 29) / 256)
+            x += 1
+        }
+        y += 1
+    }
+    unref(loader)
+    used: s64 = 0
+    scanner := scanner_new()
+    picture := gray_new()
+    if scanner != null && picture != null {
+        unused scanner_set(scanner, QR_SYMBOL_ALL, QR_CONFIG_ENABLE, 0)
+        unused scanner_set(scanner, QR_SYMBOL_QR, QR_CONFIG_ENABLE, 1)
+        gray_format(picture, cast(u64)QR_GRAY)
+        gray_size(picture, cast(u32)width, cast(u32)height)
+        gray_data(picture, cast(*void)gray, cast(u64)(width * height), null)
+        if scan(scanner, picture) > 0 {
+            symbol := first_symbol(picture)
+            while symbol != null {
+                data := symbol_data(symbol)
+                length := cast(s64)symbol_length(symbol)
+                if data != null && length > 0 && used + length + 1 < output.count {
+                    index: s64 = 0
+                    while index < length {
+                        output[used + index] = data[index]
+                        index += 1
+                    }
+                    used += length
+                    output[used] = cast(u8)10
+                    used += 1
+                }
+                symbol = next_symbol(symbol)
+            }
+        }
+    }
+    if picture != null {
+        gray_free(picture)
+    }
+    if scanner != null {
+        scanner_free(scanner)
+    }
+    index: s32 = 0
+    while index < width * height {
+        gray[index] = cast(u8)0
+        index += 1
+    }
+    Free(gray)
+    return used
+}

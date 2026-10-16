@@ -20,9 +20,9 @@
 #import "werk_app"
 #import "app_protocol"
 #import "totp"
-#import "sha256"
+#import "exports"
 Icon :: #import "mingcute_regular_shield";
-Remove :: #import "mingcute_regular_delete_2";
+Edit :: #import "mingcute_regular_edit_2";
 
 ACCOUNT_LIMIT :: 128
 LIST_LIMIT :: 65536
@@ -31,11 +31,13 @@ CODE_CLEAR_SECONDS :: 30
 
 VIEW_LIST :: 0
 VIEW_ADD :: 1
+VIEW_EDIT :: 2
 
 FIELD_LINKS :: 1
 FIELD_ISSUER :: 2
 FIELD_NAME :: 3
 FIELD_SECRET :: 4
+FIELD_SITES :: 5
 
 FieldState :: struct {
     cursor: s32
@@ -59,14 +61,18 @@ account_count: s32;
 loaded: bool;
 view: s32;
 focused: s32;
-fields: [5]FieldState;
-links: [16384]u8;
+fields: [6]FieldState;
+// A whole export fits: Aegis's JSON is about 250 bytes per account.
+links: [65536]u8;
 issuer: [64]u8;
 name: [128]u8;
 secret: [256]u8;
+sites: [256]u8;
 status: [128]u8;
-// The account whose Remove was tapped once; a second tap removes it.
-remove_pending: s32 = -1;
+// The account being edited, and whether its Remove was tapped once; a
+// second tap removes it.
+editing: s32 = -1;
+remove_pending: bool;
 list_scroll: s32;
 store: [LIST_LIMIT]u8;
 session: Session;
@@ -83,22 +89,10 @@ Clear :: (bytes: []u8) {
     }
 }
 
-HexDigit :: (value: u8) -> u8 {
-    return ifx value < cast(u8)10 then cast(u8)48 + value else cast(u8)87 + value
-}
-
 // An account's record id comes from its link, so the same account added on
-// two devices is one record.
+// two devices is one record. An edited account keeps its id.
 SetRecordId :: (index: s32, link: string) {
-    digest := Sha256(link)
-    for at: 0..15 {
-        record_ids[index][at * 2] = HexDigit(digest[at] >> cast(u8)4)
-        record_ids[index][at * 2 + 1] = HexDigit(digest[at] & cast(u8)15)
-    }
-    record_ids[index][32] = cast(u8)0
-    for at: 0..31 {
-        digest[at] = cast(u8)0
-    }
+    unused RecordIdFor(link, record_ids[index][:])
 }
 
 // Writes the records of accounts added since the last save.
@@ -111,7 +105,9 @@ SaveAccounts :: () -> bool {
             {
                 link := LinkText(*accounts[index], line[:])
                 if link != "" {
-                    SetRecordId(index, link)
+                    if record_ids[index][0] == cast(u8)0 {
+                        SetRecordId(index, link)
+                    }
                     recorded[index] = RecordWrite(TextUntilNul(record_ids[index][:]), link)
                 }
             }
@@ -129,7 +125,7 @@ LoadAccounts :: () {
     count := ReadStore("accounts.txt", store[:])
     if count > 0 {
         account_count = 0
-        unused AddLinks(TextView(store[0:count]), false)
+        unused AddExport(TextView(store[0:count]), false)
         if SaveAccounts() {
             unused WriteStore("accounts.txt", "")
         }
@@ -138,6 +134,7 @@ LoadAccounts :: () {
     while account_count > 0 {
         account_count -= 1
         accounts[account_count] = Account.{}
+        record_ids[account_count][0] = cast(u8)0
     }
     listed := RecordList(ids[:])
     start: s32 = 0
@@ -164,51 +161,42 @@ LoadAccounts :: () {
     }
 }
 
+// The same secret gives the same codes, whatever the account is called.
 SameAccount :: (left: *Account, right: *Account) -> bool {
-    return TextUntilNul(left.issuer[:]) == TextUntilNul(right.issuer[:]) &&
-    TextUntilNul(left.name[:]) == TextUntilNul(right.name[:]) &&
-    TextUntilNul(left.secret[:]) == TextUntilNul(right.secret[:])
+    return TextUntilNul(left.secret[:]) == TextUntilNul(right.secret[:])
 }
 
-// Adds every otpauth link in text, separated by spaces or line breaks.
-// Returns how many were new.
-AddLinks :: (text: string, report: bool) -> s32 {
+// Adds the accounts of an export: otpauth links separated by spaces or line
+// breaks, Google Authenticator's export links or Aegis's JSON. Returns how
+// many were new.
+AddExport :: (text: string, report: bool) -> s32 {
+    result := ReadExport(text)
     added: s32 = 0
-    refused: s32 = 0
-    start: s64 = 0
-    while start < text.count {
-        while start < text.count && text[start] <= cast(u8)32 {
-            start += 1
-        }
-        end := start
-        while end < text.count && text[end] > cast(u8)32 {
-            end += 1
-        }
-        if end > start {
-            account: Account
-            if ParseLink(text[start:end], *account) && account_count < ACCOUNT_LIMIT {
-                known := false
-                index: s32 = 0
-                while index < account_count {
-                    if SameAccount(*accounts[index], *account) {
-                        known = true
-                    }
-                    index += 1
-                }
-                if !known {
-                    accounts[account_count] = account
-                    codes[account_count] = CachedCode.{.step = -1}
-                    recorded[account_count] = false
-                    account_count += 1
-                    added += 1
-                }
-            } else {
-                refused += 1
+    refused := result.skipped
+    found: s32 = 0
+    while found < result.count {
+        account := *export_accounts[found]
+        known := false
+        index: s32 = 0
+        while index < account_count {
+            if SameAccount(*accounts[index], account) {
+                known = true
             }
-            account = Account.{}
+            index += 1
         }
-        start = end
+        if !known && account_count >= ACCOUNT_LIMIT {
+            refused += 1
+        } else if !known {
+            accounts[account_count] = account.*
+            codes[account_count] = CachedCode.{.step = -1}
+            record_ids[account_count][0] = cast(u8)0
+            recorded[account_count] = false
+            account_count += 1
+            added += 1
+        }
+        found += 1
     }
+    ClearExport()
     if report {
         number: [24]u8
         message: [128]u8
@@ -218,6 +206,9 @@ AddLinks :: (text: string, report: bool) -> s32 {
         if refused > 0 {
             used = AppendText(message[:], used, ", skipped ")
             used = AppendText(message[:], used, FormatInteger(cast(s64)refused, number[:]))
+        }
+        if result.encrypted {
+            used = AppendText(message[:], 0, "This export is encrypted; export it without a password")
         }
         SetStatus(TextView(message[0:used]))
     }
@@ -244,9 +235,34 @@ AddManual :: () -> bool {
     }
     accounts[account_count] = account
     codes[account_count] = CachedCode.{.step = -1}
+    record_ids[account_count][0] = cast(u8)0
     recorded[account_count] = false
     account_count += 1
     account = Account.{}
+    return true
+}
+
+// Saves the edited name and websites. The account keeps its record id, so
+// the change replaces it on every device.
+SaveEdit :: () -> bool {
+    account := *accounts[editing]
+    if name[0] == cast(u8)0 && issuer[0] == cast(u8)0 {
+        SetStatus("Enter a name for the account")
+        return false
+    }
+    websites: [256]u8
+    if !NormalizeSites(TextUntilNul(sites[:]), websites[:]) {
+        SetStatus("Enter websites such as github.com, separated by spaces")
+        return false
+    }
+    account.issuer = issuer
+    account.name = name
+    account.sites = websites
+    recorded[editing] = false
+    if !SaveAccounts() {
+        SetStatus("Could not save the account")
+        return false
+    }
     return true
 }
 
@@ -265,6 +281,7 @@ RemoveAccount :: (index: s32) -> bool {
     account_count -= 1
     accounts[account_count] = Account.{}
     codes[account_count] = CachedCode.{}
+    record_ids[account_count][0] = cast(u8)0
     recorded[account_count] = false
     return true
 }
@@ -372,9 +389,35 @@ Field :: (id: s32, label: string, placeholder: string, buffer: []u8, bounds: Rec
     ApplyEdit(buffer, edit)
 }
 
+// Opens an account's name, websites and Remove.
+OpenEdit :: (index: s32) {
+    account := *accounts[index]
+    issuer = account.issuer
+    name = account.name
+    sites = account.sites
+    fields[FIELD_ISSUER] = FieldState.{}
+    fields[FIELD_NAME] = FieldState.{}
+    fields[FIELD_SITES] = FieldState.{}
+    editing = index
+    remove_pending = false
+    focused = 0
+    view = VIEW_EDIT
+    SetStatus("")
+}
+
+CloseEdit :: () {
+    Clear(issuer[:])
+    Clear(name[:])
+    Clear(sites[:])
+    editing = -1
+    remove_pending = false
+    focused = 0
+    view = VIEW_LIST
+}
+
 // One account: its name, current code (tap to copy), the seconds left and
-// Remove. True when Remove was confirmed.
-DrawRow :: (index: s32, x: float32, y: float32, inner: float32, row: float32) -> bool {
+// Edit.
+DrawRow :: (index: s32, x: float32, y: float32, inner: float32, row: float32) {
     account := *accounts[index]
     Box(session, BoxProps.{.key = cast(u64)(1000 + index), .bounds = Rectangle.{x, y, inner, row - 8.0},
             .radius = 10.0})
@@ -399,24 +442,13 @@ DrawRow :: (index: s32, x: float32, y: float32, inner: float32, row: float32) ->
     number: [24]u8
     Label(cast(u64)(5000 + index), FormatInteger(remaining, number[:]),
         Rectangle.{x + inner - 52.0, y + 24.0, 16.0, 18.0}, 12)
-    remove := ButtonProps.{.key = cast(u64)(6000 + index), .id = 6000 + index,
-        .label = ifx remove_pending == index then "Tap again to remove" else "Remove",
+    edit := ButtonProps.{.key = cast(u64)(6000 + index), .id = 6000 + index, .label = "Edit",
         .bounds = Rectangle.{x + inner - 40.0, y + 16.0, 36.0, 36.0},
-        .icon_shape = Remove.Shape, .icon_only = true,
+        .icon_shape = Edit.Shape, .icon_only = true,
         .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
-    if remove_pending == index {
-        remove.tone = ButtonTone.ButtonToneDanger
-        remove.emphasis = ButtonEmphasis.ButtonEmphasisFilled
+    if Button(session, edit) != 0 {
+        OpenEdit(index)
     }
-    if Button(session, remove) == 0 {
-        return false
-    }
-    if remove_pending == index {
-        return true
-    }
-    remove_pending = index
-    SetStatus("Tap the red button again to remove this account")
-    return false
 }
 
 ListView :: (area: Rectangle, left: float32, width: float32) {
@@ -441,13 +473,8 @@ ListView :: (area: Rectangle, left: float32, width: float32) {
         x := scroll.content.x
         inner := scroll.content.width - 10.0
         index: s32 = 0
-        while index < account_count {
-            y := scroll.content.y + cast(float32)index * row
-            if DrawRow(index, x, y, inner, row) {
-                remove_pending = -1
-                SetStatus(ifx RemoveAccount(index) then "Account removed" else "Could not remove the account")
-                break
-            }
+        while index < account_count && view == VIEW_LIST {
+            DrawRow(index, x, scroll.content.y + cast(float32)index * row, inner, row)
             index += 1
         }
         End(session)
@@ -456,11 +483,11 @@ ListView :: (area: Rectangle, left: float32, width: float32) {
 
 AddView :: (area: Rectangle, left: float32, width: float32) {
     y := area.y + 12.0
-    Label(cast(u64)20, "Paste otpauth:// links, one or many", Rectangle.{left, y, width, 20.0}, 14)
-    Field(FIELD_LINKS, "Links", "otpauth://totp/…", links[:], Rectangle.{left, y + 24.0, width, 40.0}, true)
+    Label(cast(u64)20, "Paste otpauth links or an authenticator export", Rectangle.{left, y, width, 20.0}, 14)
+    Field(FIELD_LINKS, "Links or export", "otpauth://totp/…", links[:], Rectangle.{left, y + 24.0, width, 40.0}, true)
     y += 76.0
-    if Action(21, "Import links", Rectangle.{left, y, width, 40.0}, true) {
-        added := AddLinks(TextUntilNul(links[:]), true)
+    if Action(21, "Import", Rectangle.{left, y, width, 40.0}, true) {
+        added := AddExport(TextUntilNul(links[:]), true)
         if added > 0 && !SaveAccounts() {
             SetStatus("Could not save the accounts")
         }
@@ -501,6 +528,50 @@ AddView :: (area: Rectangle, left: float32, width: float32) {
     }
 }
 
+EditView :: (area: Rectangle, left: float32, width: float32) {
+    y := area.y + 12.0
+    Field(FIELD_ISSUER, "Service", "Service, such as GitHub", issuer[:], Rectangle.{left, y, width, 40.0}, false)
+    y += 48.0
+    Field(FIELD_NAME, "Account", "Account name or email", name[:], Rectangle.{left, y, width, 40.0}, false)
+    y += 56.0
+    Label(cast(u64)40, "Websites where it signs in, such as github.com", Rectangle.{left, y, width, 20.0}, 14)
+    y += 24.0
+    Field(FIELD_SITES, "Websites", "github.com", sites[:], Rectangle.{left, y, width, 40.0}, false)
+    y += 56.0
+    half := (width - 8.0) / 2.0
+    if Action(41, "Save", Rectangle.{left, y, half, 40.0}, true) {
+        if SaveEdit() {
+            CloseEdit()
+            SetStatus("Account saved")
+        }
+        return
+    }
+    if Action(42, "Cancel", Rectangle.{left + half + 8.0, y, half, 40.0}, false) {
+        CloseEdit()
+        SetStatus("")
+        return
+    }
+    y += 64.0
+    remove := ButtonProps.{.key = cast(u64)43, .id = 43, .bounds = Rectangle.{left, y, width, 40.0},
+        .label = ifx remove_pending then "Tap again to remove" else "Remove account",
+        .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
+    if remove_pending {
+        remove.tone = ButtonTone.ButtonToneDanger
+        remove.emphasis = ButtonEmphasis.ButtonEmphasisFilled
+    }
+    if Button(session, remove) == 0 {
+        return
+    }
+    if !remove_pending {
+        remove_pending = true
+        SetStatus("Tap the red button again to remove this account")
+        return
+    }
+    removed := RemoveAccount(editing)
+    CloseEdit()
+    SetStatus(ifx removed then "Account removed" else "Could not remove the account")
+}
+
 Draw :: () {
     session = AppSession()
     area := AppBounds()
@@ -511,6 +582,8 @@ Draw :: () {
     left := area.x + (area.width - width) * 0.5
     if view == VIEW_ADD {
         AddView(area, left, width)
+    } else if view == VIEW_EDIT && editing >= 0 && editing < account_count {
+        EditView(area, left, width)
     } else {
         ListView(area, left, width)
     }
@@ -524,10 +597,13 @@ Main :: () -> s32 {
         AppDescribe("Auth", Icon.Shape)
         return APP_PROTOCOL
     }
-    // Records from another device replace the list.
+    // Records from another device replace the list, and close an edit.
     if !loaded || RecordsVersion() != records_version {
         LoadAccounts()
         loaded = true
+        if view == VIEW_EDIT {
+            CloseEdit()
+        }
     }
     Draw()
     return 0

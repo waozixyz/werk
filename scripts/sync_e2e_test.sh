@@ -73,9 +73,45 @@ device b join "$work/code.txt"
 wait $shower || { cat "$work/show.log"; exit 1; }
 device a remove
 device b absent
+# The same through `werk` without a window: one device creates the account
+# and imports a link, another connects with the code `werk sync show`
+# prints, receives the account with its website and removes it again.
+make build/werk > /dev/null
+werk() {
+    dir=$1
+    shift
+    env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS WERK_DATA="$work/$dir" \
+        WERK_SYNC_SERVER="$server" "$root/build/werk" "$@"
+}
+mkdir -p "$work/werk-a" "$work/werk-b"
+werk werk-a sync create > /dev/null
+printf '%s\n' 'otpauth://totp/Test:carol?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Test&sites=example.com' |
+    werk werk-a auth import > /dev/null
+werk werk-a sync show > "$work/werk-show.log" 2>&1 &
+shower=$!
+tries=0
+until grep -q 'other device: ' "$work/werk-show.log"; do
+    tries=$((tries + 1))
+    if [ $tries -gt 100 ]; then
+        cat "$work/werk-show.log"
+        exit 1
+    fi
+    sleep 0.1
+done
+sed -n 's/.*other device: //p' "$work/werk-show.log" | werk werk-b sync join > /dev/null
+wait $shower || { cat "$work/werk-show.log"; exit 1; }
+listed=$(werk werk-b auth list)
+case $listed in
+*'"issuer":"Test","account":"carol","sites":["example.com"]'*) ;;
+*) echo "the connected device did not receive the account: $listed"; exit 1 ;;
+esac
+id=$(printf '%s' "$listed" | sed -n 's/.*"id":"\([0-9a-f]*\)".*/\1/p')
+werk werk-b auth remove "$id" > /dev/null
+test "$(werk werk-a auth list)" = '[]' || { echo 'the removal did not reach the first device'; exit 1; }
+
 # The server stored only sealed records: the test secret never reached it.
 if grep -a -q GEZDGNBVGY3TQOJQ "$work/daochi.db"* 2>/dev/null; then
     echo "the server stored a secret in plain text"
     exit 1
 fi
-echo 'Werkzeug sync: account, connected device, record and removal through a local Daochi node'
+echo 'Werkzeug sync: account, connected device, record and removal through a local Daochi node, also with werk sync and werk auth'

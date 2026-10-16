@@ -1,0 +1,95 @@
+// Reading authenticator exports, with the RFC 6238 test keys only.
+#import "text_buffer"
+#import "totp"
+#import "exports"
+
+// Example Co:alice@example.com (SHA-1, 6 digits), Second:bob (SHA-256,
+// 8 digits) and a counter-based account, as Google Authenticator exports them.
+MIGRATION :: "otpauth-migration://offline?data=CjoKFDEyMzQ1Njc4OTAxMjM0NTY3ODkwEhxFeGFtcGxlIENvOmFsaWNlQGV4YW1wbGUuY29tIAEoATACCjUKIDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyEgNib2IaBlNlY29uZCACKAIwAgorChQxMjM0NTY3ODkwMTIzNDU2Nzg5MBIHY291bnRlchoESG90cCABKAEwARABGAEgACi5YA%3D%3D"
+
+AEGIS :: #string END
+{"version":1,"header":{"slots":null,"params":null},"db":{"version":2,"entries":[
+  {"type":"totp","uuid":"1","name":"carol","issuer":"Third","icon":null,
+   "info":{"secret":"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ","algo":"SHA512","digits":7,"period":60}},
+  {"type":"hotp","uuid":"2","name":"dave","issuer":"Counter",
+   "info":{"secret":"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ","algo":"SHA1","digits":6,"counter":1}}]}}
+END;
+
+AEGIS_ENCRYPTED :: "{\"version\":1,\"header\":{\"slots\":[{\"type\":1}],\"params\":{}},\"db\":\"c2VhbGVk\"}"
+
+// Ente Auth's plain text export: one link per line, with its own fields.
+ENTE :: #string END
+otpauth://totp/First:one?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=First&algorithm=sha1&digits=6&period=30&codeDisplay=%7B%22pinned%22%3Afalse%2C%22tags%22%3A%5B%5D%7D
+otpauth://totp/Second:two?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Second&algorithm=sha1&digits=6&period=30
+not-a-link
+END;
+
+Code :: (index: s32, unix: s64, output: []u8) -> string {
+    account := *export_accounts[index]
+    return CodeNow(account.kind, account.key[:], account.key_count, account.digits, account.period, unix, output)
+}
+
+#program_export
+Run :: () -> s32 {
+    code: [12]u8
+    result := ReadExport(MIGRATION)
+    if result.count != 2 || result.skipped != 1 || result.encrypted {
+        return 10
+    }
+    if TextUntilNul(export_accounts[0].issuer[:]) != "Example Co" ||
+    TextUntilNul(export_accounts[0].name[:]) != "alice@example.com" || export_accounts[0].digits != 6 ||
+    Code(0, 59, code[:]) != "287082" {
+        return 11
+    }
+    if TextUntilNul(export_accounts[1].issuer[:]) != "Second" || TextUntilNul(export_accounts[1].name[:]) != "bob" ||
+    export_accounts[1].kind != HASH_SHA256 || Code(1, 59, code[:]) != "46119246" {
+        return 12
+    }
+    result = ReadExport(AEGIS)
+    if result.count != 1 || result.skipped != 1 || TextUntilNul(export_accounts[0].issuer[:]) != "Third" ||
+    export_accounts[0].kind != HASH_SHA512 || export_accounts[0].digits != 7 || export_accounts[0].period != 60 {
+        return 20
+    }
+    result = ReadExport(AEGIS_ENCRYPTED)
+    if result.count != 0 || !result.encrypted {
+        return 21
+    }
+    result = ReadExport(ENTE)
+    if result.count != 2 || result.skipped != 1 || TextUntilNul(export_accounts[1].name[:]) != "two" {
+        return 30
+    }
+    ClearExport()
+    if export_accounts[0].secret[0] != cast(u8)0 || export_accounts[0].key_count != 0 {
+        return 31
+    }
+    // Websites: hosts or addresses, kept in the account's link.
+    sites: [256]u8
+    if !NormalizeSites("https://GitHub.com/login, account.proton.me", sites[:]) ||
+    TextUntilNul(sites[:]) != "github.com account.proton.me" || NormalizeSites("github", sites[:]) ||
+    NormalizeSites("user@github.com", sites[:]) || NormalizeSites("github..com", sites[:]) {
+        return 40
+    }
+    account: Account
+    again: Account
+    saved: [1024]u8
+    if !ParseLink("otpauth://totp/Example:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&sites=example.com%20login.example.org", *account) ||
+    TextUntilNul(account.sites[:]) != "example.com login.example.org" ||
+    !ParseLink(LinkText(*account, saved[:]), *again) || TextUntilNul(again.sites[:]) != "example.com login.example.org" {
+        return 41
+    }
+    encoded: [64]u8
+    key := "12345678901234567890"
+    bytes: [20]u8
+    for index: 0..19 {
+        bytes[index] = key[index]
+    }
+    if Base32Encode(bytes[:], 20, encoded[:]) != 32 || TextUntilNul(encoded[:]) != "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" ||
+    Base32Encode(bytes[:], 1, encoded[:]) != 2 || TextUntilNul(encoded[:]) != "GE" {
+        return 42
+    }
+    id: [33]u8
+    if RecordIdFor(TextView(saved[0:0]), id[:]) != "e3b0c44298fc1c149afbf4c8996fb924" {
+        return 43
+    }
+    return 0
+}

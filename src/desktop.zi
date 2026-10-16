@@ -1,6 +1,7 @@
 #import "werk"
 #import "std/c_string"
 #import "std/byte_text_linux"
+Command :: #import "command";
 Desktop :: #import "kryon/Desktop";
 using UI :: #import "kryon/Widgets";
 #import "kryon/Frame"
@@ -51,6 +52,13 @@ DrawDesktop :: (session: Session) -> bool {
 
 #program_export
 main :: (argc: s32, argv: **u8) -> s32 {
+    // `werk sync …` and `werk auth …` run without a window.
+    if argc >= 2 {
+        group := TextFromCString(argv[1])
+        if group == "sync" || group == "auth" {
+            return Command.RunCommand(argc, argv)
+        }
+    }
     if !Desktop.OpenDesktopSized(DESKTOP_WIDTH, DESKTOP_HEIGHT) {
         Desktop.CloseDesktop()
         Report("Werkzeug: could not open desktop\n")

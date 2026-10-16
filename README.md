@@ -15,9 +15,11 @@ Small private tools in one app. The home screen opens each one:
   affiliation with the LessPass project.
 - **Auth**: two-factor sign-in codes (TOTP, RFC 6238, with SHA-1, SHA-256 or
   SHA-512 and 6 to 8 digits). Add accounts by pasting `otpauth://` links, one
-  or many such as an authenticator's plain-text export, or by entering the
-  secret key. Tap a code to copy it; it is cleared from the clipboard after
-  30 seconds.
+  or many such as Ente Auth's plain-text export, a Google Authenticator
+  export link or an unencrypted Aegis export, or by entering the secret key.
+  Tap a code to copy it; it is cleared from the clipboard after 30 seconds.
+  Edit renames an account, notes the websites where it signs in, such as
+  `github.com`, or removes it.
 - **Calculator**: arithmetic with brackets, powers and percent, by keypad or
   keyboard.
 - **Clock**: the local time and date, and a stopwatch that keeps running
@@ -80,6 +82,30 @@ open a particular tool first. Browser sync is currently unavailable.
 
 `scripts/sync_e2e_test.sh` runs two devices against a local Daochi node.
 
+## The `werk sync` and `werk auth` commands
+
+On Linux, the same data works without a window, for devices without a
+screen and for scripts:
+
+```text
+werk sync status | create | show | join [CODE] | now
+werk auth list
+werk auth code ID
+werk auth import [FILE]
+werk auth rename ID SERVICE ACCOUNT
+werk auth sites ID [WEBSITE ...]
+werk auth remove ID
+```
+
+`werk sync show` prints a code for another device to enter; `werk sync join`
+reads one from its argument or standard input. `werk auth list` prints the
+accounts as JSON with their ids and websites, never their secrets.
+`werk auth code ID` prints the current code and the seconds it stays valid.
+`werk auth import` reads a file, or standard input: otpauth links, Google
+Authenticator export links, an unencrypted Aegis export, or a PNG or JPEG of
+an export's QR code when GdkPixbuf and ZBar (`libzbar0`) are installed.
+Changes sync right away when the device has an account.
+
 ## Tools are separate apps
 
 Each tool lives in `apps/<tool>/` and is built into its own portable bundle,
@@ -101,7 +127,8 @@ ImageMagick on private displays.
 make gui            # build/werk and the app bundles in build/apps
 make test           # Pass core and CLI, Pass state, Auth codes, Calculator
 make gui-smoke      # light and dark home screens on a private Xvfb display
-make gui-test       # every tool, clipboard and profile on a private display
+make gui-test       # every tool, clipboard and profile on a private display,
+                    # and werk auth without one
 make site           # build/site: browser app and offline worker
 make web-smoke      # private headless Chromium
 make android-debug  # ARM32, ARM64 and universal APKs
@@ -170,7 +197,7 @@ print the generated password instead. Run `pass --help` for all flags.
 
 ```text
 apps/pass/          Pass: LessPass core, settings and profiles, screens, CLI
-apps/auth/          Auth: TOTP, otpauth links, accounts and screens
+apps/auth/          Auth: TOTP, otpauth links, exports, accounts and screens
 apps/calculator/    Calculator
 apps/clock/         Clock and stopwatch
 shared/             the app interface, protocol and SHA-256/PBKDF2
@@ -178,6 +205,7 @@ src/werk.zi     home screen, profile screen and the bar above a tool
 src/apps.zi         loads, checks and runs the app bundles
 src/platform.zi     files, clock, clipboard and secrets per platform
 src/desktop.zi, src/android_main.zi, src/browser.zi   platform main loops
+src/command.zi      werk sync and werk auth without a window
 ```
 
 ## License

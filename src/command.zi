@@ -1,0 +1,579 @@
+// Werkzeug without a window, for scripts and devices without a screen:
+// `werk sync …` connects this device to the owner's account on a Daochi
+// node, and `werk auth …` reads and changes Auth's accounts, which sync
+// through it. Secrets never appear in arguments or output; `werk auth code`
+// prints one current code for the program that asked.
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/number_text"
+#import "std/timer_linux"
+#import "totp"
+#import "exports"
+Platform :: #import "platform";
+Accounts :: #import "account";
+Records :: #import "records";
+Sync :: #import "sync";
+Link :: #import "device_link";
+Profile :: #import "profile";
+Qr :: #import "qr_image";
+
+AUTH_APP :: "auth"
+INPUT_LIMIT :: 10485760
+ID_LIMIT :: 17408
+QR_TEXT_LIMIT :: 65536
+
+c :: #system_library "c";
+WriteRaw :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign c "write";
+ReadRaw :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign c "read";
+OpenRaw :: (path: *u8, flags: s32) -> s32 #foreign c "open";
+CloseRaw :: (fd: s32) -> s32 #foreign c "close";
+Allocate :: (size: usize) -> *u8 #foreign c "malloc";
+Free :: (bytes: *u8) #foreign c "free";
+
+Usage :: #string END
+Usage: werk sync status
+       werk sync create          create an account on this device
+       werk sync show            show a code that connects another device
+       werk sync join [CODE]     connect to an account with another device's code
+       werk sync now
+       werk auth list            Auth's accounts as JSON, without secrets
+       werk auth code ID         the current code and the seconds it stays valid
+       werk auth import [FILE]   otpauth links, Google Authenticator export links
+                                 or QR images, or Aegis's unencrypted JSON;
+                                 standard input without FILE
+       werk auth rename ID SERVICE ACCOUNT
+       werk auth sites ID [WEBSITE ...]
+       werk auth remove ID
+END;
+
+qr_text: [QR_TEXT_LIMIT]u8;
+record_ids: [ID_LIMIT]u8;
+record_value: [1025]u8;
+link_text: [1025]u8;
+
+Wipe :: (bytes: []u8) {
+    index: s64 = 0
+    while index < bytes.count {
+        bytes[index] = cast(u8)0
+        index += 1
+    }
+}
+
+WriteAll :: (fd: s32, text: string) {
+    chunk: [4096]u8
+    at: s64 = 0
+    while at < text.count {
+        count := text.count - at
+        if count > 4096 {
+            count = 4096
+        }
+        index: s64 = 0
+        while index < count {
+            chunk[index] = text[at + index]
+            index += 1
+        }
+        written: s64 = 0
+        while written < count {
+            result := WriteRaw(fd, *chunk[written], cast(usize)(count - written))
+            if result <= 0 {
+                Wipe(chunk[:])
+                return
+            }
+            written += cast(s64)result
+        }
+        at += count
+    }
+    Wipe(chunk[:])
+}
+
+Say :: (text: string) {
+    WriteAll(1, text)
+    WriteAll(1, "\n")
+}
+
+Fail :: (text: string) -> s32 {
+    WriteAll(2, "werk: ")
+    WriteAll(2, text)
+    WriteAll(2, "\n")
+    return 1
+}
+
+PutNumber :: (value: s64) {
+    number: [24]u8
+    WriteAll(1, FormatInteger(value, number[:]))
+}
+
+// A JSON string, with quotes, backslashes and control characters escaped.
+PutJson :: (text: string) {
+    hex := "0123456789abcdef"
+    WriteAll(1, "\"")
+    start: s64 = 0
+    index: s64 = 0
+    while index < text.count {
+        byte := text[index]
+        if byte == cast(u8)34 || byte == cast(u8)92 || byte < cast(u8)32 {
+            WriteAll(1, text[start:index])
+            if byte == cast(u8)34 || byte == cast(u8)92 {
+                WriteAll(1, "\\")
+                WriteAll(1, text[index:index + 1])
+            } else {
+                escape: [6]u8 = .[cast(u8)92, cast(u8)117, cast(u8)48, cast(u8)48, hex[cast(s64)(byte >> cast(u8)4)],
+                hex[cast(s64)(byte & cast(u8)15)]]
+                WriteAll(1, TextView(escape[0:6]))
+            }
+            start = index + 1
+        }
+        index += 1
+    }
+    WriteAll(1, text[start:text.count])
+    WriteAll(1, "\"")
+}
+
+NowMilliseconds :: () -> s64 {
+    return cast(s64)(Platform.WallClock() * 1000.0)
+}
+
+// Runs a sync to its end. True when it synced, or when this device has no
+// account to sync.
+SyncToEnd :: (report: bool) -> bool {
+    if !Accounts.AccountReady() {
+        return true
+    }
+    if !Accounts.AccountSyncEnabled() {
+        if report {
+            unused Fail("Sync is paused in Profile")
+        }
+        return false
+    }
+    Sync.SyncNow()
+    rounds: s32 = 0
+    while Sync.SyncRunning() && rounds < 1200 {
+        Sync.SyncFrame()
+        unused SleepMilliseconds(50)
+        rounds += 1
+    }
+    if Sync.SyncRunning() {
+        Sync.CancelSyncNow()
+        if report {
+            unused Fail("The sync did not finish")
+        }
+        return false
+    }
+    synced := Sync.SyncStatus() == "Synced"
+    if !synced && report {
+        unused Fail(Sync.SyncStatus())
+    }
+    return synced
+}
+
+// The Auth account a record holds.
+ReadAccount :: (id: string, account: *Account) -> bool {
+    count := Records.RecordValue(AUTH_APP, id, record_value[:])
+    found := count > 0 && ParseLink(TextView(record_value[0:count]), account)
+    Wipe(record_value[:])
+    return found
+}
+
+// Saves an account under its record id.
+WriteAccount :: (id: string, account: *Account) -> bool {
+    saved := false
+    {
+        link := LinkText(account, link_text[:])
+        saved = link != "" && Records.RecordPut(AUTH_APP, id, link, NowMilliseconds())
+    }
+    Wipe(link_text[:])
+    return saved
+}
+
+// The record ids of Auth's accounts, one per line.
+AccountIds :: () -> string {
+    count := Records.RecordIds(AUTH_APP, record_ids[:])
+    return ifx count > 0 then TextView(record_ids[0:count]) else ""
+}
+
+SyncStatusCommand :: () -> s32 {
+    if !Accounts.AccountReady() {
+        Say("Account: none on this device")
+    } else {
+        WriteAll(1, "Account: on ")
+        Say(Accounts.AccountServer())
+        Say(ifx Accounts.AccountSyncEnabled() then "Sync: on" else "Sync: paused")
+    }
+    ids := AccountIds()
+    count: s64 = 0
+    index: s64 = 0
+    while index < ids.count {
+        if ids[index] == cast(u8)10 {
+            count += 1
+        }
+        index += 1
+    }
+    WriteAll(1, "Auth accounts: ")
+    PutNumber(count)
+    Say("")
+    return 0
+}
+
+SyncCommand :: (argc: s32, argv: **u8) -> s32 {
+    action := ifx argc >= 3 then TextFromCString(argv[2]) else ""
+    if action == "status" {
+        return SyncStatusCommand()
+    }
+    if action == "create" {
+        if Accounts.AccountReady() {
+            return Fail("This device already has an account")
+        }
+        if !Accounts.CreateAccount() {
+            return Fail("Could not create the account")
+        }
+        Say("Created an account on this device")
+        return ifx SyncToEnd(true) then 0 else 1
+    }
+    if action == "now" {
+        if !Accounts.AccountReady() {
+            return Fail("This device has no account; use werk sync create or join")
+        }
+        if !SyncToEnd(true) {
+            return 1
+        }
+        Say("Synced")
+        return 0
+    }
+    if action == "show" {
+        if !Accounts.AccountReady() || !Accounts.AccountSyncEnabled() {
+            return Fail("This device needs an account with sync on")
+        }
+        Link.LinkShow()
+        shown: [16]u8
+        WriteAll(1, "Enter this code on the other device: ")
+        Say(Link.LinkCodeText(shown[:]))
+        while Link.LinkPhaseNow() == Link.LinkPhase.LinkShowing {
+            Link.LinkFrame()
+            unused SleepMilliseconds(100)
+        }
+        Wipe(shown[:])
+        if Link.LinkPhaseNow() != Link.LinkPhase.LinkDone {
+            return Fail(Link.LinkStatus())
+        }
+        Say("The other device is connected")
+        return 0
+    }
+    if action == "join" {
+        if Accounts.AccountReady() {
+            return Fail("This device already has an account")
+        }
+        code: [64]u8
+        {
+            typed := ""
+            if argc >= 4 {
+                typed = TextFromCString(argv[3])
+            } else {
+                count := ReadRaw(0, *code[0], 63)
+                used: s64 = ifx count > 0 then cast(s64)count else 0
+                while used > 0 && code[used - 1] <= cast(u8)32 {
+                    used -= 1
+                }
+                typed = TextView(code[0:used])
+            }
+            Link.LinkJoin(typed)
+        }
+        Wipe(code[:])
+        // Closing the mailbox finishes the connection.
+        while Link.LinkPhaseNow() == Link.LinkPhase.LinkJoining {
+            Link.LinkFrame()
+            unused SleepMilliseconds(100)
+        }
+        if !Accounts.AccountReady() {
+            return Fail(Link.LinkStatus())
+        }
+        Say("Connected to the account")
+        return ifx SyncToEnd(true) then 0 else 1
+    }
+    WriteAll(2, Usage)
+    return 2
+}
+
+AuthList :: () -> s32 {
+    // The list comes from this device's records even when the node is
+    // unreachable.
+    unused SyncToEnd(true)
+    ids := AccountIds()
+    WriteAll(1, "[")
+    first := true
+    start: s64 = 0
+    index: s64 = 0
+    while index < ids.count {
+        if ids[index] == cast(u8)10 {
+            id := ids[start:index]
+            account: Account
+            if ReadAccount(id, *account) {
+                WriteAll(1, ifx first then "\n{\"id\":" else ",\n{\"id\":")
+                first = false
+                PutJson(id)
+                WriteAll(1, ",\"issuer\":")
+                PutJson(TextUntilNul(account.issuer[:]))
+                WriteAll(1, ",\"account\":")
+                PutJson(TextUntilNul(account.name[:]))
+                WriteAll(1, ",\"sites\":[")
+                sites := TextUntilNul(account.sites[:])
+                site_start: s64 = 0
+                at: s64 = 0
+                while at <= sites.count {
+                    if at == sites.count || sites[at] == cast(u8)32 {
+                        if at > site_start {
+                            if site_start > 0 {
+                                WriteAll(1, ",")
+                            }
+                            PutJson(sites[site_start:at])
+                        }
+                        site_start = at + 1
+                    }
+                    at += 1
+                }
+                WriteAll(1, "],\"digits\":")
+                PutNumber(cast(s64)account.digits)
+                WriteAll(1, ",\"period\":")
+                PutNumber(cast(s64)account.period)
+                WriteAll(1, "}")
+            }
+            account = Account.{}
+            start = index + 1
+        }
+        index += 1
+    }
+    WriteAll(1, ifx first then "]\n" else "\n]\n")
+    return 0
+}
+
+AuthCode :: (id: string) -> s32 {
+    account: Account
+    if !ReadAccount(id, *account) {
+        return Fail("No Auth account has this id")
+    }
+    unix := cast(s64)Platform.WallClock()
+    code: [12]u8
+    WriteAll(1, CodeNow(account.kind, account.key[:], account.key_count, account.digits, account.period, unix,
+        code[:]))
+    WriteAll(1, " ")
+    PutNumber(cast(s64)account.period - unix % cast(s64)account.period)
+    Say("")
+    Wipe(code[:])
+    account = Account.{}
+    return 0
+}
+
+// Reads FILE, or standard input when it is "" or "-", into input.
+ReadInput :: (path: string, input: []u8) -> s64 {
+    fd: s32 = 0
+    if path != "" && path != "-" {
+        name: [4096]u8
+        if !CopyCString(path, name[:]) {
+            return -1
+        }
+        fd = OpenRaw(*name[0], 0)
+        if fd < 0 {
+            return -1
+        }
+    }
+    used: s64 = 0
+    while used < input.count {
+        count := ReadRaw(fd, *input[used], cast(usize)(input.count - used))
+        if count <= 0 {
+            break
+        }
+        used += cast(s64)count
+    }
+    if fd != 0 {
+        unused CloseRaw(fd)
+    }
+    return ifx used >= input.count then -1 else used
+}
+
+AuthImport :: (path: string) -> s32 {
+    memory := Allocate(cast(usize)INPUT_LIMIT)
+    if memory == null {
+        return Fail("Not enough memory to read the export")
+    }
+    input := BytesFromPointer(memory, cast(u64)INPUT_LIMIT)
+    count := ReadInput(path, input)
+    if count < 0 {
+        Wipe(input)
+        Free(memory)
+        return Fail("Could not read the export (at most 10 MiB)")
+    }
+    result := ExportResult.{}
+    if Qr.LooksLikeImage(input, count) {
+        found := Qr.QrText(input, count, qr_text[:])
+        if found >= 0 {
+            result = ReadExport(TextView(qr_text[0:found]))
+        }
+        Wipe(input[0:count])
+        Wipe(qr_text[:])
+        Free(memory)
+        if found < 0 {
+            return Fail("Could not read the image; reading QR codes needs GdkPixbuf and ZBar (libzbar0)")
+        }
+    } else {
+        result = ReadExport(TextView(input[0:count]))
+        Wipe(input[0:count])
+        Free(memory)
+    }
+    if result.encrypted {
+        ClearExport()
+        return Fail("This export is encrypted; export it without a password")
+    }
+    // The same secret gives the same codes, whatever the account is called.
+    added: s32 = 0
+    refused := result.skipped
+    now := NowMilliseconds()
+    ids := AccountIds()
+    found: s32 = 0
+    while found < result.count {
+        candidate := *export_accounts[found]
+        known := false
+        earlier: s32 = 0
+        while earlier < found {
+            if TextUntilNul(export_accounts[earlier].secret[:]) == TextUntilNul(candidate.secret[:]) {
+                known = true
+            }
+            earlier += 1
+        }
+        start: s64 = 0
+        index: s64 = 0
+        while index < ids.count && !known {
+            if ids[index] == cast(u8)10 {
+                saved: Account
+                known = ReadAccount(ids[start:index], *saved) &&
+                TextUntilNul(saved.secret[:]) == TextUntilNul(candidate.secret[:])
+                saved = Account.{}
+                start = index + 1
+            }
+            index += 1
+        }
+        if !known {
+            saved := false
+            {
+                id: [33]u8
+                link := LinkText(candidate, link_text[:])
+                saved = link != "" && Records.RecordPut(AUTH_APP, RecordIdFor(link, id[:]), link, now)
+            }
+            Wipe(link_text[:])
+            if saved {
+                added += 1
+            } else {
+                refused += 1
+            }
+        }
+        found += 1
+    }
+    ClearExport()
+    WriteAll(1, "Added ")
+    PutNumber(cast(s64)added)
+    WriteAll(1, ifx added == 1 then " account" else " accounts")
+    if refused > 0 {
+        WriteAll(1, ", skipped ")
+        PutNumber(cast(s64)refused)
+    }
+    Say("")
+    if added > 0 {
+        unused SyncToEnd(true)
+    }
+    return ifx added > 0 || result.count > 0 then 0 else 1
+}
+
+// Joins arguments from first on with spaces.
+JoinArguments :: (argc: s32, argv: **u8, first: s32, output: []u8) -> string {
+    used: s64 = 0
+    index := first
+    while index < argc {
+        part := TextFromCString(argv[index])
+        if used + part.count + 1 >= output.count {
+            return ""
+        }
+        if used > 0 {
+            output[used] = cast(u8)32
+            used += 1
+        }
+        at: s64 = 0
+        while at < part.count {
+            output[used] = part[at]
+            used += 1
+            at += 1
+        }
+        index += 1
+    }
+    return TextView(output[0:used])
+}
+
+AuthChange :: (action: string, id: string, argc: s32, argv: **u8) -> s32 {
+    account: Account
+    if !ReadAccount(id, *account) {
+        return Fail("No Auth account has this id")
+    }
+    changed := false
+    if action == "remove" {
+        changed = Records.RecordDelete(AUTH_APP, id, NowMilliseconds())
+    } else if action == "rename" {
+        if argc != 6 {
+            return Fail("Use werk auth rename ID SERVICE ACCOUNT")
+        }
+        issuer := TextFromCString(argv[4])
+        name := TextFromCString(argv[5])
+        if (issuer == "" && name == "") || !CopyLimited(issuer, account.issuer[:]) || !CopyLimited(name, account.name[:]) {
+            return Fail("A service of at most 63 bytes and an account of at most 127")
+        }
+        changed = WriteAccount(id, *account)
+    } else {
+        list: [1024]u8
+        sites: [256]u8
+        if !NormalizeSites(JoinArguments(argc, argv, 4, list[:]), sites[:]) {
+            return Fail("Name websites such as github.com, at most 255 bytes")
+        }
+        account.sites = sites
+        changed = WriteAccount(id, *account)
+    }
+    account = Account.{}
+    if !changed {
+        return Fail("Could not save the change")
+    }
+    Say(ifx action == "remove" then "Removed" else "Saved")
+    unused SyncToEnd(true)
+    return 0
+}
+
+AuthCommand :: (argc: s32, argv: **u8) -> s32 {
+    action := ifx argc >= 3 then TextFromCString(argv[2]) else ""
+    if action == "list" && argc == 3 {
+        return AuthList()
+    }
+    if action == "import" && argc <= 4 {
+        return AuthImport(ifx argc == 4 then TextFromCString(argv[3]) else "")
+    }
+    if argc >= 4 {
+        id := TextFromCString(argv[3])
+        if !Records.ValidRecordId(id) {
+            return Fail("An id comes from werk auth list")
+        }
+        if action == "code" && argc == 4 {
+            return AuthCode(id)
+        }
+        if action == "remove" && argc == 4 || action == "rename" || action == "sites" {
+            return AuthChange(action, id, argc, argv)
+        }
+    }
+    WriteAll(2, Usage)
+    return 2
+}
+
+// `werk sync …` and `werk auth …`; the window never opens.
+#program_export
+RunCommand :: (argc: s32, argv: **u8) -> s32 {
+    Profile.LoadProfile()
+    Accounts.LoadAccount()
+    group := TextFromCString(argv[1])
+    if group == "sync" {
+        return SyncCommand(argc, argv)
+    }
+    return AuthCommand(argc, argv)
+}
