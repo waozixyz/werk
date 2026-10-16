@@ -8,6 +8,10 @@
 - Add a Scientific mode to Calculator: sin, cos and tan in degrees or radians with their inverses and hyperbolic forms, powers and roots, ln and log, factorials, π, e, Ans and E notation.
 - Fix the web version freezing when Clock opens, and count the stopwatch's tenths of a second there again.
 - Show π, √, Greek, Cyrillic and other characters on phones older than Android 10, which showed them as question marks.
+- Import Google Authenticator export links, unencrypted Aegis exports and Ente Auth's plain-text export into Auth; encrypted exports are refused with a clear message.
+- Rename an Auth account, note the websites where it signs in, or remove it from its Edit screen.
+- Sign in on the desktop with a Daochi account key you already have, such as Inbe's, so Werkzeug syncs with the same account.
+- Use `werk sync` and `werk auth` without a window on Linux, including importing an export's QR image.
 
 ## [0.3.1] - 2026-10-13
 
