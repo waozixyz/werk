@@ -54,6 +54,12 @@ Profile → Sync keeps Auth's accounts on all your devices through a
 [Daochi](https://github.com/kryonlabs/daochi) account, `api.waozi.xyz` by
 default. Sync is off until you create or connect an account.
 
+On the desktop you can also sign in with a Daochi account key you already
+have, such as the one Inbe exports, so Werkzeug uses the same account as
+Inbe. Paste the key, and its passphrase if it has one; every device signed in
+with the same key opens the same Auth accounts. A phone connects with a code
+from one of those devices.
+
 Every tool works without Daochi. Set your own HTTPS node in Profile → Sync
 before creating or connecting an account; HTTP is supported for a local node
 on localhost. Both devices must use the same node to connect. With an account
@@ -88,7 +94,7 @@ On Linux, the same data works without a window, for devices without a
 screen and for scripts:
 
 ```text
-werk sync status | create | show | join [CODE] | now
+werk sync status | create | show | join [CODE] | key [FILE] | now
 werk auth list
 werk auth code ID
 werk auth import [FILE]
@@ -98,13 +104,16 @@ werk auth remove ID
 ```
 
 `werk sync show` prints a code for another device to enter; `werk sync join`
-reads one from its argument or standard input. `werk auth list` prints the
+reads one from its argument or standard input. `werk sync key` signs in with
+an account key from FILE or standard input; for a key with a passphrase, give
+FILE and the passphrase on standard input. `werk auth list` prints the
 accounts as JSON with their ids and websites, never their secrets.
 `werk auth code ID` prints the current code and the seconds it stays valid.
 `werk auth import` reads a file, or standard input: otpauth links, Google
 Authenticator export links, an unencrypted Aegis export, or a PNG or JPEG of
 an export's QR code when GdkPixbuf and ZBar (`libzbar0`) are installed.
-Changes sync right away when the device has an account.
+Changes sync right away when the device has an account. `werk --app auth`
+opens the window on one tool, as Harmony's Auth entry does.
 
 ## Tools are separate apps
 

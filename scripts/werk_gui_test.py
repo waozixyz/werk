@@ -103,6 +103,11 @@ def click_word(word, toggle=False):
     raise AssertionError(f"Could not find {word!r} in the private test window")
 
 
+def screen_text():
+    capture("control")
+    return command("tesseract", str(output / "control.png"), "stdout", "--psm", "11")
+
+
 def scroll_down():
     command("xdotool", "mousemove", "--window", window, "210", "650")
     command("xdotool", "click", "--window", window, "--repeat", "12", "--delay", "70", "5")
@@ -269,6 +274,14 @@ try:
     assert not account_file.exists()
     assert records.read_text() == saved, "Forgetting an account changed local Auth records"
     capture("account-forgotten")
+    # Signing in with a Daochi account key refuses text that is not one.
+    scroll_down()
+    click_word("Paste")
+    type_text("not an account key")
+    click_word("key")
+    assert "notaDaochiaccountkey" in "".join(screen_text().split()), "An invalid account key was not refused"
+    assert not account_file.exists(), "An invalid account key created an account"
+    capture("account-key-refused")
     stop()
     print("Werkzeug GUI test: home, Pass, Calculator, Clock, Auth and Profile ran on a private display")
 finally:

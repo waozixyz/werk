@@ -109,9 +109,27 @@ id=$(printf '%s' "$listed" | sed -n 's/.*"id":"\([0-9a-f]*\)".*/\1/p')
 werk werk-b auth remove "$id" > /dev/null
 test "$(werk werk-a auth list)" = '[]' || { echo 'the removal did not reach the first device'; exit 1; }
 
+# A Daochi account key, as Inbe exports it, signs devices in to the same
+# records: one with the plain key, one with the passphrase-protected copy.
+env -u DISPLAY -u WAYLAND_DISPLAY "$work/sync_e2e" keyfiles "$work/account.key" "$work/account-locked.key" \
+    'fixture passphrase' > /dev/null
+mkdir -p "$work/werk-c" "$work/werk-d" "$work/werk-e"
+werk werk-c sync key "$work/account.key" > /dev/null
+printf '%s\n' 'otpauth://totp/Keyed:dave?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Keyed' |
+    werk werk-c auth import > /dev/null
+if printf 'wrong\n' | werk werk-e sync key "$work/account-locked.key" > /dev/null 2>&1; then
+    echo 'a wrong passphrase signed in'
+    exit 1
+fi
+printf 'fixture passphrase\n' | werk werk-d sync key "$work/account-locked.key" > /dev/null
+case $(werk werk-d auth list) in
+*'"issuer":"Keyed","account":"dave"'*) ;;
+*) echo 'the device signed in with the key did not receive the account'; exit 1 ;;
+esac
+
 # The server stored only sealed records: the test secret never reached it.
 if grep -a -q GEZDGNBVGY3TQOJQ "$work/daochi.db"* 2>/dev/null; then
     echo "the server stored a secret in plain text"
     exit 1
 fi
-echo 'Werkzeug sync: account, connected device, record and removal through a local Daochi node, also with werk sync and werk auth'
+echo 'Werkzeug sync: account, connected device, record and removal through a local Daochi node, also with werk sync, werk auth and an account key'

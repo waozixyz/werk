@@ -73,6 +73,10 @@ main :: (argc: s32, argv: **u8) -> s32 {
         return 1
     }
     WerkStart()
+    // `werk --app auth` opens one tool first, as Harmony's Auth entry does.
+    if argc >= 3 && TextFromCString(argv[1]) == "--app" {
+        unused WerkOpen(TextFromCString(argv[2]), false)
+    }
     ok: bool = true
     if Desktop.CaptureRequested() {
         ok = DrawDesktop(session)

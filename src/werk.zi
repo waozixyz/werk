@@ -44,6 +44,14 @@ code_text: [32]u8;
 node_field: FieldState;
 node_text: [256]u8;
 node_error: bool;
+// A Daochi account key to sign in with, such as Inbe's, and its passphrase.
+account_key_field: FieldState;
+account_key_text: [17664]u8;
+passphrase_field: FieldState;
+passphrase_text: [512]u8;
+account_key_status: [96]u8;
+// The value a secret field draws, apart from the buffer its edit changes.
+secret_snapshot: [17664]u8;
 // Stop syncing was tapped once; a second tap forgets the account here.
 forget_pending: bool;
 choosing_picture: bool;
@@ -107,6 +115,8 @@ OpenHome :: () {
         name_field.focused = false
         code_field.focused = false
         node_field.focused = false
+        ForgetKeyFields()
+        account_key_status[0] = cast(u8)0
         forget_pending = false
         unused SaveProfile()
     }
@@ -290,6 +300,12 @@ RevealFocusedField :: (area: Rectangle) {
     }
     if node_field.focused {
         field = 32
+    }
+    if account_key_field.focused {
+        field = 33
+    }
+    if passphrase_field.focused {
+        field = 34
     }
     if field != 0 && (field != revealed_field || area.height != profile_height) {
         margin: float32 = 16.0
@@ -499,6 +515,60 @@ NodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
     node_field.focused = focused && !finished
 }
 
+ForgetKeyFields :: () {
+    for index: 0..account_key_text.count - 1 {
+        account_key_text[index] = cast(u8)0
+    }
+    for index: 0..passphrase_text.count - 1 {
+        passphrase_text[index] = cast(u8)0
+    }
+    for index: 0..secret_snapshot.count - 1 {
+        secret_snapshot[index] = cast(u8)0
+    }
+    account_key_field = FieldState.{}
+    passphrase_field = FieldState.{}
+}
+
+// A field whose value shows as dots, for the account key and passphrase.
+SecretField :: (session: Session, bounds: Rectangle, input: TextFieldInput, id: s32, state: *FieldState,
+    label: string, placeholder: string, buffer: []u8) {
+    edit: TextFieldEdit
+    focused := false
+    finished := false
+    index: s64 = 0
+    while index < buffer.count {
+        secret_snapshot[index] = buffer[index]
+        index += 1
+    }
+    secret_snapshot[buffer.count - 1] = cast(u8)0
+    {
+        props := TextFieldProps.{.key = cast(u64)id, .focus_id = id, .bounds = bounds, .label = label,
+            .placeholder = placeholder, .value = TextUntilNul(secret_snapshot[:]), .cursor = state.cursor,
+            .anchor = state.anchor,
+            .scroll_x = state.scroll_x, .focused = state.focused, .max_bytes = cast(s32)buffer.count - 1,
+            .max_codepoints = cast(s32)buffer.count - 1, .secure = true}
+        if buffer[0] != cast(u8)0 {
+            props.display_value = "••••••••"
+        }
+        if state.focused {
+            props.input = input
+        }
+        result := TextField(session, props)
+        if result.focused {
+            focused_top = bounds.y
+            focused_bottom = bounds.y + bounds.height
+        }
+        state.cursor = result.cursor
+        state.anchor = result.anchor
+        state.scroll_x = result.scroll_x
+        focused = result.focused
+        finished = result.escaped || result.committed
+        edit = result.edit
+    }
+    ApplyEdit(buffer, edit)
+    state.focused = focused && !finished
+}
+
 SaveNode :: () -> bool {
     snapshot := node_text
     value := NodeOrigin(TextUntilNul(snapshot[:]))
@@ -570,6 +640,37 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
             y += 48.0
             if phase == LinkPhase.LinkFailed {
                 Label(session, cast(u64)48, LinkStatus(), Rectangle.{x, y, width, 20.0}, 14)
+                y += 28.0
+            }
+            // Phones connect with a code; their text fields hold less than a key.
+            #if !#defined(ANDROID_BUILD) {
+                y += 8.0
+                Note(session, cast(u64)84, "Or sign in with a Daochi account key, such as the one Inbe exports:", x, y,
+                    width)
+                y += 40.0
+                SecretField(session, Rectangle.{x, y, width, 40.0}, input, 33, *account_key_field, "Account key",
+                    "Paste the account key", account_key_text[:])
+                y += 48.0
+                SecretField(session, Rectangle.{x, y, width, 40.0}, input, 34, *passphrase_field, "Passphrase",
+                    "Its passphrase, if it has one", passphrase_text[:])
+                y += 48.0
+                if Action(session, 85, "Sign in with key", Rectangle.{x, y, width, 40.0}, false) {
+                    account_key_field.focused = false
+                    passphrase_field.focused = false
+                    problem := "Enter an HTTPS node address first"
+                    if SaveNode() {
+                        problem = UseAccountKey(TextUntilNul(account_key_text[:]), TextUntilNul(passphrase_text[:]))
+                    }
+                    unused CopyCString(problem, account_key_status[:])
+                    if problem == "" {
+                        ForgetKeyFields()
+                        SyncNow()
+                    }
+                }
+                y += 48.0
+                if account_key_status[0] != cast(u8)0 {
+                    Label(session, cast(u64)86, TextUntilNul(account_key_status[:]), Rectangle.{x, y, width, 20.0}, 14)
+                }
             }
             return
         }

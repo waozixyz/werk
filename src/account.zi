@@ -1,8 +1,9 @@
 // The Daochi account that syncs Werkzeug between the owner's devices. The
 // private account/keys.txt holds the account's ML-DSA key, this device's
 // Ed25519 seed and the vault key that encrypts every record; the server
-// stores only ciphertext. Devices share the account and vault keys only
-// through a connection the owner confirms with a code (device_link.zi).
+// stores only ciphertext. Devices share the account and vault keys through
+// a connection the owner confirms with a code (device_link.zi), or sign in
+// with the account key itself, as Inbe exports it.
 #import "std/byte_text_linux"
 #import "std/c_string"
 #import "std/text_buffer"
@@ -299,6 +300,65 @@ JoinAccount :: (server: string, public_hex: string, private_hex: string, vault: 
     }
     account_generation += 1
     return true
+}
+
+// The vault key of an account signed in with its key: BLAKE2b of a fixed
+// label and the private key, the same on every device holding that key.
+VaultFromKey :: (keys: *AccountKeys, vault: []u8) -> bool {
+    message: [5200]u8
+    parts: [2]string = .["werkzeug-vault-1\n", TextUntilNul(keys.private_key_hex[:])]
+    used := Append(message[:], 0, parts[:])
+    derived := used > 0 && Blake2b(TextView(message[0:used]), vault[0:32])
+    Wipe(message[:])
+    return derived
+}
+
+// Signs in with a Daochi account key the owner already has, such as the
+// one Inbe exports: plain (account-key-v1) or with its passphrase
+// (ksync-account-key-v2). Every device that signs in with the same key opens
+// the same records. Returns "" or why the key was not used.
+UseAccountKey :: (text: string, passphrase: string) -> string {
+    if account.ready {
+        return "This device already has an account"
+    }
+    used: Account
+    start: s64 = 0
+    while start < text.count && (text[start] <= cast(u8)32 || text[start] >= cast(u8)0xbb) {
+        start += 1
+    }
+    encrypted := text.count - start >= 20 && text[start:start + 20] == "ksync-account-key-v2"
+    if encrypted && passphrase == "" {
+        return "This key has a passphrase; enter it too"
+    }
+    parsed: s32 = 0
+    if encrypted {
+        parsed = ParseEncryptedAccountKeys(text[start:text.count], passphrase, *used.keys)
+    } else {
+        parsed = ParseAccountKeys(text[start:text.count], *used.keys)
+    }
+    if parsed == 0 {
+        used = Account.{}
+        return ifx encrypted then "The passphrase or key is not right" else "This is not a Daochi account key"
+    }
+    server := NodeOrigin(DefaultServer())
+    if server == "" || !CopyCString(server, used.server[:]) || !VaultFromKey(*used.keys, used.vault[:]) {
+        used = Account.{}
+        return "Choose a valid node first"
+    }
+    NewClientId(used.client_id[:])
+    RandomFill(used.device_seed[:])
+    account = used
+    SetVaultId()
+    account.ready = SetDevice() && SaveAccount()
+    Wipe(used.vault[:])
+    Wipe(used.device_seed[:])
+    used = Account.{}
+    if !account.ready {
+        account = Account.{}
+        return "Could not save the account"
+    }
+    account_generation += 1
+    return ""
 }
 
 // Forgets the account on this device; its records stay on the device.

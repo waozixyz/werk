@@ -36,6 +36,10 @@ Usage: werk sync status
        werk sync create          create an account on this device
        werk sync show            show a code that connects another device
        werk sync join [CODE]     connect to an account with another device's code
+       werk sync key [FILE]      sign in with a Daochi account key, such as the
+                                 one Inbe exports; a key with a passphrase is
+                                 read from FILE and its passphrase from
+                                 standard input
        werk sync now
        werk auth list            Auth's accounts as JSON, without secrets
        werk auth code ID         the current code and the seconds it stays valid
@@ -48,6 +52,7 @@ Usage: werk sync status
 END;
 
 qr_text: [QR_TEXT_LIMIT]u8;
+key_text: [17664]u8;
 record_ids: [ID_LIMIT]u8;
 record_value: [1025]u8;
 link_text: [1025]u8;
@@ -230,6 +235,9 @@ SyncCommand :: (argc: s32, argv: **u8) -> s32 {
         Say("Created an account on this device")
         return ifx SyncToEnd(true) then 0 else 1
     }
+    if action == "key" && argc <= 4 {
+        return SyncKey(ifx argc == 4 then TextFromCString(argv[3]) else "")
+    }
     if action == "now" {
         if !Accounts.AccountReady() {
             return Fail("This device has no account; use werk sync create or join")
@@ -292,6 +300,52 @@ SyncCommand :: (argc: s32, argv: **u8) -> s32 {
     }
     WriteAll(2, Usage)
     return 2
+}
+
+// Signs this device in with an account key from FILE or standard input.
+SyncKey :: (path: string) -> s32 {
+    if Accounts.AccountReady() {
+        return Fail("This device already has an account")
+    }
+    count := ReadInput(path, key_text[:])
+    if count <= 0 {
+        Wipe(key_text[:])
+        return Fail("Could not read the account key")
+    }
+    passphrase: [512]u8
+    used: s64 = 0
+    encrypted := false
+    {
+        text := TextView(key_text[0:count])
+        start: s64 = 0
+        while start < text.count && text[start] <= cast(u8)32 {
+            start += 1
+        }
+        encrypted = text.count - start >= 20 && text[start:start + 20] == "ksync-account-key-v2"
+    }
+    if encrypted {
+        if path == "" || path == "-" {
+            Wipe(key_text[:])
+            return Fail("Give a key with a passphrase as FILE and the passphrase on standard input")
+        }
+        read := ReadRaw(0, *passphrase[0], 511)
+        used = ifx read > 0 then cast(s64)read else 0
+        while used > 0 && (passphrase[used - 1] == cast(u8)10 || passphrase[used - 1] == cast(u8)13) {
+            used -= 1
+        }
+    }
+    result := ""
+    {
+        result = Accounts.UseAccountKey(TextView(key_text[0:count]), TextView(passphrase[0:used]))
+    }
+    Wipe(key_text[:])
+    Wipe(passphrase[:])
+    if result != "" {
+        return Fail(result)
+    }
+    WriteAll(1, "Signed in to account ")
+    Say(Accounts.AccountId())
+    return ifx SyncToEnd(true) then 0 else 1
 }
 
 AuthList :: () -> s32 {

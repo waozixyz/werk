@@ -14,6 +14,7 @@
 #import "device_link"
 #import "profile"
 #import "node_url"
+#import "daochi_client/keys"
 
 RECORD_ID :: "e2e0000000000000000000000000000a"
 // RFC 6238's test key; never a real secret.
@@ -237,6 +238,22 @@ Paused :: () -> s32 {
     return 0
 }
 
+// A fresh Daochi account key written as Inbe exports it, plain and with a
+// passphrase, for `werk sync key`.
+KeyFiles :: (plain: string, encrypted: string, passphrase: string) -> s32 {
+    keys: AccountKeys
+    text: [ACCOUNT_EXPORT_ENCRYPTED_TEXT_SIZE]u8
+    if CreateAccountKeys(*keys) == 0 || AccountKeysText(*keys, *text[0], ACCOUNT_EXPORT_TEXT_SIZE) == 0 ||
+    !WriteEntireFile(plain, TextUntilNul(text[:])) ||
+    AccountKeysEncryptedText(*keys, passphrase, *text[0], ACCOUNT_EXPORT_ENCRYPTED_TEXT_SIZE) == 0 ||
+    !WriteEntireFile(encrypted, TextUntilNul(text[:])) {
+        Say("could not write the key files")
+        return 1
+    }
+    keys = AccountKeys.{}
+    return 0
+}
+
 #program_export
 main :: (argc: s32, argv: **u8) -> s32 {
     if argc < 2 {
@@ -250,6 +267,9 @@ main :: (argc: s32, argv: **u8) -> s32 {
     }
     if mode == "paused" {
         return Paused()
+    }
+    if mode == "keyfiles" && argc == 5 {
+        return KeyFiles(TextFromCString(argv[2]), TextFromCString(argv[3]), TextFromCString(argv[4]))
     }
     path := ifx argc >= 3 then TextFromCString(argv[2]) else ""
     if mode == "create" {
