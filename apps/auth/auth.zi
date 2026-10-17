@@ -486,15 +486,19 @@ AddView :: (area: Rectangle, left: float32, width: float32) {
     Label(cast(u64)20, "Paste otpauth links or an authenticator export", Rectangle.{left, y, width, 20.0}, 14)
     Field(FIELD_LINKS, "Links or export", "otpauth://totp/…", links[:], Rectangle.{left, y + 24.0, width, 40.0}, true)
     y += 76.0
-    if Action(21, "Import", Rectangle.{left, y, width, 40.0}, true) {
-        added := AddExport(TextUntilNul(links[:]), true)
-        if added > 0 && !SaveAccounts() {
-            SetStatus("Could not save the accounts")
-        }
-        Clear(links[:])
-        fields[FIELD_LINKS] = FieldState.{}
-        if added > 0 {
-            view = VIEW_LIST
+    // The desktop can also read an export file or a picture of its QR code.
+    files := FileImportAvailable()
+    button := ifx files then (width - 8.0) / 2.0 else width
+    if Action(21, "Import", Rectangle.{left, y, button, 40.0}, true) {
+        ImportLinks()
+    }
+    if files && Action(25, "Import file", Rectangle.{left + button + 8.0, y, button, 40.0}, false) {
+        count := FileImport(links[:])
+        if count > 0 {
+            ImportLinks()
+        } else if count < 0 {
+            Clear(links[:])
+            SetStatus("That file is not an authenticator export or its QR code")
         }
     }
     y += 64.0
@@ -525,6 +529,19 @@ AddView :: (area: Rectangle, left: float32, width: float32) {
         Clear(secret[:])
         view = VIEW_LIST
         SetStatus("")
+    }
+}
+
+// Adds the accounts in the links field, then forgets the field.
+ImportLinks :: () {
+    added := AddExport(TextUntilNul(links[:]), true)
+    if added > 0 && !SaveAccounts() {
+        SetStatus("Could not save the accounts")
+    }
+    Clear(links[:])
+    fields[FIELD_LINKS] = FieldState.{}
+    if added > 0 {
+        view = VIEW_LIST
     }
 }
 

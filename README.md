@@ -17,6 +17,8 @@ Small private tools in one app. The home screen opens each one:
   SHA-512 and 6 to 8 digits). Add accounts by pasting `otpauth://` links, one
   or many such as Ente Auth's plain-text export, a Google Authenticator
   export link or an unencrypted Aegis export, or by entering the secret key.
+  On the desktop, Import file reads an export or a picture of its QR code
+  (it uses zenity, and GdkPixbuf and ZBar for pictures).
   Tap a code to copy it; it is cleared from the clipboard after 30 seconds.
   Edit renames an account, notes the websites where it signs in, such as
   `github.com`, or removes it.

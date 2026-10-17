@@ -1,0 +1,105 @@
+// Import file on the desktop: zenity chooses an authenticator export, and
+// Werkzeug reads its text, or the QR codes in a PNG or JPEG of one, for the
+// app that asked. The bytes stay in this process and are wiped after use.
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/byte_text_linux"
+#import "qr_image"
+
+IMPORT_FILE_LIMIT :: 10485760
+
+libc :: #system_library "libc";
+OpenPipe :: (command: *u8, mode: *u8) -> *void #foreign libc "popen";
+ClosePipe :: (file: *void) -> s32 #foreign libc "pclose";
+ReadStream :: (bytes: *u8, size: usize, count: usize, file: *void) -> usize #foreign libc "fread";
+OpenStream :: (path: *u8, mode: *u8) -> *void #foreign libc "fopen";
+CloseStream :: (file: *void) -> s32 #foreign libc "fclose";
+RunShell :: (command: *u8) -> s32 #foreign libc "system";
+AllocateBytes :: (size: usize) -> *u8 #foreign libc "malloc";
+FreeBytes :: (bytes: *u8) #foreign libc "free";
+
+import_checked: bool;
+import_available: bool;
+
+// True when this desktop has zenity to choose a file.
+ImportFileAvailable :: () -> bool {
+    if !import_checked {
+        import_checked = true
+        command: [64]u8
+        import_available = CopyCString("command -v zenity >/dev/null 2>&1", command[:]) && RunShell(*command[0]) == 0
+    }
+    return import_available
+}
+
+// Lets the owner choose a file. Returns the path's length in path, or 0 when
+// they cancelled.
+ChooseFile :: (path: []u8) -> s64 {
+    command: [256]u8
+    mode: [2]u8
+    if !CopyCString("zenity --file-selection --title='Import an authenticator export' --file-filter='Exports and QR images | *.txt *.json *.png *.jpg *.jpeg' --file-filter='All files | *' 2>/dev/null",
+        command[:]) || !CopyCString("r", mode[:]) {
+        return 0
+    }
+    pipe := OpenPipe(*command[0], *mode[0])
+    if pipe == null {
+        return 0
+    }
+    used := cast(s64)ReadStream(*path[0], 1, cast(usize)(path.count - 1), pipe)
+    chosen := ClosePipe(pipe) == 0
+    while used > 0 && (path[used - 1] == cast(u8)10 || path[used - 1] == cast(u8)13) {
+        used -= 1
+    }
+    path[used] = cast(u8)0
+    return ifx chosen && used > 0 then used else 0
+}
+
+// Writes the text of a chosen export into output: its bytes, or the QR codes
+// of an image. Returns the byte count, 0 when the owner cancelled and -1 when
+// the file could not be read or is too large.
+ImportFile :: (output: []u8) -> s32 {
+    path: [4096]u8
+    if output.count < 2 || !ImportFileAvailable() || ChooseFile(path[:]) == 0 {
+        return 0
+    }
+    mode: [3]u8
+    file: *void = null
+    if CopyCString("rb", mode[:]) {
+        file = OpenStream(*path[0], *mode[0])
+    }
+    if file == null {
+        return -1
+    }
+    memory := AllocateBytes(cast(usize)IMPORT_FILE_LIMIT)
+    if memory == null {
+        unused CloseStream(file)
+        return -1
+    }
+    bytes := BytesFromPointer(memory, cast(u64)IMPORT_FILE_LIMIT)
+    count := cast(s64)ReadStream(memory, 1, cast(usize)IMPORT_FILE_LIMIT, file)
+    unused CloseStream(file)
+    result: s64 = -1
+    if count > 0 && count < IMPORT_FILE_LIMIT {
+        if LooksLikeImage(bytes, count) {
+            // An image without a readable QR code is not an export either.
+            result = QrText(bytes, count, output)
+            if result == 0 {
+                result = -1
+            }
+        } else if count < output.count {
+            index: s64 = 0
+            while index < count {
+                output[index] = bytes[index]
+                index += 1
+            }
+            output[count] = cast(u8)0
+            result = count
+        }
+    }
+    index: s64 = 0
+    while index < count {
+        bytes[index] = cast(u8)0
+        index += 1
+    }
+    FreeBytes(memory)
+    return cast(s32)result
+}

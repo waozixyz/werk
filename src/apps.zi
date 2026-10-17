@@ -19,6 +19,9 @@ using UI :: #import "kryon/Widgets";
 #if !#defined(PLATFORM_WEB) {
     #import "sync"
 }
+#if !#defined(ANDROID_BUILD) && !#defined(PLATFORM_WEB) {
+    #import "file_import"
+}
 #if #defined(ANDROID_BUILD) {
     #import "android_fields"
 }
@@ -93,13 +96,13 @@ ModuleIs :: (value: string, name: string) -> bool {
 }
 
 AppFunction :: (function: string) -> bool {
-    names: [25]string = .["AppPbkdf2Sha256Host", "AppModeHost", "AppDescribeHost", "AppSessionHost", "AppBoundsHost",
+    names: [27]string = .["AppPbkdf2Sha256Host", "AppModeHost", "AppDescribeHost", "AppSessionHost", "AppBoundsHost",
     "AppDarkHost", "AppKeyHost", "AppModifiersHost", "AppFieldInputHost", "AppKeyboardHost",
     "AppNowHost", "AppLocalOffsetHost", "AppAssetPathHost", "ReadStoreHost", "WriteStoreHost",
     "ClipboardCopyHost", "SecureAvailableHost", "SecureSavedHost", "SecureRequestHost",
     "SecureForgetHost", "RecordListHost", "RecordReadHost", "RecordWriteHost", "RecordRemoveHost",
-    "RecordsVersionHost"]
-    for index: 0..24 {
+    "RecordsVersionHost", "FileImportAvailableHost", "FileImportHost"]
+    for index: 0..26 {
         if function == names[index] {
             return true
         }
@@ -361,6 +364,29 @@ AppCall :: (context: *void, module: *u8, function: *u8,
         }
         ReturnText(result, ifx found then TextUntilNul(path[:]) else "")
         return 1
+    }
+    if name == "FileImportAvailableHost" {
+        #if !#defined(ANDROID_BUILD) && !#defined(PLATFORM_WEB) {
+            ReturnBool(result, ImportFileAvailable())
+        } else {
+            ReturnBool(result, false)
+        }
+        return 1
+    }
+    if name == "FileImportHost" && count == 1 {
+        limit := cast(s64)arguments[0].length
+        used: s32 = -1
+        #if !#defined(ANDROID_BUILD) && !#defined(PLATFORM_WEB) {
+            used = ImportFile(store_bytes[0:ifx limit > APP_STORE_LIMIT then APP_STORE_LIMIT else limit])
+        }
+        returned := ReturnBytes(arguments[0], store_bytes[:], used, result)
+        // The export holds two-factor secrets; nothing keeps a copy.
+        index: s32 = 0
+        while index < used {
+            store_bytes[index] = cast(u8)0
+            index += 1
+        }
+        return returned
     }
     if name == "SecureAvailableHost" {
         ReturnBool(result, SecureAvailable())

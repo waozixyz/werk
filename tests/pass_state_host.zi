@@ -121,3 +121,13 @@ RecordRemoveHost :: (id: string) -> bool {
 RecordsVersionHost :: () -> s32 {
     return 0
 }
+
+// Pass imports no files.
+#program_export
+FileImportAvailableHost :: () -> bool {
+    return false
+}
+#program_export
+FileImportHost :: (output: []u8) -> s32 {
+    return -1
+}

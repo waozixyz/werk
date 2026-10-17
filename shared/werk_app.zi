@@ -53,6 +53,12 @@ RecordsVersionHost :: () -> s32 #foreign host_api;
 // another application replaced it.
 ClipboardCopyHost :: (value: string, clear_seconds: s32) -> bool #foreign host_api;
 
+// Lets the owner choose a file and gives its text, or the QR codes of a
+// picture of one, on the desktop only. FileImport returns the byte count, 0
+// when the owner cancelled and -1 when the file could not be read.
+FileImportAvailableHost :: () -> bool #foreign host_api;
+FileImportHost :: (output: []u8) -> s32 #foreign host_api;
+
 // One secret kept behind device authentication, where the device has it.
 // SecurePoll returns 2 with the result, 3 on failure and 0 otherwise.
 SecureAvailableHost :: () -> bool #foreign host_api;
@@ -174,6 +180,16 @@ RecordsVersion :: () -> s32 {
 #program_export
 ClipboardCopy :: (value: string, clear_seconds: s32) -> bool {
     return ClipboardCopyHost(value, clear_seconds)
+}
+
+#program_export
+FileImportAvailable :: () -> bool {
+    return FileImportAvailableHost()
+}
+
+#program_export
+FileImport :: (output: []u8) -> s32 {
+    return FileImportHost(output)
 }
 
 #program_export

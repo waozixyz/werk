@@ -7,6 +7,7 @@ through scripts/werk_gui_test.sh, which starts the private display.
 from pathlib import Path
 import csv
 import io
+import json
 import base64
 import hashlib
 import hmac
@@ -29,6 +30,13 @@ environment.pop("WAYLAND_DISPLAY", None)
 environment["WERK_DATA"] = str(data)
 environment["XDG_CACHE_HOME"] = str(cache)
 environment["WERK_ASSETS"] = str(root / "build")
+# Import file runs zenity; this stand-in chooses a fixture Aegis export.
+fake_bin = output / "bin"
+fake_bin.mkdir()
+(fake_bin / "zenity").write_text('#!/bin/sh\nprintf "%s\\n" "$WERK_TEST_IMPORT_FILE"\n')
+(fake_bin / "zenity").chmod(0o755)
+environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
+environment["WERK_TEST_IMPORT_FILE"] = str(output / "aegis.json")
 app = None
 window = None
 
@@ -176,7 +184,7 @@ try:
     click(210, 56 + 12 + 20)
     click(210, 56 + 12 + 24 + 20)
     type_text(FIXTURE_LINK)
-    click(210, 56 + 12 + 76 + 20)
+    click(16 + 95, 56 + 12 + 76 + 20)
     capture("auth-list")
     before = time.time()
     click(420 - 16 - 10 - 196 + 70 + 16, 56 + 64 + 12 + 22)
@@ -194,7 +202,7 @@ try:
     click(210, 56 + 12 + 20)
     click(210, 56 + 12 + 24 + 20)
     type_text(MIGRATION_LINK)
-    click(210, 56 + 12 + 76 + 20)
+    click(16 + 95, 56 + 12 + 76 + 20)
     capture("auth-imported")
     saved = records.read_text()
     assert saved.count("\tV\t") == 2 and "Second:bob" in saved, saved.count("\tV\t")
@@ -221,6 +229,15 @@ try:
     capture("auth-removed")
     saved = records.read_text()
     assert saved.count("\tV\t") == 1 and saved.count("\tD\t") == 1 and "Second:bob" in saved
+    # Import file reads an export the owner chooses.
+    (output / "aegis.json").write_text(json.dumps({"version": 1, "header": {"slots": None}, "db": {"version": 2, "entries": [
+        {"type": "totp", "name": "carol", "issuer": "Third",
+         "info": {"secret": FIXTURE_SECRET, "algo": "SHA1", "digits": 6, "period": 30}}]}}))
+    click(210, 56 + 12 + 20)
+    click(16 + 190 + 8 + 95, 56 + 12 + 76 + 20)
+    capture("auth-file-imported")
+    saved = records.read_text()
+    assert saved.count("\tV\t") == 2 and "Third:carol" in saved, saved.count("\tV\t")
     home()
 
     # Profile: a name and dark appearance are saved privately.
