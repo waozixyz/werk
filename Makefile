@@ -11,6 +11,7 @@ MINGCUTE_DIR = $(shell $(ZIRAN) pkg path mingcute $(LOCK_FLAGS))
 # BLAKE2b and XChaCha20-Poly1305 from Monocypher.
 LIBOQS_DIR = $(shell $(ZIRAN) pkg path liboqs $(LOCK_FLAGS))
 MONOCYPHER_DIR = $(shell $(ZIRAN) pkg path monocypher $(LOCK_FLAGS))
+QRCODE_DIR = $(shell $(ZIRAN) pkg path qrcode $(LOCK_FLAGS))
 SELF_DIR = $(shell $(ZIRAN) pkg path self $(LOCK_FLAGS))
 LIBOQS_FLAGS := -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=OFF -DOQS_BUILD_ONLY_LIB=ON \
 	-DOQS_USE_OPENSSL=OFF -DOQS_DIST_BUILD=OFF -DOQS_OPT_TARGET=generic -DOQS_MINIMAL_BUILD=SIG_ml_dsa_44
@@ -29,7 +30,7 @@ CFLAGS := -std=c99 -O2 -Wno-unused-variable -I$(ZIRAN_ROOT)/include
 PROJECT := --project $(LOCK_FLAGS)
 ANDROID_ABIS ?= armeabi-v7a,arm64-v8a
 
-.PHONY: all apps cli gui native run test source-check core-test ziran-core-test cli-test pass-state-test app-logic-test lesspass-compat-test gui-smoke gui-test web web-canvas site web-smoke android-debug android-emulator android-release android-smoke android-input-test e2e check-package-urls install install-cli install-gui uninstall-cli uninstall-gui package-deb package-appimage plan9-c
+.PHONY: all apps cli gui native run test source-check core-test ziran-core-test cli-test pass-state-test app-logic-test lesspass-compat-test self-account-test gui-smoke gui-test web web-canvas site web-smoke android-debug android-emulator android-release android-smoke android-input-test e2e check-package-urls install install-cli install-gui uninstall-cli uninstall-gui package-deb package-appimage plan9-c
 all: cli gui
 native: all
 
@@ -58,7 +59,7 @@ build/apps/%.zib: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES)
 build/apps/self.zib: $(SELF_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile
 	mkdir -p $(@D)
 	$(ZIRAN) bundle --root $(SELF_DIR) --module-path $(SELF_DIR)/src $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI \
-		--asset-dir assets=$(SELF_DIR)/assets --entry self:Main -o $@ $(SELF_DIR)/src/self.zi
+		--module-path qrcode=$(QRCODE_DIR)/src --asset-dir assets=$(SELF_DIR)/assets --entry self:Main -o $@ $(SELF_DIR)/src/self.zi
 
 # The portable bundle runtime the host links, built from the locked Ziran.
 build/ziran/libziran.a: ziran.lock $(ZIRAN_RUNTIME_SOURCES)
@@ -75,7 +76,7 @@ build/liboqs/lib/liboqs.a: ziran.lock
 build/werk: build/generated/desktop/.complete build/ziran/libziran.a build/liboqs/lib/liboqs.a Makefile
 	$(CC) $(CFLAGS) -Ibuild/generated/desktop -I$(MONOCYPHER_DIR)/src -I$(MONOCYPHER_DIR)/src/optional \
 		build/generated/desktop/*.c $(MONOCYPHER_SOURCES) build/ziran/libziran.a build/liboqs/lib/liboqs.a \
-		$(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo) -l:libcurl.so.4 -lm -lpthread -o $@
+		$(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo gtk+-3.0) -lX11 -l:libcurl.so.4 -lm -lpthread -o $@
 build/pfp.png: $(KRYON_DIR)/icons/pfp.png
 	cp $< $@
 gui: build/werk build/pfp.png apps
@@ -95,7 +96,9 @@ cli-test: cli
 	sh scripts/cli_test.sh ./pass
 lesspass-compat-test: cli
 	python3 scripts/lesspass_compat_test.py --cli ./pass
-test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test
+self-account-test:
+	ZIRAN_BIN=$(ZIRAN) python3 scripts/self_account_test.py
+test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test self-account-test
 gui-smoke: gui
 	sh scripts/gui_smoke.sh
 gui-test: gui

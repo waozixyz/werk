@@ -28,7 +28,7 @@ Version: $version
 Architecture: $arch
 Maintainer: Waozi <waozi@proton.me>
 Installed-Size: $installed
-Depends: libc6, libsdl2-2.0-0, libcairo2, libfreetype6, libfontconfig1, libpangocairo-1.0-0
+Depends: libc6, libsdl2-2.0-0, libcairo2, libfreetype6, libfontconfig1, libpangocairo-1.0-0, libgtk-3-0, libx11-6
 Section: utils
 Priority: optional
 Homepage: https://werk.waozi.xyz/

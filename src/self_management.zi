@@ -1,0 +1,188 @@
+// Native capabilities for the common Self UI. Account keys, Auth records,
+// pairing payloads and file selections stay outside the portable bundle.
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/vec"
+#import "profile"
+#if !#defined(PLATFORM_WEB) {
+    Self :: #import "self/model";
+    #import "self/management"
+    #import "self/native_management"
+    #import "self/recovery"
+    Pairing :: #import "self/pairing_client";
+    #import "self/pairing"
+    #import "daochi_client/client"
+    #import "account"
+    #import "account_transition"
+    #import "sync"
+    #import "device_link"
+    #import "records"
+    #import "files"
+    #import "platform"
+    Json :: #import "std/json_scan";
+    #if !#defined(ANDROID_BUILD) {
+        Dialog :: #import "kryon/FileDialogLinux";
+    }
+
+    werk_management: ManagementProvider;
+    werk_management_started: bool;
+    werk_management_alias: [40]u8;
+    werk_management_generation: s32 = -1;
+    werk_management_pair_delivered: bool;
+    werk_management_link_owner: [65]u8;
+
+    WerkAliasPath :: (output: []u8) -> string {
+        folder: [PATH_LIMIT]u8
+        return PathJoin(output, PathJoin(folder[:], DataRoot(), "account"), "alias.txt")
+    }
+    WerkAliasRead :: () {
+        werk_management_alias = .{}
+        if !AccountReady() { return }
+        text: [128]u8
+        path: [PATH_LIMIT]u8
+        count := ReadPrivate(WerkAliasPath(path[:]), text[:])
+        if count < 66 { return }
+        document := TextUntilNul(text[:])
+        if document[:64] != AccountId() || document[64] != cast(u8)10 { return }
+        if ProviderAliasValid(document[65:]) { unused CopyCString(document[65:], werk_management_alias[:]) }
+    }
+    WerkManagementSnapshot :: (context: *void, output: *Management) {
+        if werk_management_generation != account_generation {
+            WerkAliasRead()
+            werk_management_generation = account_generation
+        }
+        output.available = true
+        #if #defined(ANDROID_BUILD) {
+            output.available = false
+        }
+        output.account = AccountReady()
+        output.public_id = account.keys.public_id
+        output.alias = werk_management_alias
+        output.enabled = AccountSyncEnabled()
+        output.busy = SyncRunning()
+        output.capabilities = ACCOUNT_CREATE | ACCOUNT_IMPORT | ACCOUNT_SWITCH | ACCOUNT_LINK
+        if AccountReady() { output.capabilities |= ACCOUNT_BACKUP | ACCOUNT_ALIAS | ACCOUNT_SYNC | ACCOUNT_LOGOUT | ACCOUNT_CLEAR_REMOTE }
+        status := SyncStatus()
+        if status == "" { status = ifx AccountReady() then (ifx AccountSyncEnabled() then "Sync is on" else "Sync paused") else "No account connected" }
+        unused CopyCString(status, output.status[:])
+        if RecordsOpen("auth") {
+            for index: 0..record_table.count - 1 { if record_table.records[index].dirty { output.queued += 1 } }
+        }
+        output.node_count = ifx profile.node_count > 0 then profile.node_count else 1
+        for index: 0..output.node_count - 1 {
+            if profile.node_count > 0 { output.nodes[index].address = profile.nodes[index] }
+            else { unused CopyCString(ProfileNode(), output.nodes[index].address[:]) }
+            output.nodes[index].active = AccountReady() && TextUntilNul(output.nodes[index].address[:]) == AccountServer()
+        }
+        output.link_stage = cast(s32)Pairing.device_link.stage
+        unused CopyCString(Pairing.DeviceLinkCodeShown(), output.link_code[:])
+        if output.link_stage == 2 || output.link_stage == 3 {
+            message: Vec(u8)
+            BuilderPrint(*message, "Compare this number on both devices: %", Pairing.device_link.confirmation)
+            text := BuilderFinish(message)
+            unused CopyCString(text, output.link_message[:])
+            Self.SelfFree(text)
+        } else if output.link_stage == 4 { unused CopyCString("Send your account to this device?", output.link_message[:]) }
+        else if output.link_stage == 7 { unused CopyCString("The connection could not finish. Start a new code to try again.", output.link_message[:]) }
+    }
+    WerkManagementChooseFile :: (context: *void, save: bool, output: []u8) -> s32 {
+        #if #defined(ANDROID_BUILD) {
+            return -1
+        }
+        #if !#defined(ANDROID_BUILD) {
+            patterns: [2]string = .["*.key", "*.json"]
+            props := Dialog.FileDialogProps.{.title = ifx save then "Back up account key" else "Import account key",
+                .filename = ifx save then "werkzeug-account.key" else "", .save = save,
+                .filter_name = "Account keys", .patterns = patterns[:]}
+            selected := Dialog.FileDialog(props, output)
+            if !selected.available { return -1 }
+            return ifx selected.accepted then 1 else 0
+        }
+    }
+    WerkManagementClient :: (context: *void, output: *Client) -> bool {
+        if !AccountReady() { return false }
+        output.* = AccountClient()
+        return true
+    }
+    WerkManagementServer :: (context: *void, output: []u8) -> bool {
+        return CopyCString(ifx AccountReady() then AccountServer() else ProfileNode(), output)
+    }
+    WerkManagementAction :: (context: *void, request: *ManagementRequest) -> s32 {
+        operation := TextUntilNul(request.operation[:])
+        if operation == "sync" { SyncNow(); return 1 }
+        if operation == "set_sync" {
+            if !SetAccountSyncEnabled(request.choice == 1) { return 0 }
+            if request.choice == 1 { SyncSoon() } else { CancelSyncNow() }
+            return 1
+        }
+        if operation == "logout" || operation == "remote_cleared" {
+            CancelSyncNow()
+            LinkCancel()
+            Pairing.DeviceLinkCancel()
+            if !ForgetAccount() { return 0 }
+            ForgetSync()
+            return 1
+        }
+        if operation == "alias_saved" {
+            path: [PATH_LIMIT]u8
+            text: Vec(u8)
+            BuilderPrint(*text, "%\n%", AccountId(), TextUntilNul(request.value[:]))
+            document := BuilderFinish(text)
+            defer { Self.SelfFree(document) }
+            if !WritePrivate(WerkAliasPath(path[:]), document) { return 0 }
+            unused CopyCString(TextUntilNul(request.value[:]), werk_management_alias[:])
+            return 1
+        }
+        if operation == "link_show" { werk_management_pair_delivered = false; werk_management_link_owner = account.keys.public_id; LinkCancel(); return ifx Pairing.DeviceLinkShow() then 1 else 0 }
+        if operation == "link_join" { werk_management_pair_delivered = false; werk_management_link_owner = account.keys.public_id; LinkCancel(); return ifx Pairing.DeviceLinkScan(TextUntilNul(request.value[:])) then 1 else 0 }
+        if operation == "link_confirm" { Pairing.DeviceLinkAccept(); return 1 }
+        if operation == "link_cancel" { Pairing.DeviceLinkCancel(); return 1 }
+        return 0
+    }
+    WerkManagementStart :: () {
+        if werk_management_started { return }
+        werk_management = ManagementProvider.{.snapshot = WerkManagementSnapshot, .load = WerkRecoveryLoad,
+            .apply = WerkRecoveryApply, .action = WerkManagementAction, .client = WerkManagementClient, .choose_file = WerkManagementChooseFile}
+        Pairing.pairing_load = WerkRecoveryLoad
+        Pairing.pairing_server = WerkManagementServer
+        werk_management_started = true
+    }
+}
+WerkManagementRead :: () -> string {
+    #if #defined(PLATFORM_WEB) {
+        return ""
+    }
+    #if !#defined(PLATFORM_WEB) {
+        WerkManagementStart()
+        ProviderRefresh(*werk_management)
+        return werk_management.document
+    }
+}
+WerkManagementEnqueue :: (request: string) -> bool {
+    #if #defined(PLATFORM_WEB) {
+        return false
+    }
+    #if !#defined(PLATFORM_WEB) {
+        WerkManagementStart()
+        return ProviderEnqueue(*werk_management, request)
+    }
+}
+WerkManagementPump :: () {
+    #if !#defined(PLATFORM_WEB) {
+        if !werk_management_started { return }
+        ProviderPump(*werk_management)
+        if cast(s32)Pairing.device_link.stage != 0 && TextUntilNul(werk_management_link_owner[:]) != AccountId() {
+            Pairing.DeviceLinkCancel()
+        }
+        Pairing.DeviceLinkPump()
+        if cast(s32)Pairing.device_link.stage == 8 && !werk_management_pair_delivered {
+            werk_management.incoming.keys = Pairing.device_link_pending.account
+            werk_management.incoming.context = Pairing.device_link_pending.context
+            werk_management.incoming_owner = account.keys.public_id
+            werk_management.has_incoming = true
+            werk_management_pair_delivered = true
+            ProviderApplyIncoming(*werk_management, 0)
+            Pairing.DeviceLinkImported()
+        }
+    }
+}

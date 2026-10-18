@@ -1,0 +1,123 @@
+// An account switch updates the key and Auth records together. A private
+// rollback journal restores their old pair if the process stops between writes.
+#import "files"
+#import "platform"
+#import "std/file"
+#import "std/c_string"
+#import "std/text_buffer"
+
+JOURNAL_RECORD_LIMIT :: 360448
+journal_blocked: bool;
+journal_lock: FileHandle;
+journal_lock_depth: s32;
+libc :: #system_library "libc";
+JournalFileLock :: (descriptor: s32, operation: s32) -> s32 #foreign libc "flock";
+
+JournalAcquire :: () -> bool {
+    if journal_lock_depth > 0 { journal_lock_depth += 1; return true }
+    path: [PATH_LIMIT]u8
+    name := JournalPath("lock", path[:])
+    if name == "" || PathIsLink(name) { return false }
+    journal_lock = OpenExclusivePrivate(name)
+    if !journal_lock.valid { journal_lock = OpenRead(name) }
+    if !journal_lock.valid { return false }
+    if JournalFileLock(journal_lock.fd, 2) != 0 {
+        unused CloseFile(journal_lock)
+        journal_lock = .{}
+        return false
+    }
+    journal_lock_depth = 1
+    return true
+}
+JournalRelease :: () {
+    if journal_lock_depth <= 0 { return }
+    journal_lock_depth -= 1
+    if journal_lock_depth == 0 {
+        unused JournalFileLock(journal_lock.fd, 8)
+        unused CloseFile(journal_lock)
+        journal_lock = .{}
+    }
+}
+
+JournalPath :: (name: string, output: []u8) -> string {
+    account_folder: [PATH_LIMIT]u8
+    folder: [PATH_LIMIT]u8
+    own := PathJoin(folder[:], PathJoin(account_folder[:], DataRoot(), "account"), "switch")
+    if !EnsureDirectory(own) { return "" }
+    return PathJoin(output, own, name)
+}
+JournalAccountPath :: (output: []u8) -> string {
+    folder: [PATH_LIMIT]u8
+    return PathJoin(output, PathJoin(folder[:], DataRoot(), "account"), "keys.txt")
+}
+JournalRecordsPath :: (output: []u8) -> string {
+    folder: [PATH_LIMIT]u8
+    own := PathJoin(folder[:], DataRoot(), "records")
+    if !EnsureDirectory(own) { return "" }
+    return PathJoin(output, own, "auth.txt")
+}
+JournalCopy :: (source: string, destination: string, existed: bool) -> bool {
+    if !existed { return WritePrivate(destination, "") }
+    text: [JOURNAL_RECORD_LIMIT]u8
+    defer { for index: 0..text.count - 1 { text[index] = cast(u8)0 } }
+    count := ReadPrivate(source, text[:])
+    return count >= 0 && WritePrivate(destination, TextUntilNul(text[:]))
+}
+JournalRestoreFile :: (name: string, destination: string, existed: bool) -> bool {
+    source: [PATH_LIMIT]u8
+    if !existed { return !PathExists(destination) || RemoveFile(destination) }
+    return JournalCopy(JournalPath(name, source[:]), destination, true)
+}
+JournalCleanup :: () {
+    path: [PATH_LIMIT]u8
+    unused RemoveFile(JournalPath("keys.txt", path[:]))
+    unused RemoveFile(JournalPath("auth.txt", path[:]))
+}
+JournalRecover :: () -> bool {
+    if !JournalAcquire() { return false }
+    defer { JournalRelease() }
+    pending: [PATH_LIMIT]u8
+    marker := JournalPath("pending", pending[:])
+    if marker == "" { journal_blocked = true; return false }
+    if !PathExists(marker) { JournalCleanup(); journal_blocked = false; return true }
+    flags: [8]u8
+    size := ReadPrivate(marker, flags[:])
+    if size != 2 || (flags[0] != cast(u8)48 && flags[0] != cast(u8)49) ||
+    (flags[1] != cast(u8)48 && flags[1] != cast(u8)49) { journal_blocked = true; return false }
+    key: [PATH_LIMIT]u8
+    records: [PATH_LIMIT]u8
+    restored := JournalRestoreFile("keys.txt", JournalAccountPath(key[:]), flags[0] == cast(u8)49) &&
+    JournalRestoreFile("auth.txt", JournalRecordsPath(records[:]), flags[1] == cast(u8)49)
+    if !restored || !RemoveFile(marker) { journal_blocked = true; return false }
+    JournalCleanup()
+    journal_blocked = false
+    return true
+}
+JournalBegin :: () -> bool {
+    if !JournalAcquire() { return false }
+    defer { JournalRelease() }
+    if journal_blocked { return false }
+    key: [PATH_LIMIT]u8
+    records: [PATH_LIMIT]u8
+    old_key: [PATH_LIMIT]u8
+    old_records: [PATH_LIMIT]u8
+    key_path := JournalAccountPath(key[:])
+    records_path := JournalRecordsPath(records[:])
+    key_exists := PathExists(key_path)
+    records_exist := PathExists(records_path)
+    if !JournalCopy(key_path, JournalPath("keys.txt", old_key[:]), key_exists) ||
+    !JournalCopy(records_path, JournalPath("auth.txt", old_records[:]), records_exist) { return false }
+    flags: [3]u8
+    flags[0] = ifx key_exists then cast(u8)49 else cast(u8)48
+    flags[1] = ifx records_exist then cast(u8)49 else cast(u8)48
+    pending: [PATH_LIMIT]u8
+    return WritePrivate(JournalPath("pending", pending[:]), TextUntilNul(flags[:]))
+}
+JournalCommit :: () -> bool {
+    if !JournalAcquire() { return false }
+    defer { JournalRelease() }
+    path: [PATH_LIMIT]u8
+    if !RemoveFile(JournalPath("pending", path[:])) { return false }
+    JournalCleanup()
+    return true
+}

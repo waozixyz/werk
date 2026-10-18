@@ -18,6 +18,7 @@
 #import "sync_keys"
 #import "profile"
 #import "node_url"
+#import "account_journal"
 
 ACCOUNT_SERVER :: "https://api.waozi.xyz"
 // Daochi identifiers keep the full name, werkzeug, where files use werk: the
@@ -235,6 +236,7 @@ AccountFromText :: (text: string, target: *Account) -> bool {
 
 LoadAccount :: () {
     account = Account.{}
+    if !JournalRecover() { return }
     path_bytes: [PATH_LIMIT]u8
     path := AccountPath(path_bytes[:])
     text: [ACCOUNT_FILE_LIMIT]u8
@@ -375,11 +377,12 @@ UseAccountKey :: (text: string, passphrase: string) -> string {
 ForgetAccount :: () -> bool {
     path_bytes: [PATH_LIMIT]u8
     path := AccountPath(path_bytes[:])
+    if path == "" || (PathExists(path) && !RemoveFile(path)) { return false }
     Wipe(account.vault[:])
     Wipe(account.device_seed[:])
     account = Account.{}
     account_generation += 1
-    return path == "" || RemoveFile(path) || !PathExists(path)
+    return true
 }
 
 DigestBody :: (body: string, output: []u8) -> bool {

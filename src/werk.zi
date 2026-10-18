@@ -8,6 +8,7 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/ScrollDevice"
 #import "kryon/Theme"
 #import "apps"
+#import "self_management"
 #import "profile"
 #import "platform"
 #import "migrate"
@@ -144,6 +145,7 @@ TopBar :: (session: Session, viewport: Rectangle) {
             .icon_shape = Back.Shape, .icon_only = true,
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, back) != 0 {
+            if screen == SCREEN_PROFILE && !self_account && SelfAppBack() { return }
             if screen == SCREEN_PROFILE && self_account {
                 self_account = false
                 self_reload = true
@@ -705,6 +707,7 @@ AppScreen :: (session: Session, area: Rectangle, key: s32, modifiers: s32, input
 WerkFrame :: (session: Session, viewport: Rectangle) -> s32 {
     ApplyTheme()
     ClipboardTick()
+    WerkManagementPump()
     #if !#defined(PLATFORM_WEB) {
         SyncFrame()
         LinkFrame()

@@ -21,6 +21,7 @@ using UI :: #import "kryon/Widgets";
 #import "sha256"
 #import "records"
 #import "self_host"
+#import "self_management"
 #if !#defined(PLATFORM_WEB) {
     #import "sync"
 }
@@ -93,7 +94,7 @@ AppCount :: () -> s32 {
 AppServiceAllowed :: (context: *void, name: string) -> bool {
     app := cast(*App)context
     id := TextUntilNul(app.id[:])
-    if name == "self.assets" { return id == "self" }
+    if name == "self.assets" || name == "self.management" { return id == "self" }
     if name == "media.asset" || name == "media.query" || name == "media.pick" {
         return AppLocalAllows(cast(*void)(*app.local), name)
     }
@@ -296,6 +297,15 @@ AppCall :: (context: *void, module: *u8, function: *u8,
     name := TextFromCString(function)
     if TextUntilNul(app.id[:]) == "self" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "self.assets" {
         ReturnText(result, TextUntilNul(app.asset_folder[:]))
+        return 1
+    }
+    if TextUntilNul(app.id[:]) == "self" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "self.management" {
+        request := ArgumentText(arguments[1])
+        if request == "" {
+            document := WerkManagementRead()
+            result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+                .data = HostTextData(document), .length = cast(usize)document.count}
+        } else { ReturnText(result, ifx WerkManagementEnqueue(request) then "queued" else "rejected") }
         return 1
     }
     if TextUntilNul(app.id[:]) == "self" && name == "ReadStoreHost" && count == 2 && ArgumentText(arguments[0]) == "self.json" {
@@ -551,6 +561,11 @@ LoadApps :: () {
 }
 
 SelfAppIndex :: () -> s32 { return self_index }
+SelfAppBack :: () -> bool {
+    if self_index < 0 { return false }
+    apps[self_index].portable.command = "back"
+    return AppContextRun(*apps[self_index].portable, APP_COMMAND) && apps[self_index].portable.reply == "handled"
+}
 
 AppFrameReply :: (index: s32) -> string {
     return ifx index >= 0 && index < app_count then apps[index].portable.reply else ""

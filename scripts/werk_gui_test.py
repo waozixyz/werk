@@ -29,6 +29,9 @@ cache.mkdir(parents=True)
 environment = dict(os.environ)
 environment.pop("WAYLAND_DISPLAY", None)
 environment["WERK_DATA"] = str(data)
+environment["SELF_DATA"] = str(output / "shared-self")
+environment["XDG_DATA_HOME"] = str(output / "xdg-data")
+environment["XDG_CONFIG_HOME"] = str(output / "xdg-config")
 environment["XDG_CACHE_HOME"] = str(cache)
 environment["WERK_ASSETS"] = str(root / "build")
 # Import file runs zenity; this stand-in chooses a fixture Aegis export.
@@ -100,7 +103,7 @@ def capture(name):
     command("import", "-window", window, str(output / f"{name}.png"))
 
 
-def click_word(word, toggle=False):
+def click_word(word, toggle=False, last=False, exact_case=False):
     capture("control")
     for factor, labels in ((1, False), (3, False), (3, True)):
         target = output / "control.png"
@@ -111,12 +114,42 @@ def click_word(word, toggle=False):
                 readable.resize((source.width * factor, source.height * factor)).save(target)
         text = command("tesseract", str(target), "stdout", "--psm", "11",
                        "-c", "tessedit_create_tsv=1")
-        for item in csv.DictReader(io.StringIO(text), delimiter="\t"):
+        matches = [item for item in csv.DictReader(io.StringIO(text), delimiter="\t") if (item["text"].strip() == word if exact_case else item["text"].strip().lower() == word.lower())]
+        if last: matches.reverse()
+        for item in matches:
             if item["text"].strip().lower() == word.lower():
                 click(350 if toggle else (int(item["left"]) + int(item["width"]) // 2) // factor,
                       (int(item["top"]) + int(item["height"]) // 2) // factor)
-                return
+                return ((int(item["left"]) + int(item["width"]) // 2) // factor,
+                        (int(item["top"]) + int(item["height"]) // 2) // factor)
     raise AssertionError(f"Could not find {word!r} in the private test window")
+
+
+def click_scrolled(word):
+    for attempt in range(12):
+        try:
+            return click_word(word)
+        except AssertionError:
+            command("xdotool", "mousemove", "--window", window, "200", "650")
+            command("xdotool", "click", "--window", window, "--repeat", "3", "--delay", "50", "5")
+            time.sleep(.2)
+    raise AssertionError("Missing scrollable control: " + word)
+
+
+def click_filled():
+    capture("filled-control")
+    with Image.open(output / "filled-control.png") as source:
+        pixels = source.convert("RGB")
+        rows = []
+        for y in range(56, pixels.height):
+            span = [x for x in range(pixels.width)
+                    if min(pixels.getpixel((x, y))) < 120
+                    and max(pixels.getpixel((x, y))) < 220
+                    and max(pixels.getpixel((x, y))) - min(pixels.getpixel((x, y))) > 40]
+            if len(span) > 200:
+                rows.append((min(span), y, max(span)))
+        assert rows, "Missing filled account action"
+    click((rows[0][0] + rows[0][2]) // 2, (rows[0][1] + rows[-1][1]) // 2)
 
 
 def screen_text():
@@ -173,8 +206,62 @@ def totp(secret, at):
     return f"{value % 1000000:06d}"
 
 
+def import_invalid_key():
+    # Select an invalid fixture through the real native key chooser.
+    # Both the dialog and the main window belong to this test process.
+    scroll_up()
+    click_word("Import")
+    click_filled()
+    dialog = None
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        found = command("xdotool", "search", "--onlyvisible", "--pid", str(app.pid)).splitlines()
+        for candidate in found:
+            if candidate != window and command("xdotool", "getwindowname", candidate).strip() == "Import account key":
+                dialog = candidate
+                break
+        if dialog: break
+        time.sleep(.1)
+    assert dialog, "Native account file chooser did not open"
+    invalid_key = output / "invalid-account.key"
+    invalid_key.write_text("fixture: not an account key")
+    command("xdotool", "windowfocus", "--sync", dialog)
+    command("xdotool", "key", "--clearmodifiers", "ctrl+l")
+    time.sleep(.3)
+    command("xdotool", "type", "--clearmodifiers", "--delay", "5", str(invalid_key))
+    command("xdotool", "key", "--clearmodifiers", "Return")
+    time.sleep(1)
+    visible = command("xdotool", "search", "--onlyvisible", "--pid", str(app.pid)).splitlines()
+    if dialog in visible:
+        geometry = dict(item.split("=", 1) for item in command("xdotool", "getwindowgeometry", "--shell", dialog).splitlines())
+        command("xdotool", "mousemove", "--window", dialog, str(int(geometry["WIDTH"]) - 50), str(int(geometry["HEIGHT"]) - 24))
+        command("xdotool", "click", "1")
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        found = command("xdotool", "search", "--onlyvisible", "--pid", str(app.pid)).splitlines()
+        if dialog not in found: break
+        time.sleep(.2)
+    if dialog in found:
+        command("xdotool", "windowraise", window)
+        command("xdotool", "windowfocus", "--sync", window)
+        time.sleep(1)
+        capture("chooser-main-after-selection")
+    assert dialog not in found, "Native file selection did not finish"
+    command("xdotool", "windowfocus", "--sync", window)
+    time.sleep(1)
+    assert not (data / "account/keys.txt").exists(), "An invalid key created an account"
+    assert "notvalid" in "".join(screen_text().split()), "Invalid key error was not shown"
+    capture("invalid-account-refused")
+
+
 try:
     start()
+    if os.environ.get("WERK_GUI_CHOOSER_ONLY") == "1":
+        click(390, 28)
+        click_word("Connect", exact_case=True)
+        import_invalid_key()
+        print("Native key chooser selected the invalid fixture and returned its validation error")
+        raise SystemExit(0)
     capture("home")
 
     # Pass: the same inputs give the LessPass reference password.
@@ -308,45 +395,41 @@ try:
     click_word("Light")
     scroll_down()
     click_word("Account")
-    click_word("Create")
+    # The filled action's painted bounds are stable even when OCR misses
+    # white labels. Creating an account explicitly asks to merge Auth data.
+    click_filled()
+    time.sleep(.8)
+    click_word("merge", last=True)
+    time.sleep(.8)
     account_file = data / "account/keys.txt"
     assert account_file.exists() and "paused=0\n" in account_file.read_text()
     click_word("Sync", toggle=True)
-    assert "paused=1\n" in account_file.read_text(), "Profile's sync switch did not pause"
+    assert "paused=1\n" in account_file.read_text(), "Self's sync switch did not pause"
     capture("sync-paused")
     stop()
     start()
     assert "paused=1\n" in account_file.read_text()
     click(390, 28)
     capture("sync-paused-restarted")
-    # Selecting a new node keeps the existing account and its paused state.
     previous_account = account_file.read_text()
-    node_field = field_below("Nodes", 176)
-    click(*node_field)
+    scroll_down()
+    node_field = click_word("Node", exact_case=True)
     type_text("https://second.example.invalid")
     add_node(node_field)
     account = account_file.read_text()
     assert "server=https://second.example.invalid\n" in account, "The account kept its old node"
     assert "paused=1\n" in account, "Changing node resumed a paused account"
-    assert (
-        [line for line in previous_account.splitlines() if not line.startswith("server=")]
-        == [line for line in account.splitlines() if not line.startswith("server=")]
-    ), "Changing node altered account credentials"
-    scroll_down()
-    click_word("Account")
-    click_word("Forget")
-    click_word("forget")
+    assert ([line for line in previous_account.splitlines() if not line.startswith("server=")]
+            == [line for line in account.splitlines() if not line.startswith("server=")]), "Changing node altered account credentials"
+    scroll_up()
+    click_scrolled("Manage")
+    click_scrolled("out")
+    click_filled()
+    time.sleep(.8)
     assert not account_file.exists()
-    assert records.read_text() == saved, "Forgetting an account changed local Auth records"
-    capture("account-forgotten")
-    # Signing in with a Daochi account key refuses text that is not one.
-    scroll_down()
-    click_word("Paste")
-    type_text("not an account key")
-    click_word("key")
-    assert "notaDaochiaccountkey" in "".join(screen_text().split()), "An invalid account key was not refused"
-    assert not account_file.exists(), "An invalid account key created an account"
-    capture("account-key-refused")
+    assert records.read_text() == saved, "Logging out changed local Auth records"
+    capture("account-logged-out")
+    import_invalid_key()
     stop()
     print("Werkzeug GUI test: home, Pass, Calculator, Clock, Auth and Profile ran on a private display")
 finally:

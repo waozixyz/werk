@@ -1,0 +1,101 @@
+// Native Self recovery joins Werkzeug's existing account and Auth store.
+// A switch is staged until its data choice is explicit and its writes succeed.
+Recovery :: #import "self/recovery";
+#import "self/recovery"
+#import "daochi_client/keys"
+#import "daochi_client/crypto"
+#import "account"
+#import "account_journal"
+#import "records"
+#import "sync_keys"
+#import "sync"
+#import "device_link"
+#import "profile"
+#import "node_url"
+#import "std/c_string"
+#import "std/text_buffer"
+Json :: #import "std/json_scan";
+
+WerkRecoveryForgetRecords :: (table: *RecordTable) {
+    for index: 0..table.count - 1 { Wipe(table.records[index].value[:]) }
+}
+
+WerkRecoveryLoad :: (context: *void, output: *Recovery.Recovery) -> bool {
+    if !AccountReady() { return false }
+    output.keys = account.keys
+    vault: [65]u8
+    used: s64 = 0
+    parts: [3]string = .["{\"werkzeug_vault\":\"", HexOf(account.vault[:], vault[:]), "\"}"]
+    used = Append(output.context[:], 0, parts[:])
+    Wipe(vault[:])
+    return used > 0
+}
+WerkRecoveryVault :: (incoming: *Recovery.Recovery, output: []u8) -> bool {
+    context := TextUntilNul(incoming.context[:])
+    if context != "" {
+        end := Json.ValueEnd(context, Json.Space(context, 0), 0)
+        if end < 0 || Json.Space(context, end) != context.count { return false }
+        at := Json.FieldAt(context, 0, "werkzeug_vault")
+        if at >= 0 {
+            vault: [65]u8
+            defer { Wipe(vault[:]) }
+            return Json.ReadStringText(context, at, vault[:]) == 64 && BytesOfHex(TextUntilNul(vault[:]), output) == 32
+        }
+    }
+    if AccountReady() && TextUntilNul(incoming.keys.public_id[:]) == AccountId() {
+        for index: 0..31 { output[index] = account.vault[index] }
+        return true
+    }
+    return VaultFromKey(*incoming.keys, output)
+}
+WerkRecoveryApply :: (context: *void, incoming: *Recovery.Recovery, choice: s32) -> s32 {
+    if !JournalAcquire() { return 0 }
+    defer { JournalRelease() }
+    if journal_blocked || ValidateAccountKeys(*incoming.keys) == 0 || !RecordsOpen("auth") { return 0 }
+    candidate: Account
+    defer {
+        Wipe(candidate.keys.private_key_hex[:])
+        Wipe(candidate.device_seed[:])
+        Wipe(candidate.vault[:])
+    }
+    candidate.keys = incoming.keys
+    candidate.paused = ifx AccountReady() then account.paused else false
+    if !CopyCString(NodeOrigin(DefaultServer()), candidate.server[:]) || !WerkRecoveryVault(incoming, candidate.vault[:]) { return 0 }
+    same := AccountReady() && TextUntilNul(candidate.keys.public_id[:]) == AccountId()
+    if same {
+        for index: 0..31 { if candidate.vault[index] != account.vault[index] { same = false } }
+    }
+    if !same && record_table.count > 0 && choice == 0 { return 2 }
+    if !RecordsSave() || !JournalBegin() { return 0 }
+    previous := account
+    previous_records := record_table
+    defer {
+        Wipe(previous.keys.private_key_hex[:])
+        Wipe(previous.device_seed[:])
+        Wipe(previous.vault[:])
+        WerkRecoveryForgetRecords(*previous_records)
+    }
+    CancelSyncNow()
+    LinkCancel()
+    NewClientId(candidate.client_id[:])
+    RandomFill(candidate.device_seed[:])
+    account = candidate
+    SetVaultId()
+    account.ready = SetDevice()
+    if !same && choice == 2 { record_table.count = 0; record_table.version += 1 }
+    dirty_index: s32 = 0
+    while dirty_index < record_table.count {
+        record_table.records[dirty_index].dirty = true
+        dirty_index += 1
+    }
+    if !account.ready || !SaveAccount() || !RecordsSave() || !JournalCommit() {
+        account = previous
+        record_table = previous_records
+        unused JournalRecover()
+        return 0
+    }
+    account_generation += 1
+    ForgetSync()
+    if AccountSyncEnabled() { SyncSoon() }
+    return 1
+}

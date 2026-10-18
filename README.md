@@ -45,8 +45,8 @@ Pass's package, so it updates in place and keeps a saved master password.
 ## Privacy
 
 Everything is computed on the device. Werkzeug makes no network requests
-unless you turn on sync. Each tool keeps its own files, readable only by your
-user:
+unless you set up sync or explicitly request an account or device-link action.
+Each tool keeps its own files, readable only by your user:
 
 | Platform | Data |
 |---|---|
@@ -60,38 +60,44 @@ Android app sandbox.
 
 ## Sync
 
-Profile → Sync keeps Auth's accounts on all your devices through a
-[Daochi](https://github.com/kryonlabs/daochi) account, `api.waozi.xyz` by
-default. Sync is off until you create or connect an account.
+Profile uses the shared Self bundle. Desktop Account management shows the
+public ID, alias, sync status and queued changes, and provides account creation,
+key-file import, backups, device linking and logout. Switching accounts asks
+whether to keep and merge local Auth records or replace them. A private rollback
+journal preserves the previous key and records if a switch is interrupted.
 
-On the desktop you can also sign in with a Daochi account key you already
-have, such as the one Inbe exports, so Werkzeug uses the same account as
-Inbe. Paste the key, and its passphrase if it has one; every device signed in
-with the same key opens the same Auth accounts. A phone connects with a code
-from one of those devices.
+The account can use a [Daochi](https://github.com/kryonlabs/daochi) node,
+`api.waozi.xyz` by default. Tools work locally without an account. Saved nodes
+and the preferred node live in Profile → Nodes; choosing a node preserves the
+account and its paused state. The sync switch pauses automatic synchronization
+and stays paused after restarting. Logout keeps local Auth records.
 
-Every tool works without Daochi. Set your own HTTPS node in Profile → Sync
-before creating or connecting an account; HTTP is supported for a local node
-on localhost. Both devices must use the same node to connect. With an account
-connected, the sync switch pauses all sync and device linking, preserves your
-keys and local records, and stays off after restarting. Forget the account on
-this device to choose a different node; local records remain available.
+Desktop key backups retain Werkzeug's Auth vault key as protected recovery
+context. Use a passphrase to encrypt the backup. Importing a legacy account key
+for the already-connected identity preserves its existing vault key. The shared
+QR workflow also preserves that context and asks both devices to compare digits
+before connecting. Legacy clients cannot read the extended QR payload when
+Werkzeug vault context is included.
+
+Desktop Self and participating native apps share public profile preferences only
+for the same verified account ID. Account keys and Auth records stay in the
+host's private store. Android retains its existing native Account screen and
+legacy device-link flow; browser account sync is unavailable.
 
 The embedded web app (`/app/?mini`) also provides Home and Profile, so all
 four tools are reachable. Use `?mini&app=auth`, `calculator` or `clock` to
 open a particular tool first. Browser sync is currently unavailable.
 
 - Each record is sealed on the device with XChaCha20-Poly1305 under a random
-  vault key that never leaves your devices unencrypted. The seal covers the
+  vault key that is never sent to the node unencrypted. The seal covers the
   account, the record and the time of the change, so the server can neither
   read nor alter a record or a removal.
 - The account key (ML-DSA-44) signs in and signs each sync together with
   the device's own Ed25519 key.
-- To connect another device, open Profile → Sync → Connect a device and enter
-  the 12-character code on the other device. The devices swap X25519 keys
-  through the server's link mailbox, and the account and vault keys travel
-  sealed with a key derived from that exchange and the code, so the server
-  cannot open or replace them. The code works for 10 minutes.
+- Desktop device linking uses the shared Self QR/code exchange with X25519
+  and encrypted key transfer. Confirm the matching number on both devices.
+  Android's existing 12-character connection code remains available in its
+  native account screen.
 - The server can still withhold changes or serve an older copy to a device
   that has not seen a newer one. A lost device keeps the keys it had: stop
   syncing there if you can, and replace two-factor secrets you care about.
@@ -137,14 +143,14 @@ other.
 ## Build and test
 
 Dependencies and the compiler are pinned in `ziran.lock`. Desktop builds need
-SDL2, Cairo, FreeType, Fontconfig and Pango development packages; browser
+SDL2, Cairo, FreeType, Fontconfig, Pango, GTK 3 and X11 development packages; browser
 builds need Emscripten; Android builds need JDK 21 and the SDK/NDK versions in
 `droid/app/build.gradle`. Desktop tests use Xvfb, xdotool, xclip and
 ImageMagick on private displays.
 
 ```sh
 make gui            # build/werk and the app bundles in build/apps
-make test           # Pass core and CLI, Pass state, Auth codes, Calculator
+make test           # Pass/CLI, Auth, Calculator and private account recovery fixtures
 make gui-smoke      # light and dark home screens on a private Xvfb display
 make gui-test       # every tool, clipboard and profile on a private display,
                     # and werk auth without one

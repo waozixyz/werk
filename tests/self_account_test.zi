@@ -1,0 +1,83 @@
+#import "account"
+#import "account_journal"
+#import "account_transition"
+#import "records"
+#import "profile"
+#import "files"
+#import "platform"
+#import "sync_keys"
+#import "self/recovery"
+#import "daochi_client/keys"
+#import "std/file"
+#import "std/c_string"
+#import "std/text_buffer"
+
+libc :: #system_library "libc";
+RemoveDirectory :: (path: *u8) -> s32 #foreign libc "rmdir";
+
+#program_export
+Check :: () -> s32 {
+    mode := EnvironmentText("WERK_TEST_JOURNAL_MODE")
+    if mode == "hold" { return HoldJournal() }
+    if mode == "recover" { return RecoverJournal() }
+    LoadProfile()
+    LoadAccount()
+    unused CopyCString("http://127.0.0.1:9", profile.node[:])
+    if !SaveProfile() || !CreateAccount() || !SetAccountSyncEnabled(false) { return 1 }
+    if !RecordPut("auth", "fixture", "fixture-secret-only", 100) ||
+    !RecordPut("auth", "removed", "fixture-removed", 101) || !RecordDelete("auth", "removed", 102) { return 2 }
+    original: Recovery
+    defer { RecoveryClear(*original) }
+    if !WerkRecoveryLoad(null, *original) { return 3 }
+    vault: [32]u8
+    for index: 0..31 { vault[index] = account.vault[index] }
+    same: Recovery
+    same.keys = original.keys
+    defer { RecoveryClear(*same) }
+    if WerkRecoveryApply(null, *same, 0) != 1 || !account.paused || record_table.count != 2 { return 4 }
+    for index: 0..31 { if account.vault[index] != vault[index] { return 5 } }
+    if record_table.records[0].updated != 100 || record_table.records[1].updated != 102 || !record_table.records[1].deleted { return 6 }
+    incoming: Recovery
+    defer { RecoveryClear(*incoming) }
+    if CreateAccountKeys(*incoming.keys) == 0 { return 7 }
+    if WerkRecoveryApply(null, *incoming, 0) != 2 || AccountId() != TextUntilNul(original.keys.public_id[:]) || record_table.count != 2 { return 8 }
+    // An unwritable journal target must leave the existing key and data intact.
+    obstruction: [PATH_LIMIT]u8
+    obstruction_path := JournalPath("keys.txt", obstruction[:])
+    if !CreatePrivateDirectory(obstruction_path) || WerkRecoveryApply(null, *incoming, 1) != 0 ||
+    AccountId() != TextUntilNul(original.keys.public_id[:]) || record_table.count != 2 { return 9 }
+    if RemoveDirectory(*obstruction[0]) != 0 { return 10 }
+    if WerkRecoveryApply(null, *incoming, 1) != 1 || !account.paused || record_table.count != 2 ||
+    TextUntilNul(record_table.records[0].value[:]) != "fixture-secret-only" || !record_table.records[1].deleted { return 11 }
+    if !record_table.records[0].dirty || !record_table.records[1].dirty || record_table.records[0].updated != 100 { return 12 }
+    if WerkRecoveryApply(null, *original, 2) != 1 || record_table.count != 0 || !account.paused { return 13 }
+    for index: 0..31 { if account.vault[index] != vault[index] { return 14 } }
+    if !RecordPut("auth", "restored", "fixture-recovered", 222) || !JournalBegin() { return 15 }
+    key_path: [PATH_LIMIT]u8
+    if !WritePrivate(JournalAccountPath(key_path[:]), "incomplete replacement") { return 16 }
+    record_table.count = 0
+    if !RecordsSave() || !JournalRecover() { return 17 }
+    LoadAccount()
+    record_table.loaded = false
+    if !AccountReady() || AccountId() != TextUntilNul(original.keys.public_id[:]) || !RecordsOpen("auth") ||
+    record_table.count != 1 || TextUntilNul(record_table.records[0].value[:]) != "fixture-recovered" || record_table.records[0].updated != 222 { return 18 }
+    if !ForgetAccount() || AccountReady() || record_table.count != 1 { return 19 }
+    return 0
+}
+
+
+ProbeSleep :: (microseconds: u32) -> s32 #foreign libc "usleep";
+
+#program_export
+HoldJournal :: () -> s32 {
+    if !JournalAcquire() { return 1 }
+    defer { JournalRelease() }
+    if !JournalBegin() { return 2 }
+    ready: [PATH_LIMIT]u8
+    if !WritePrivate(JournalPath("held", ready[:]), "fixture") { return 3 }
+    unused ProbeSleep(2000000)
+    return ifx JournalCommit() then 0 else 4
+}
+
+#program_export
+RecoverJournal :: () -> s32 { return ifx JournalRecover() then 0 else 1 }

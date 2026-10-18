@@ -9,6 +9,7 @@ Self :: #import "self/model";
     #import "sync"
     #import "device_link"
     #import "records"
+    Shared :: #import "self/native_files";
 }
 
 self_document: string;
@@ -31,6 +32,9 @@ WerkSelfRead :: () -> string {
     } else {
         unused CopyCString(ProfileNode(), state.nodes[0][:])
     }
+    #if !#defined(PLATFORM_WEB) {
+        if AccountReady() { state.owner_id = account.keys.public_id; unused Shared.SharedProfileLoad(AccountId(), *state) }
+    }
     Self.SelfAddExtension(*state, "account", "Account")
     self_document = Self.SelfEncode(state)
     return self_document
@@ -39,6 +43,9 @@ WerkSelfRead :: () -> string {
 WerkSelfWrite :: (document: string) -> bool {
     state: Self.SelfState
     if !Self.SelfDecode(document, *state) { return false }
+    #if !#defined(PLATFORM_WEB) {
+        if TextUntilNul(state.owner_id[:]) != AccountId() { return false }
+    }
     for byte: state.name {
         if byte == cast(u8)10 || byte == cast(u8)13 { return false }
     }
@@ -62,8 +69,17 @@ WerkSelfWrite :: (document: string) -> bool {
                 return false
             }
             ForgetSync()
-            if AccountSyncEnabled() { SyncSoon() }
+
         }
+    }
+    #if !#defined(PLATFORM_WEB) {
+        if !Shared.SharedProfileSave(AccountId(), state) {
+            profile = previous
+            unused SaveProfile()
+            if AccountReady() { unused SetAccountNode(ProfileNode()) }
+            return false
+        }
+        if AccountReady() && AccountSyncEnabled() && TextUntilNul(previous.node[:]) != ProfileNode() { SyncSoon() }
     }
     return true
 }
