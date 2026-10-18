@@ -17,8 +17,8 @@
 #import "tree"
 #import "text_buffer"
 #import "number_text"
-#import "werk_app"
-#import "app_protocol"
+#import "kryon/app_context"
+#import "kryon/app_protocol"
 #import "totp"
 #import "exports"
 Icon :: #import "mingcute_regular_shield";
@@ -611,8 +611,12 @@ Draw :: () {
 #program_export "AuthMain"
 Main :: () -> s32 {
     if AppMode() == APP_IDENTIFY {
+        AppIdentity("auth")
         AppDescribe("Auth", Icon.Shape)
         return APP_PROTOCOL
+    }
+    if AppMode() != APP_FRAME {
+        return 0
     }
     // Records from another device replace the list, and close an edit.
     if !loaded || RecordsVersion() != records_version {

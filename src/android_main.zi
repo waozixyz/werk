@@ -1,4 +1,5 @@
 #import "werk"
+#import "apps"
 #import "profile"
 #import "platform"
 #import "android"
@@ -126,6 +127,7 @@ main :: () -> s32 {
             Report("Could not present frame")
         }
     }
+    ok = SaveApps() && ok
     ShowKeyboard(false)
     CloseSession(session)
     Render.CloseRaylib()

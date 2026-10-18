@@ -22,8 +22,8 @@
 #import "tree"
 #import "text_buffer"
 #import "utf8"
-#import "werk_app"
-#import "app_protocol"
+#import "kryon/app_context"
+#import "kryon/app_protocol"
 #import "pass_core"
 #import "pass_state"
 #import "pass_text"
@@ -474,8 +474,12 @@ Draw :: () {
 #program_export "PassMain"
 Main :: () -> s32 {
     if AppMode() == APP_IDENTIFY {
+        AppIdentity("pass")
         AppDescribe("Pass", Icon.Shape)
         return APP_PROTOCOL
+    }
+    if AppMode() != APP_FRAME {
+        return 0
     }
     if !initialized {
         Initialize()

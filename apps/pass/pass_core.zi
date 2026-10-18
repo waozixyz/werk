@@ -1,6 +1,6 @@
 #import "sha256"
 #if #defined(WERK_APP) {
-    #import "werk_app"
+    #import "kryon/app_context"
 }
 
 PassOptions :: struct {

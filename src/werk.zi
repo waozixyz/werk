@@ -80,6 +80,9 @@ WerkOpen :: (id: string, alone: bool) -> bool {
     index: s32 = 0
     while index < AppCount() {
         if AppId(index) == id {
+            if open_app != index && !SaveApp(open_app) {
+                return false
+            }
             open_app = index
             screen = SCREEN_APP
             mini = alone
@@ -111,6 +114,9 @@ Action :: (session: Session, id: s32, label: string, bounds: Rectangle, selected
 }
 
 OpenHome :: () {
+    if screen == SCREEN_APP && !SaveApp(open_app) {
+        return
+    }
     if screen == SCREEN_PROFILE {
         name_field.focused = false
         code_field.focused = false

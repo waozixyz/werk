@@ -30,6 +30,14 @@ Small private tools in one app. The home screen opens each one:
 The profile holds your name, a picture and the appearance every tool shares:
 system, light or dark, an accent color and Material or Classic widgets.
 
+Werkzeug is a harness for practical tools. Each built-in tool uses the shared
+Kryon app interface, so another compatible harness can run its bundle too.
+On the desktop, `werk --bundle /path/to/diary.zib` opens Inner Breeze's Diary
+through that interface, with its own private documents and optional photo
+picker. It needs no `inbe.zib`. These local Diary documents do not yet join
+Werkzeug's account sync. External bundles cannot replace a built-in tool or
+receive Pass's device secret or Auth's records.
+
 Werkzeug was previously Pass. On its first start it moves Pass's saved
 profiles, settings and theme into the new layout; the Android app keeps
 Pass's package, so it updates in place and keeps a saved master password.

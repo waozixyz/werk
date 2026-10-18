@@ -1,4 +1,5 @@
 #import "werk"
+#import "apps"
 #import "std/c_string"
 #import "std/byte_text_linux"
 Command :: #import "command";
@@ -77,6 +78,15 @@ main :: (argc: s32, argv: **u8) -> s32 {
     if argc >= 3 && TextFromCString(argv[1]) == "--app" {
         unused WerkOpen(TextFromCString(argv[2]), false)
     }
+    if argc >= 3 && TextFromCString(argv[1]) == "--bundle" {
+        index := LoadExternalApp(TextFromCString(argv[2]))
+        if index < 0 || !WerkOpen(AppId(index), false) {
+            Report("Werkzeug: incompatible app bundle\n")
+            SessionClose(session)
+            Desktop.CloseDesktop()
+            return 1
+        }
+    }
     ok: bool = true
     if Desktop.CaptureRequested() {
         ok = DrawDesktop(session)
@@ -101,6 +111,7 @@ main :: (argc: s32, argv: **u8) -> s32 {
             }
         }
     }
+    ok = SaveApps() && ok
     CloseSession(session)
     Desktop.CloseDesktop()
     if ok {

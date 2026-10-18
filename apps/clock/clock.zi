@@ -10,8 +10,8 @@
 #import "control_props"
 #import "text_buffer"
 #import "number_text"
-#import "werk_app"
-#import "app_protocol"
+#import "kryon/app_context"
+#import "kryon/app_protocol"
 Icon :: #import "mingcute_regular_time";
 
 VIEW_CLOCK :: 0
@@ -259,8 +259,12 @@ Draw :: () {
 #program_export "ClockMain"
 Main :: () -> s32 {
     if AppMode() == APP_IDENTIFY {
+        AppIdentity("clock")
         AppDescribe("Clock", Icon.Shape)
         return APP_PROTOCOL
+    }
+    if AppMode() != APP_FRAME {
+        return 0
     }
     if !loaded {
         LoadStopwatch()

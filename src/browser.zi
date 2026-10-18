@@ -1,6 +1,7 @@
 // The browser host. ?app=ID opens a tool at start. Embedded ?mini opens
 // Pass first unless ?app selects another, with navigation to every tool.
 #import "werk"
+#import "apps"
 #import "browser_storage"
 #import "std/text_buffer"
 Browser :: #import "kryon/Canvas";
@@ -81,6 +82,7 @@ main :: () -> s32 {
         }
         ok = Browser.EndCanvasFrame() && ok
     }
+    ok = SaveApps() && ok
     CloseSession(session)
     Browser.CloseCanvas()
     if ok {

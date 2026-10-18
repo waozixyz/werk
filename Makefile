@@ -44,7 +44,7 @@ cli: build/pass
 APPS := pass auth calculator clock
 APP_BUNDLES := $(APPS:%=build/apps/%.zib)
 SHARED_SOURCES := $(wildcard shared/*.zi)
-APP_MODULE_PATHS = --module-path shared --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
+APP_MODULE_PATHS = --module-path shared --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
 apps: $(APP_BUNDLES)
 .SECONDEXPANSION:
 build/apps/%.zib: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES) ziran.lock
@@ -53,13 +53,14 @@ build/apps/%.zib: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES)
 		$(if $(wildcard apps/$*/assets),--asset-dir assets=apps/$*/assets) --entry $*:Main -o $@ apps/$*/$*.zi
 
 # The portable bundle runtime the host links, built from the locked Ziran.
-build/ziran/libziran.a: ziran.lock
+ZIRAN_RUNTIME_SOURCES = $(wildcard $(ZIRAN_ROOT)/cmd/zir/*.[ch] $(ZIRAN_ROOT)/include/*.h)
+build/ziran/libziran.a: ziran.lock $(ZIRAN_RUNTIME_SOURCES)
 	env -u DISPLAY -u WAYLAND_DISPLAY $(MAKE) -C $(ZIRAN_ROOT) BUILD_DIR=$(abspath build/ziran) $(abspath $@)
 
 build/generated/desktop/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)
-	$(ZIRAN) build $(PROJECT) --target=c --entry desktop:main -o $(@D) src/desktop.zi
+	$(ZIRAN) build $(PROJECT) --define PLATFORM_DESKTOP --target=c --entry desktop:main -o $(@D) src/desktop.zi
 	touch $@
 build/liboqs/lib/liboqs.a: ziran.lock
 	cmake -S $(LIBOQS_DIR) -B build/liboqs $(LIBOQS_FLAGS) > /dev/null

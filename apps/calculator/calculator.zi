@@ -15,8 +15,8 @@
 #import "box_widget"
 #import "text_buffer"
 #import "number_text"
-#import "werk_app"
-#import "app_protocol"
+#import "kryon/app_context"
+#import "kryon/app_protocol"
 #import "arithmetic"
 Icon :: #import "mingcute_regular_counter";
 DeleteBack :: #import "mingcute_regular_delete_back";
@@ -442,8 +442,12 @@ Draw :: () {
 #program_export "CalculatorMain"
 Main :: () -> s32 {
     if AppMode() == APP_IDENTIFY {
+        AppIdentity("calculator")
         AppDescribe("Calculator", Icon.Shape)
         return APP_PROTOCOL
+    }
+    if AppMode() != APP_FRAME {
+        return 0
     }
     if !loaded {
         LoadSettings()

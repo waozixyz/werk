@@ -11,7 +11,11 @@
 #import "kryon/widget_codec"
 #import "kryon/widget_host"
 using UI :: #import "kryon/Widgets";
-#import "app_protocol"
+#import "kryon/app_protocol"
+#import "kryon/app_context_host"
+#import "kryon/app_local"
+#import "kryon/app_files"
+#import "kryon/key_input"
 #import "platform"
 #import "files"
 #import "sha256"
@@ -34,13 +38,16 @@ APP_STORE_LIMIT :: 262144
 BUNDLED_APPS :: 4
 
 App :: struct {
-    id: [32]u8
+    id: [128]u8
     name: [64]u8
     icon: [16384]u8
     asset_folder: [PATH_LIMIT]u8
     // The bundle's bytes stay alive while it is open.
     bytes: string
-    hosted: HostedApp
+    portable: AppContext
+    local: AppLocal
+    document_root: [PATH_LIMIT]u8
+    bundled: bool
     started: bool
 }
 
@@ -56,18 +63,12 @@ AppView :: struct {
 
 apps: [APP_LIMIT]App;
 app_count: s32;
-app_mode: s32;
-app_view: AppView;
 app_keyboard: bool;
-app_described: bool;
 // The app whose call the host is answering, for the asset policy.
 running: s32 = -1;
 // Text returned to an app stays here until its run returns.
 answer_text: [PATH_LIMIT]u8;
 store_bytes: [APP_STORE_LIMIT]u8;
-session_codec: WidgetSessionCodec;
-bounds_codec: WidgetRectangleCodec;
-input_codec: WidgetTextFieldInputCodec;
 
 AppId :: (index: s32) -> string {
     return TextUntilNul(apps[index].id[:])
@@ -85,36 +86,29 @@ AppCount :: () -> s32 {
     return app_count
 }
 
-// Whether a capability's module is this one. Bundles may report the module
-// with a package prefix, such as "werk_werk_app".
-ModuleIs :: (value: string, name: string) -> bool {
-    if value == name {
-        return true
+// Each service is granted to the app that owns it. New app bundles never
+// receive Pass's device secret simply because another app can use it.
+AppServiceAllowed :: (context: *void, name: string) -> bool {
+    app := cast(*App)context
+    id := TextUntilNul(app.id[:])
+    if name == "media.asset" || name == "media.query" || name == "media.pick" {
+        return AppLocalAllows(cast(*void)(*app.local), name)
     }
-    return value.count > name.count + 1 && value[value.count - name.count - 1] == cast(u8)95 &&
-    value[value.count - name.count:value.count] == name
-}
-
-AppFunction :: (function: string) -> bool {
-    names: [27]string = .["AppPbkdf2Sha256Host", "AppModeHost", "AppDescribeHost", "AppSessionHost", "AppBoundsHost",
-    "AppDarkHost", "AppKeyHost", "AppModifiersHost", "AppFieldInputHost", "AppKeyboardHost",
-    "AppNowHost", "AppLocalOffsetHost", "AppAssetPathHost", "ReadStoreHost", "WriteStoreHost",
-    "ClipboardCopyHost", "SecureAvailableHost", "SecureSavedHost", "SecureRequestHost",
-    "SecureForgetHost", "RecordListHost", "RecordReadHost", "RecordWriteHost", "RecordRemoveHost",
-    "RecordsVersionHost", "FileImportAvailableHost", "FileImportHost"]
-    for index: 0..26 {
-        if function == names[index] {
-            return true
-        }
+    if name == "SecureAvailableHost" || name == "SecureSavedHost" ||
+    name == "SecureRequestHost" || name == "SecureForgetHost" || name == "SecurePollHost" ||
+    name == "AppPbkdf2Sha256Host" {
+        return app.bundled && id == "pass"
     }
-    return function == "SecurePollHost"
-}
-
-AppAllows :: (context: *void, module: string, function: string) -> bool {
-    if ModuleIs(module, "werk_app") {
-        return AppFunction(function)
+    if name == "RecordListHost" || name == "RecordReadHost" || name == "RecordWriteHost" ||
+    name == "RecordRemoveHost" || name == "RecordsVersionHost" ||
+    name == "FileImportAvailableHost" || name == "FileImportHost" {
+        return app.bundled && id == "auth"
     }
-    return WidgetHostSupports(module, function)
+    return name == "DocumentReadHost" || name == "DocumentWriteHost" ||
+    name == "DocumentStatusHost" || name == "AppLocaleHost" ||
+    name == "AppNowHost" || name == "AppLocalOffsetHost" ||
+    name == "AppAssetPathHost" || name == "ReadStoreHost" || name == "WriteStoreHost" ||
+    name == "ClipboardCopyHost"
 }
 
 ArgumentText :: (value: HostValue) -> string {
@@ -295,28 +289,19 @@ SecurePollCall :: (arguments: *HostValue, result: *HostValue) -> s32 {
 
 AppCall :: (context: *void, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
-    if !ModuleIs(TextFromCString(module), "werk_app") {
-        #if #defined(ANDROID_BUILD) {
-            return AndroidWidgetCall(context, module, function, arguments, count, result)
-        } else {
-            return WidgetHostCall(context, module, function, arguments, count, result)
-        }
-    }
     app := cast(*App)context
     name := TextFromCString(function)
-    if name == "AppModeHost" {
-        result.* = HostScalar("s32", cast(s64)app_mode)
-        return 1
-    }
-    if name == "AppDescribeHost" && count == 2 {
-        if app_mode != APP_IDENTIFY {
-            return 0
+    if name == "AppServiceHost" || name == "AppLocaleHost" || name == "DocumentReadHost" ||
+    name == "DocumentWriteHost" || name == "DocumentStatusHost" {
+        if name != "AppLocaleHost" && !app.local.files.lock.valid {
+            path: [PATH_LIMIT]u8
+            root := StorePath(app, "documents", path[:])
+            CopyField(app.document_root[:], root)
+            if !AppFilesOpen(*app.local.files, TextUntilNul(app.document_root[:])) {
+                return 0
+            }
         }
-        CopyField(app.name[:], ArgumentText(arguments[0]))
-        CopyField(app.icon[:], ArgumentText(arguments[1]))
-        app_described = app.name[0] != cast(u8)0
-        ReturnVoid(result)
-        return 1
+        return AppLocalCall(cast(*void)(*app.local), module, function, arguments, count, result)
     }
     if name == "ReadStoreHost" && count == 2 {
         return ReadStoreCall(app, arguments, result)
@@ -407,38 +392,6 @@ AppCall :: (context: *void, module: *u8, function: *u8,
     if name == "SecurePollHost" && count == 1 {
         return SecurePollCall(arguments, result)
     }
-    if app_mode != APP_FRAME {
-        return 0
-    }
-    if name == "AppSessionHost" {
-        result.* = WidgetEncodeSession(app_view.session, *session_codec)
-        return 1
-    }
-    if name == "AppBoundsHost" {
-        result.* = WidgetEncodeRectangle(app_view.bounds, *bounds_codec)
-        return 1
-    }
-    if name == "AppDarkHost" {
-        ReturnBool(result, app_view.dark)
-        return 1
-    }
-    if name == "AppKeyHost" {
-        result.* = HostScalar("s32", cast(s64)app_view.key)
-        return 1
-    }
-    if name == "AppModifiersHost" {
-        result.* = HostScalar("s32", cast(s64)app_view.modifiers)
-        return 1
-    }
-    if name == "AppFieldInputHost" {
-        result.* = WidgetEncodeTextFieldInput(app_view.input, *input_codec)
-        return 1
-    }
-    if name == "AppKeyboardHost" && count == 1 {
-        app_keyboard = arguments[0].integer != 0
-        ReturnVoid(result)
-        return 1
-    }
     return 0
 }
 
@@ -450,6 +403,11 @@ AssetAllowed :: (path: string) -> bool {
     }
     if running < 0 {
         return false
+    }
+    documents := TextUntilNul(apps[running].document_root[:])
+    if documents != "" && path.count > documents.count + 1 &&
+    path[:documents.count] == documents && path[documents.count] == cast(u8)47 {
+        return AppFileNameValid(path[documents.count + 1:])
     }
     folder := TextUntilNul(apps[running].asset_folder[:])
     return folder != "" && path.count > folder.count + 1 && path[0:folder.count] == folder &&
@@ -467,7 +425,7 @@ UnpackAssets :: (app: *App) {
         return
     }
     CopyField(app.asset_folder[:], folder)
-    bundle := app.hosted.bundle
+    bundle := app.portable.app.bundle
     count := BundleAssets(bundle)
     index: u64 = 0
     while index < count {
@@ -493,23 +451,40 @@ LoadApp :: (id: string, path: string) -> bool {
     }
     app := *apps[app_count]
     app.* = App.{}
+    app.bundled = id != ""
     CopyField(app.id[:], id)
     app.bytes = bytes
-    if !HostedAppOpen(*app.hosted, app.bytes) ||
-    !HostedAppStart(*app.hosted, AppAllows, AppCall, cast(*void)app) {
-        HostedAppClose(*app.hosted)
-        return false
-    }
-    app_mode = APP_IDENTIFY
-    app_described = false
-    answer: s64 = 0
+    app.portable.expected_id = id
+    app.portable.services = AppCall
+    app.portable.widgets = AppWidgetCall
+    app.portable.allows = AppServiceAllowed
+    app.portable.context = cast(*void)app
     running = app_count
-    identified := HostedAppRun(*app.hosted, *answer) && answer == APP_PROTOCOL && app_described
+    identified := AppContextOpen(*app.portable, app.bytes)
     running = -1
     if !identified {
-        HostedAppClose(*app.hosted)
+        HostedAppClose(*app.portable.app)
         return false
     }
+    if id == "" {
+        CopyField(app.id[:], TextUntilNul(app.portable.id[:]))
+        external_id := TextUntilNul(app.id[:])
+        if external_id == "pass" || external_id == "auth" ||
+        external_id == "calculator" || external_id == "clock" {
+            HostedAppClose(*app.portable.app)
+            return false
+        }
+        for index: 0..app_count - 1 {
+            if AppId(index) == external_id {
+                HostedAppClose(*app.portable.app)
+                return false
+            }
+        }
+    }
+    app.local.bundle = app.portable.app.bundle
+    app.local.locale = "en"
+    CopyField(app.name[:], TextUntilNul(app.portable.name[:]))
+    CopyField(app.icon[:], TextUntilNul(app.portable.icon[:]))
     app.started = true
     UnpackAssets(app)
     app_count += 1
@@ -542,34 +517,71 @@ LoadApps :: () {
 // stopped; it starts again the next time it opens.
 RunApp :: (index: s32, view: AppView) -> bool {
     app := *apps[index]
-    if app.hosted.failed {
-        app.started = HostedAppRestart(*app.hosted, AppAllows, AppCall, cast(*void)app, AppAccepts)
+    if app.portable.app.failed {
+        app.started = AppContextRestart(*app.portable)
     }
     if !app.started {
         return false
     }
-    app_view = view
-    app_mode = APP_FRAME
     app_keyboard = false
+    app.portable.session = view.session
+    app.portable.bounds = view.bounds
+    app.portable.dark = view.dark
+    app.portable.key = view.key
+    app.portable.modifiers = view.modifiers
+    app.portable.input = view.input
+    app.portable.area_input = TextAreaInputFor(view.key, view.modifiers, view.input.text)
+    app.portable.area_input.paste_text = view.input.paste_text
+    app.portable.area_input.composition_event = view.input.composition_event
+    app.portable.area_input.now_seconds = SteadyClock()
     running = index
     WidgetHostBegin(view.session, AssetAllowed)
-    answer: s64 = 0
-    ran := HostedAppRun(*app.hosted, *answer)
+    ran := AppContextRun(*app.portable, APP_FRAME)
+    app_keyboard = app.portable.keyboard
     WidgetHostEnd()
     ForgetAnswer()
     running = -1
     return ran
 }
 
-// A restarted app is accepted once it identifies itself again.
-AppAccepts :: (context: *void) -> bool {
-    app := cast(*App)context
-    app_mode = APP_IDENTIFY
-    app_described = false
-    answer: s64 = 0
-    return HostedAppRun(*app.hosted, *answer) && answer == APP_PROTOCOL && app_described
-}
-
 AppWantsKeyboard :: () -> bool {
     return app_keyboard
+}
+
+SaveApp :: (index: s32) -> bool {
+    if index < 0 || index >= app_count || !apps[index].started {
+        return true
+    }
+    running = index
+    saved := AppContextRun(*apps[index].portable, APP_SAVE)
+    ForgetAnswer()
+    running = -1
+    return saved
+}
+
+SaveApps :: () -> bool {
+    saved := true
+    for index: 0..app_count - 1 {
+        if !SaveApp(index) {
+            saved = false
+        }
+    }
+    return saved
+}
+
+
+// Explicit local bundle launch uses the same checked lifecycle as built-ins.
+LoadExternalApp :: (path: string) -> s32 {
+    index := app_count
+    return ifx LoadApp("", path) then index else -1
+}
+
+
+AppWidgetCall :: (context: *void, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    #if #defined(ANDROID_BUILD) {
+        return AndroidWidgetCall(context, module, function, arguments, count, result)
+    } else {
+        return WidgetHostCall(context, module, function, arguments, count, result)
+    }
 }

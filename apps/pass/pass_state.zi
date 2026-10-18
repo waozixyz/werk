@@ -5,7 +5,7 @@
 #import "pass_text"
 #import "text_buffer"
 #import "number_text"
-#import "werk_app"
+#import "kryon/app_context"
 
 Profile :: struct {
     name: [64]u8
