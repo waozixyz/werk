@@ -1,0 +1,29 @@
+Calculator :: #import "calculator";
+#import "kryon/text_input_props"
+
+pressed: s32;
+typed: string;
+
+#program_export
+AppKeyHost :: () -> s32 { return pressed }
+#program_export
+AppFieldInputHost :: () -> TextFieldInput { return .{.text = typed} }
+
+#program_export
+main :: () -> s32 {
+    Calculator.Clear()
+    pressed = 257
+    typed = "7*6"
+    Calculator.Keyboard()
+    if Calculator.ExpressionText() != "42" { return 1 }
+    Calculator.Clear()
+    pressed = 259
+    typed = "123"
+    Calculator.Keyboard()
+    if Calculator.ExpressionText() != "12" { return 2 }
+    pressed = 256
+    typed = "45"
+    Calculator.Keyboard()
+    if Calculator.ExpressionText() != "" { return 3 }
+    return 42
+}

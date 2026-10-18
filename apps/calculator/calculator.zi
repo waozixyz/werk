@@ -146,15 +146,6 @@ SaveSettings :: () {
 // such as sin and sqrt.
 Keyboard :: () {
     key := AppKey()
-    if key == 257 || key == 335 {
-        Evaluate()
-    }
-    if key == 259 {
-        Backspace()
-    }
-    if key == 256 {
-        Clear()
-    }
     typed := AppFieldInput().text
     index: s32 = 0
     while index < cast(s32)typed.count {
@@ -178,6 +169,16 @@ Keyboard :: () {
             Evaluate()
         }
         index += 1
+    }
+    // Text queued before a command key belongs to the expression it acts on.
+    if key == 257 || key == 335 {
+        Evaluate()
+    }
+    if key == 259 {
+        Backspace()
+    }
+    if key == 256 {
+        Clear()
     }
 }
 

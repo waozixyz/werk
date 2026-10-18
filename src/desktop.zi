@@ -65,6 +65,10 @@ main :: (argc: s32, argv: **u8) -> s32 {
         Report("Werkzeug: could not open desktop\n")
         return 1
     }
+    if !Desktop.WindowInterceptCloseHost(true) {
+        Desktop.CloseDesktop()
+        return 1
+    }
     title: [16]u8
     unused CopyCString("Werkzeug", title[:])
     SetTitle(Desktop.window, *title[0])
@@ -106,6 +110,9 @@ main :: (argc: s32, argv: **u8) -> s32 {
                 codepoint = Desktop.DesktopTypedCodepoint()
             }
             ok = DrawDesktop(session)
+            if Desktop.WindowTakeCloseRequestHost() {
+                break
+            }
             if ok {
                 Desktop.PauseDesktop()
             }
