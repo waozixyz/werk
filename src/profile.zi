@@ -26,6 +26,8 @@ Profile :: struct {
     accent: s32
     material: bool
     node: [256]u8
+    nodes: [8][256]u8
+    node_count: s32
 }
 
 profile: Profile;
@@ -87,6 +89,15 @@ ParseInteger :: (text: string) -> s32 {
 }
 
 ApplyProfileSetting :: (key: string, value: string) {
+    if key.count == 6 && key[:5] == "node_" && key[5] >= cast(u8)48 && key[5] <= cast(u8)55 {
+        index := cast(s32)(key[5] - cast(u8)48)
+        normalized := NodeOrigin(value)
+        if normalized != "" {
+            unused CopyCString(normalized, profile.nodes[index][:])
+            if index >= profile.node_count { profile.node_count = index + 1 }
+        }
+        return
+    }
     if key == "node" {
         normalized := NodeOrigin(value)
         if normalized != "" {
@@ -178,6 +189,10 @@ SaveProfile :: () -> bool {
     used = AppendLine(text[:], used, "name", ProfileName())
     if used >= 0 {
         used = AppendLine(text[:], used, "node", ProfileNode())
+    }
+    for index: 0..profile.node_count - 1 {
+        key: [7]u8 = .[110, 111, 100, 101, 95, cast(u8)(48 + index), 0]
+        if used >= 0 { used = AppendLine(text[:], used, TextUntilNul(key[:]), TextUntilNul(profile.nodes[index][:])) }
     }
     if used >= 0 {
         used = AppendLine(text[:], used, "picture", FormatInteger(cast(s64)profile.picture, number[:]))

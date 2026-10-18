@@ -43,3 +43,7 @@ source = true
 git = "https://github.com/LoupVaillant/Monocypher.git"
 ref = "master"
 source = true
+
+[dependencies.self]
+git = "https://github.com/waozixyz/self.git"
+ref = "master"

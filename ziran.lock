@@ -44,6 +44,14 @@
       "url": "https://github.com/ziranlang/daochi-client.git"
     },
     {
+      "commit": "891f656cd77b747952a5068fd17e9ec3d116066a",
+      "dependencies": {"kryon": "pec19972e951be213"},
+      "id": "pdfb95766a9119f68",
+      "name": "Self",
+      "ref": "master",
+      "url": "https://github.com/waozixyz/self.git"
+    },
+    {
       "commit": "ffe546025b74d2aa3cecce97754385b6cab1b5c6",
       "dependencies": {"raylib": "p5a77c9c35110e925"},
       "id": "pec19972e951be213",
@@ -62,7 +70,7 @@
     }
   ],
   "root": {
-    "dependencies": {"daochi_client": "p96e1f539ccb91af5", "kryon": "pec19972e951be213", "liboqs": "pfb3df7cb222b1bdc", "mingcute": "p56788fa3dab3e73a", "monocypher": "p4266498010aa1745", "oqs": "p55635fc8976895a9"},
+    "dependencies": {"daochi_client": "p96e1f539ccb91af5", "kryon": "pec19972e951be213", "liboqs": "pfb3df7cb222b1bdc", "mingcute": "p56788fa3dab3e73a", "monocypher": "p4266498010aa1745", "oqs": "p55635fc8976895a9", "self": "pdfb95766a9119f68"},
     "name": "Werkzeug"
   },
   "toolchain": {

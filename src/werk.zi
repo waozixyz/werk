@@ -35,6 +35,8 @@ FieldState :: struct {
 }
 
 screen: s32;
+self_account: bool;
+self_reload: bool;
 open_app: s32 = -1;
 // Started in a page embedding the toolkit, with navigation still available.
 mini: bool;
@@ -118,6 +120,7 @@ OpenHome :: () {
         return
     }
     if screen == SCREEN_PROFILE {
+        if !self_account && !SaveApp(SelfAppIndex()) { return }
         name_field.focused = false
         code_field.focused = false
         node_field.focused = false
@@ -141,11 +144,17 @@ TopBar :: (session: Session, viewport: Rectangle) {
             .icon_shape = Back.Shape, .icon_only = true,
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, back) != 0 {
+            if screen == SCREEN_PROFILE && self_account {
+                self_account = false
+                self_reload = true
+                return
+            }
             OpenHome()
             return
         }
         left = bar.x + 56.0
         title = ifx screen == SCREEN_APP then AppName(open_app) else "Profile"
+        if screen == SCREEN_PROFILE && self_account { title = "Account" }
     }
     // The profile button names itself, with the picture beside the name.
     profile_width: float32 = 0.0
@@ -162,11 +171,14 @@ TopBar :: (session: Session, viewport: Rectangle) {
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, avatar) != 0 {
             screen = SCREEN_PROFILE
+            self_account = false
+            self_reload = true
         }
     }
 }
 
 Home :: (session: Session, area: Rectangle) {
+    visible := AppCount() - ifx SelfAppIndex() >= 0 then 1 else 0
     tile: float32 = 120.0
     gap: float32 = 16.0
     columns := cast(s32)((area.width - gap) / (tile + gap))
@@ -174,10 +186,10 @@ Home :: (session: Session, area: Rectangle) {
         columns = 2
         tile = (area.width - gap * 3.0) / 2.0
     }
-    if columns > AppCount() && AppCount() > 0 {
-        columns = AppCount()
+    if columns > visible && visible > 0 {
+        columns = visible
     }
-    if AppCount() == 0 {
+    if visible == 0 {
         Label(session, cast(u64)20, "No apps are installed.", Rectangle.{area.x + 16.0, area.y + 16.0,
                 area.width - 32.0, 24.0}, 16)
         return
@@ -186,6 +198,7 @@ Home :: (session: Session, area: Rectangle) {
     left := area.x + (area.width - row_width) * 0.5
     index: s32 = 0
     while index < AppCount() {
+        if AppId(index) == "self" { index += 1; continue }
         column := cast(float32)(index % columns)
         row := cast(float32)(index / columns)
         bounds := Rectangle.{left + column * (tile + gap), area.y + gap + row * (tile + gap), tile, tile}
@@ -328,100 +341,37 @@ RevealFocusedField :: (area: Rectangle) {
     profile_height = area.height
 }
 
-ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput) {
-    width := area.width - 32.0
-    if width > 480.0 {
-        width = 480.0
-    }
-    left := area.x + (area.width - width) * 0.5
-    content_height: s32 = 620 + 500
-    if choosing_picture {
-        content_height += cast(s32)((PROFILE_PICTURES + 5) / 6) * 56 + 16
-    }
-    RevealFocusedField(area)
-    scroll := Scroll(session, ScrollProps.{.key = cast(u64)40,
-            .bounds = Rectangle.{left, area.y, width, area.height},
-            .content_height = content_height, .scroll_offset = profile_scroll, .scale = 1.0})
-    profile_scroll = scroll.scroll_offset
-    if !scroll.opened {
+ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput, key: s32, modifiers: s32) {
+    if self_account {
+        width := area.width - 32.0
+        scroll := Scroll(session, ScrollProps.{.key = cast(u64)40,
+                .bounds = Rectangle.{area.x + 16.0, area.y, width, area.height},
+                .content_height = 760, .scroll_offset = profile_scroll})
+        profile_scroll = scroll.scroll_offset
+        if scroll.opened {
+            SyncSection(session, scroll.content.x, scroll.content.y + 16.0, scroll.content.width - 12.0, input)
+            unused End(session)
+        }
+        keyboard_wanted = code_field.focused || account_key_field.focused || passphrase_field.focused
         return
     }
-    x := scroll.content.x
-    y := scroll.content.y + 16.0
-    width = scroll.content.width - 12.0
-    Image(session, PictureImage(profile.picture, Rectangle.{x, y, 96.0, 96.0}))
-    if Action(session, 41, ifx choosing_picture then "Done" else "Change picture",
-        Rectangle.{x + 112.0, y + 28.0, width - 112.0, 40.0}, false) {
-        choosing_picture = !choosing_picture
+    index := SelfAppIndex()
+    if self_reload { ReloadApp(index); self_reload = false }
+    container := Group(session, ColumnProps.{.key = cast(u64)69, .bounds = area})
+    if !container.opened { return }
+    ran := index >= 0 && RunApp(index, AppView.{.session = session, .bounds = area,
+            .dark = ProfileDark(), .key = key, .modifiers = modifiers, .input = input})
+    unused End(session)
+    if !ran {
+        Label(session, cast(u64)40, "Self could not be loaded", area, 16)
+        return
     }
-    y += 112.0
-    if choosing_picture {
-        size: float32 = 48.0
-        gap := (width - size * 6.0) / 5.0
-        picture: s32 = 0
-        while picture < PROFILE_PICTURES {
-            bounds := Rectangle.{x + cast(float32)(picture % 6) * (size + gap),
-                y + cast(float32)(picture / 6) * (size + 8.0), size, size}
-            choice := ButtonProps.{.key = cast(u64)(200 + picture), .id = 200 + picture,
-                .label = "Picture", .bounds = bounds, .icon_only = true,
-                .image = PictureImage(picture, Rectangle.{}), .selected = picture == profile.picture,
-                .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
-            if Button(session, choice) != 0 {
-                profile.picture = picture
-                unused SaveProfile()
-            }
-            picture += 1
-        }
-        y += cast(float32)((PROFILE_PICTURES + 5) / 6) * (size + 8.0) + 16.0
+    keyboard_wanted = AppWantsKeyboard()
+    if AppFrameReply(index) == "account" {
+        unused CopyCString(ProfileNode(), node_text[:])
+        self_account = true
+        profile_scroll = 0
     }
-    Heading(session, cast(u64)42, "Name", x, y, width)
-    NameField(session, Rectangle.{x, y + 28.0, width, 40.0}, input)
-    y += 88.0
-    Heading(session, cast(u64)43, "Appearance", x, y, width)
-    y += 32.0
-    modes: [3]string = .["System", "Light", "Dark"]
-    third := (width - 16.0) / 3.0
-    for index: 0..2 {
-        mode := cast(s32)index
-        if Action(session, 50 + mode, modes[index],
-            Rectangle.{x + cast(float32)mode * (third + 8.0), y, third, 40.0}, profile.theme_mode == mode) {
-            profile.theme_mode = mode
-            unused SaveProfile()
-        }
-    }
-    y += 56.0
-    Heading(session, cast(u64)44, "Accent", x, y, width)
-    y += 32.0
-    swatch: float32 = 40.0
-    swatch_gap := (width - swatch * 8.0) / 7.0
-    accent: s32 = 0
-    while accent < ACCENTS {
-        bounds := Rectangle.{x + cast(float32)(accent % 8) * (swatch + swatch_gap),
-            y + cast(float32)(accent / 8) * (swatch + 8.0), swatch, swatch}
-        props := ButtonProps.{.key = cast(u64)(300 + accent), .id = 300 + accent, .label = "Accent",
-            .bounds = bounds, .swatch = true, .swatch_color = ColorFromPacked(Accent(accent)),
-            .icon_only = true, .selected = profile.accent == accent}
-        if Button(session, props) != 0 {
-            profile.accent = accent
-            unused SaveProfile()
-        }
-        accent += 1
-    }
-    y += swatch * 2.0 + 24.0
-    Heading(session, cast(u64)45, "Widgets", x, y, width)
-    y += 32.0
-    half := (width - 8.0) / 2.0
-    if Action(session, 60, "Material", Rectangle.{x, y, half, 40.0}, profile.material) {
-        profile.material = true
-        unused SaveProfile()
-    }
-    if Action(session, 61, "Classic", Rectangle.{x + half + 8.0, y, half, 40.0}, !profile.material) {
-        profile.material = false
-        unused SaveProfile()
-    }
-    y += 64.0
-    SyncSection(session, x, y, width, input)
-    End(session)
 }
 
 Note :: (session: Session, key: u64, text: string, x: float32, y: float32, width: float32) {
@@ -489,7 +439,7 @@ NodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
     {
         snapshot = node_text
         props := TextFieldProps.{.key = cast(u64)32, .focus_id = 32, .bounds = bounds,
-            .label = "Daochi node", .placeholder = "https://your-node.example", .value = TextUntilNul(snapshot[:]),
+            .label = "Node", .placeholder = "https://your-node.example", .value = TextUntilNul(snapshot[:]),
             .cursor = node_field.cursor, .anchor = node_field.anchor, .scroll_x = node_field.scroll_x,
             .focused = node_field.focused, .max_bytes = 255, .max_codepoints = 255}
         if node_field.focused {
@@ -596,7 +546,7 @@ SaveNode :: () -> bool {
 // The account that syncs Auth: create one, connect to one, or connect
 // another device to it.
 SyncSection :: (session: Session, x: float32, y: float32, width: float32, input: TextFieldInput) {
-    Heading(session, cast(u64)46, "Sync", x, y, width)
+    Heading(session, cast(u64)46, "Account", x, y, width)
     y += 32.0
     #if #defined(PLATFORM_WEB) {
         Note(session, cast(u64)47, "Sync Auth between your devices in the desktop and Android apps.", x, y, width)
@@ -605,7 +555,7 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
         phase := LinkPhaseNow()
         if !AccountReady() {
             Note(session, cast(u64)47,
-                "Sync is optional and off. Every tool works locally. Choose a node before creating or connecting an account.",
+                "Connect your devices with an account.",
                 x, y, width)
             y += 48.0
             if phase == LinkPhase.LinkJoining {
@@ -614,17 +564,6 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
                     LinkCancel()
                 }
                 return
-            }
-            NodeField(session, Rectangle.{x, y, width, 44.0}, input)
-            y += 52.0
-            if Action(session, 78, "Save node", Rectangle.{x, y, width, 40.0}, false) {
-                unused SaveNode()
-            }
-            y += 48.0
-            if node_error {
-                Note(session, cast(u64)79, "Enter an HTTPS node address. HTTP works for localhost. Check that settings can be saved.",
-                    x, y, width)
-                y += 48.0
             }
             if Action(session, 70, "Create account", Rectangle.{x, y, width, 40.0}, false) {
                 if !SaveNode() || !CreateAccount() {
@@ -651,7 +590,7 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
             // Phones connect with a code; their text fields hold less than a key.
             #if !#defined(ANDROID_BUILD) {
                 y += 8.0
-                Note(session, cast(u64)84, "Or sign in with a Daochi account key, such as the one Inbe exports:", x, y,
+                Note(session, cast(u64)84, "Or sign in with an account key:", x, y,
                     width)
                 y += 40.0
                 SecretField(session, Rectangle.{x, y, width, 40.0}, input, 33, *account_key_field, "Account key",
@@ -683,9 +622,9 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
         Label(session, cast(u64)80, AccountServer(), Rectangle.{x, y, width, 24.0}, 14)
         y += 32.0
         enabled := AccountSyncEnabled()
-        Label(session, cast(u64)83, "Sync with Daochi", Rectangle.{x, y + 8.0, width - 80.0, 24.0}, 14)
+        Label(session, cast(u64)83, "Sync", Rectangle.{x, y + 8.0, width - 80.0, 24.0}, 14)
         toggle := Toggle(session, ToggleProps.{.key = cast(u64)81, .id = 81,
-                .bounds = Rectangle.{x + width - 64.0, y, 64.0, 40.0}, .label = "Sync with Daochi", .value = enabled})
+                .bounds = Rectangle.{x + width - 64.0, y, 64.0, 40.0}, .label = "Sync", .value = enabled})
         if toggle.changed && SetAccountSyncEnabled(toggle.value) {
             if !toggle.value {
                 CancelSyncNow()
@@ -722,7 +661,7 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
                     .text = LinkCodeText(shown[:]), .font = 28, .align = TextAlign.TextAlignCenter})
             y += 48.0
             Note(session, cast(u64)76,
-                "On your other device, open Profile, then Sync, and enter this code. It works for 10 minutes.",
+                "On your other device, open Profile, then Account, and enter this code. It works for 10 minutes.",
                 x, y, width)
             y += 48.0
         } else if phase != LinkPhase.LinkIdle {
@@ -787,8 +726,7 @@ WerkFrame :: (session: Session, viewport: Rectangle) -> s32 {
     if screen == SCREEN_HOME {
         Home(session, content)
     } else if screen == SCREEN_PROFILE {
-        ProfileScreen(session, content, input)
-        keyboard_wanted = name_field.focused || code_field.focused || node_field.focused
+        ProfileScreen(session, content, input, key, modifiers)
     } else if screen == SCREEN_APP && open_app >= 0 {
         AppScreen(session, content, key, modifiers, input)
     }

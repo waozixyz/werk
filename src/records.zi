@@ -334,3 +334,11 @@ RecordSynced :: (id: string, updated: s64) {
         record_table.records[found].dirty = false
     }
 }
+
+// A new node needs existing values and deletions, with their original
+// timestamps, as well as edits that have not reached the previous node.
+RecordsResend :: (app: string) -> bool {
+    if !RecordsOpen(app) { return false }
+    for index: 0..record_table.count - 1 { record_table.records[index].dirty = true }
+    return RecordsSave()
+}

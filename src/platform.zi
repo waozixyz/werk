@@ -130,8 +130,8 @@ AssetsRoot :: () -> string {
     base := TextView(executable[0:folder - 1])
     installed: [PATH_LIMIT]u8
     user: [PATH_LIMIT]u8
-    candidates: [3]string = .[PathJoin(installed[:], base, "../lib/werk"),
-    PathJoin(user[:], EnvironmentText("HOME"), ".local/lib/werk"), base]
+    candidates: [3]string = .[base, PathJoin(installed[:], base, "../lib/werk"),
+    PathJoin(user[:], EnvironmentText("HOME"), ".local/lib/werk")]
     for index: 0..2 {
         apps: [PATH_LIMIT]u8
         if candidates[index] != "" && DirectoryExists(PathJoin(apps[:], candidates[index], "apps")) {

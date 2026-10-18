@@ -85,6 +85,16 @@ AccountServer :: () -> string {
     return TextUntilNul(account.server[:])
 }
 
+// Changing a preferred node keeps this account, its keys and pause choice.
+SetAccountNode :: (origin: string) -> bool {
+    if !account.ready || NodeOrigin(origin) == "" { return false }
+    previous := account.server
+    if !CopyCString(origin, account.server[:]) { return false }
+    if !SaveAccount() { account.server = previous; return false }
+    account_generation += 1
+    return true
+}
+
 AccountVault :: () -> []u8 {
     return account.vault[:]
 }

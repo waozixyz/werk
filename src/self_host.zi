@@ -1,0 +1,69 @@
+// Werkzeug supplies its existing preferences to Self. Tool secrets and
+// account credentials never cross this document boundary.
+Self :: #import "self/model";
+#import "profile"
+#import "std/c_string"
+#import "std/text_buffer"
+#if !#defined(PLATFORM_WEB) {
+    #import "account"
+    #import "sync"
+    #import "device_link"
+    #import "records"
+}
+
+self_document: string;
+
+WerkSelfRead :: () -> string {
+    Self.SelfFree(self_document)
+    state := Self.SelfDefault()
+    state.controls |= Self.SELF_APPEARANCE | Self.SELF_ACCENT | Self.SELF_WIDGETS
+    state.name = profile.name
+    state.picture = profile.picture
+    state.theme = profile.theme_mode
+    state.accent = profile.accent
+    state.material = profile.material
+    if profile.node_count > 0 {
+        state.nodes = profile.nodes
+        state.node_count = profile.node_count
+        for index: 0..state.node_count - 1 {
+            if TextUntilNul(state.nodes[index][:]) == ProfileNode() { state.preferred = cast(s32)index }
+        }
+    } else {
+        unused CopyCString(ProfileNode(), state.nodes[0][:])
+    }
+    Self.SelfAddExtension(*state, "account", "Account")
+    self_document = Self.SelfEncode(state)
+    return self_document
+}
+
+WerkSelfWrite :: (document: string) -> bool {
+    state: Self.SelfState
+    if !Self.SelfDecode(document, *state) { return false }
+    for byte: state.name {
+        if byte == cast(u8)10 || byte == cast(u8)13 { return false }
+    }
+    previous := profile
+    profile.name = state.name
+    profile.picture = state.picture
+    profile.theme_mode = state.theme
+    profile.accent = state.accent
+    profile.material = state.material
+    profile.nodes = state.nodes
+    profile.node_count = state.node_count
+    unused CopyCString(TextUntilNul(state.nodes[state.preferred][:]), profile.node[:])
+    if !SaveProfile() { profile = previous; return false }
+    #if !#defined(PLATFORM_WEB) {
+        if AccountReady() && AccountServer() != ProfileNode() {
+            CancelSyncNow()
+            LinkCancel()
+            if !RecordsResend("auth") || !SetAccountNode(ProfileNode()) {
+                profile = previous
+                unused SaveProfile()
+                return false
+            }
+            ForgetSync()
+            if AccountSyncEnabled() { SyncSoon() }
+        }
+    }
+    return true
+}

@@ -16,6 +16,7 @@ import shutil
 import struct
 import subprocess
 import time
+from PIL import Image
 
 assert os.environ.get("WERK_TEST_PRIVATE_DISPLAY") == "1", "Run scripts/werk_gui_test.sh"
 root = Path(__file__).resolve().parents[1]
@@ -101,19 +102,47 @@ def capture(name):
 
 def click_word(word, toggle=False):
     capture("control")
-    text = command("tesseract", str(output / "control.png"), "stdout", "--psm", "11",
-                   "-c", "tessedit_create_tsv=1")
-    for item in csv.DictReader(io.StringIO(text), delimiter="\t"):
-        if item["text"].strip().lower() == word.lower():
-            click(350 if toggle else int(item["left"]) + int(item["width"]) // 2,
-                  int(item["top"]) + int(item["height"]) // 2)
-            return
+    for factor, labels in ((1, False), (3, False), (3, True)):
+        target = output / "control.png"
+        if factor > 1:
+            target = output / "control-enlarged.png"
+            with Image.open(output / "control.png") as source:
+                readable = source.convert("L").point(lambda value: 0 if value < 140 else 255) if labels else source
+                readable.resize((source.width * factor, source.height * factor)).save(target)
+        text = command("tesseract", str(target), "stdout", "--psm", "11",
+                       "-c", "tessedit_create_tsv=1")
+        for item in csv.DictReader(io.StringIO(text), delimiter="\t"):
+            if item["text"].strip().lower() == word.lower():
+                click(350 if toggle else (int(item["left"]) + int(item["width"]) // 2) // factor,
+                      (int(item["top"]) + int(item["height"]) // 2) // factor)
+                return
     raise AssertionError(f"Could not find {word!r} in the private test window")
 
 
 def screen_text():
     capture("control")
     return command("tesseract", str(output / "control.png"), "stdout", "--psm", "11")
+
+
+def field_below(word, offset=40):
+    capture("control")
+    text = command("tesseract", str(output / "control.png"), "stdout", "--psm", "11", "-c", "tessedit_create_tsv=1")
+    for item in csv.DictReader(io.StringIO(text), delimiter="\t"):
+        if item["text"].strip() == word:
+            return int(item["left"]) + 80, int(item["top"]) + offset
+    raise AssertionError("Missing field label: " + word)
+
+
+def scroll_up():
+    command("xdotool", "mousemove", "--window", window, "210", "400")
+    command("xdotool", "click", "--window", window, "--repeat", "18", "--delay", "40", "4")
+    time.sleep(.4)
+
+
+def add_node(field):
+    # The private fixture window is 420 units wide; the Add button shares
+    # the node field row and remains visible with either appearance/accent.
+    click(344, field[1])
 
 
 def scroll_down():
@@ -242,26 +271,29 @@ try:
 
     # Profile: a name and dark appearance are saved privately.
     click(420 - 30, 28)
-    click(210, 56 + 16 + 112 + 28 + 20)
+    click(*field_below("Name"))
     type_text("Fixture Person")
-    key("Return")
-    click(332, 56 + 16 + 112 + 88 + 32 + 20)
+    home()
+    assert "name=Fixture Person\n" in (data / "profile/settings.txt").read_text(), "Leaving Self lost the pending name edit"
+    click(390, 28)
+    scroll_down()
+    click_word("Dark")
     capture("profile")
     settings = (data / "profile/settings.txt").read_text()
     assert "name=Fixture Person\n" in settings and "theme_mode=2\n" in settings, settings
     assert (data / "profile/settings.txt").stat().st_mode & 0o077 == 0
-    # Optional sync needs no account. Invalid origins are rejected before
-    # any connection; the chosen node survives restarting the application.
-    click(210, 694)
-    key("ctrl+a")
+    # Nodes belong to the common Self bundle; choosing one creates no account.
+    scroll_up()
+    node_field = field_below("Nodes", 120)
+    click(*node_field)
     type_text("https://example.invalid/path")
-    click(210, 744)
+    add_node(node_field)
     assert "node=https://api.waozi.xyz\n" in (data / "profile/settings.txt").read_text()
     capture("node-invalid")
-    click(210, 694)
+    click(*node_field)
     key("ctrl+a")
     type_text("https://sync.example.invalid:8443/")
-    click(210, 744)
+    add_node(node_field)
     assert "node=https://sync.example.invalid:8443\n" in (data / "profile/settings.txt").read_text()
     assert not (data / "account/keys.txt").exists(), "Choosing a node created an account"
     capture("node-saved")
@@ -272,12 +304,14 @@ try:
     assert "node=https://sync.example.invalid:8443\n" in (data / "profile/settings.txt").read_text()
     assert not (data / "account/keys.txt").exists()
     # OCR uses light controls; the dark appearance was checked above.
-    click(210, 324)
     scroll_down()
+    click_word("Light")
+    scroll_down()
+    click_word("Account")
     click_word("Create")
     account_file = data / "account/keys.txt"
     assert account_file.exists() and "paused=0\n" in account_file.read_text()
-    click_word("Daochi", toggle=True)
+    click_word("Sync", toggle=True)
     assert "paused=1\n" in account_file.read_text(), "Profile's sync switch did not pause"
     capture("sync-paused")
     stop()
@@ -285,7 +319,21 @@ try:
     assert "paused=1\n" in account_file.read_text()
     click(390, 28)
     capture("sync-paused-restarted")
+    # Selecting a new node keeps the existing account and its paused state.
+    previous_account = account_file.read_text()
+    node_field = field_below("Nodes", 176)
+    click(*node_field)
+    type_text("https://second.example.invalid")
+    add_node(node_field)
+    account = account_file.read_text()
+    assert "server=https://second.example.invalid\n" in account, "The account kept its old node"
+    assert "paused=1\n" in account, "Changing node resumed a paused account"
+    assert (
+        [line for line in previous_account.splitlines() if not line.startswith("server=")]
+        == [line for line in account.splitlines() if not line.startswith("server=")]
+    ), "Changing node altered account credentials"
     scroll_down()
+    click_word("Account")
     click_word("Forget")
     click_word("forget")
     assert not account_file.exists()

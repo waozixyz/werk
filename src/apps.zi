@@ -20,6 +20,7 @@ using UI :: #import "kryon/Widgets";
 #import "files"
 #import "sha256"
 #import "records"
+#import "self_host"
 #if !#defined(PLATFORM_WEB) {
     #import "sync"
 }
@@ -63,6 +64,7 @@ AppView :: struct {
 
 apps: [APP_LIMIT]App;
 app_count: s32;
+self_index: s32 = -1;
 app_keyboard: bool;
 // The app whose call the host is answering, for the asset policy.
 running: s32 = -1;
@@ -91,6 +93,7 @@ AppCount :: () -> s32 {
 AppServiceAllowed :: (context: *void, name: string) -> bool {
     app := cast(*App)context
     id := TextUntilNul(app.id[:])
+    if name == "self.assets" { return id == "self" }
     if name == "media.asset" || name == "media.query" || name == "media.pick" {
         return AppLocalAllows(cast(*void)(*app.local), name)
     }
@@ -291,6 +294,27 @@ AppCall :: (context: *void, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
     app := cast(*App)context
     name := TextFromCString(function)
+    if TextUntilNul(app.id[:]) == "self" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "self.assets" {
+        ReturnText(result, TextUntilNul(app.asset_folder[:]))
+        return 1
+    }
+    if TextUntilNul(app.id[:]) == "self" && name == "ReadStoreHost" && count == 2 && ArgumentText(arguments[0]) == "self.json" {
+        text := WerkSelfRead()
+        output := arguments[1]
+        used := cast(s32)text.count
+        if output.kind != cast(s32)HostSlice || output.elements == null || cast(usize)(used + 1) > output.length { return 0 }
+        for index: 0..used {
+            byte := ifx index < used then text[index] else cast(u8)0
+            output.elements[index].bits = cast(u64)byte
+            output.elements[index].integer = cast(s64)byte
+        }
+        result.* = HostScalar("s32", used)
+        return 1
+    }
+    if TextUntilNul(app.id[:]) == "self" && name == "WriteStoreHost" && count == 2 && ArgumentText(arguments[0]) == "self.json" {
+        ReturnBool(result, WerkSelfWrite(ArgumentText(arguments[1])))
+        return 1
+    }
     if name == "AppServiceHost" || name == "AppLocaleHost" || name == "DocumentReadHost" ||
     name == "DocumentWriteHost" || name == "DocumentStatusHost" {
         if name != "AppLocaleHost" && !app.local.files.lock.valid {
@@ -431,10 +455,20 @@ UnpackAssets :: (app: *App) {
     while index < count {
         name := TextFromCString(BundleAssetPath(bundle, index))
         prefix := "assets/"
-        if name.count > prefix.count && name[0:prefix.count] == prefix && SafeName(name[prefix.count:name.count]) {
+        self_picture := TextUntilNul(app.id[:]) == "self" &&
+        (name == "assets/self/pfp.png" || name == "assets/self/flowers.png")
+        flat_asset := name.count > prefix.count && name[0:prefix.count] == prefix && SafeName(name[prefix.count:name.count])
+        if self_picture || flat_asset {
             data := TextFromBytes(BytesFromPointer(BundleAssetBytes(bundle, index), BundleAssetLength(bundle, index)))
             path: [PATH_LIMIT]u8
-            unused WritePrivate(PathJoin(path[:], folder, name[prefix.count:name.count]), data)
+            if self_picture {
+                parent: [PATH_LIMIT]u8
+                if EnsureDirectory(PathJoin(parent[:], folder, "assets/self")) {
+                    unused WritePrivate(PathJoin(path[:], folder, name), data)
+                }
+            } else {
+                unused WritePrivate(PathJoin(path[:], folder, name[prefix.count:name.count]), data)
+            }
         }
         index += 1
     }
@@ -511,6 +545,21 @@ LoadApps :: () {
         path: [PATH_LIMIT]u8
         unused LoadApp(ids[index], PathJoin(path[:], root, TextUntilNul(file[:])))
     }
+    self_path: [PATH_LIMIT]u8
+    self_index = app_count
+    if !LoadApp("self", PathJoin(self_path[:], root, "self.zib")) { self_index = -1 }
+}
+
+SelfAppIndex :: () -> s32 { return self_index }
+
+AppFrameReply :: (index: s32) -> string {
+    return ifx index >= 0 && index < app_count then apps[index].portable.reply else ""
+}
+
+ReloadApp :: (index: s32) {
+    if index < 0 || index >= app_count { return }
+    apps[index].portable.command = "reload"
+    unused AppContextRun(*apps[index].portable, APP_COMMAND)
 }
 
 // Draws one frame of an app into the host's session. False when the app
