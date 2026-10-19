@@ -1,4 +1,6 @@
-- Give Werkzeug a purple modular W logo across the app, Android launcher and website.
-- Reach every Werkzeug tool from the embedded mini app, including its home screen and profile.
-- Choose your own Daochi node in Profile and pause optional sync without forgetting your account or local records.
-- Add a Scientific mode to Calculator: sin, cos and tan in degrees or radians with their inverses and hyperbolic forms, powers and roots, ln and log, factorials, π, e, Ans and E notation.
+- A new purple W logo.
+- Calculator gets a Scientific mode.
+- Auth imports Google Authenticator, Aegis and Ente Auth exports.
+- Rename an Auth account, note its websites, or remove it.
+- Choose your own Daochi node, and pause sync without losing your account.
+- Show π, √ and other symbols on phones older than Android 10.

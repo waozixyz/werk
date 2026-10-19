@@ -23,7 +23,8 @@ Small private tools in one app. The home screen opens each one:
   Edit renames an account, notes the websites where it signs in, such as
   `github.com`, or removes it.
 - **Calculator**: arithmetic with brackets, powers and percent, by keypad or
-  keyboard.
+  keyboard, and a Scientific mode with trigonometry, logarithms, roots and
+  factorials.
 - **Clock**: the local time and date, and a stopwatch that keeps running
   while the app is closed.
 
@@ -37,10 +38,6 @@ through that interface, with its own private documents and optional photo
 picker. It needs no `inbe.zib`. These local Diary documents do not yet join
 Werkzeug's account sync. External bundles cannot replace a built-in tool or
 receive Pass's device secret or Auth's records.
-
-Werkzeug was previously Pass. On its first start it moves Pass's saved
-profiles, settings and theme into the new layout; the Android app keeps
-Pass's package, so it updates in place and keeps a saved master password.
 
 ## Privacy
 

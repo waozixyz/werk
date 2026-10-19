@@ -1,17 +1,19 @@
 # Changelog
 
-## [0.4.0] - 2026-10-15
+## [0.4.0] - 2026-10-19
 
-- Give Werkzeug a purple modular W logo across the app, Android launcher and website.
-- Reach every Werkzeug tool from the embedded mini app, including its home screen and profile.
-- Choose your own Daochi node in Profile and pause optional sync without forgetting your account or local records.
-- Add a Scientific mode to Calculator: sin, cos and tan in degrees or radians with their inverses and hyperbolic forms, powers and roots, ln and log, factorials, π, e, Ans and E notation.
-- Fix the web version freezing when Clock opens, and count the stopwatch's tenths of a second there again.
-- Show π, √, Greek, Cyrillic and other characters on phones older than Android 10, which showed them as question marks.
-- Import Google Authenticator export links, unencrypted Aegis exports and Ente Auth's plain-text export into Auth, or on the desktop choose an export file or a picture of its QR code; encrypted exports are refused with a clear message.
-- Rename an Auth account, note the websites where it signs in, or remove it from its Edit screen.
-- Sign in on the desktop with a Daochi account key you already have, such as Inbe's, so Werkzeug syncs with the same account.
-- Use `werk sync` and `werk auth` without a window on Linux, including importing an export's QR image.
+- A new purple W logo across the app, Android and the website.
+- Calculator gets a Scientific mode.
+- Auth imports Google Authenticator, Aegis and Ente Auth exports, and on the desktop a picture of their QR code.
+- Rename an Auth account, note the websites it signs in to, or remove it.
+- Choose your own Daochi node, and pause sync without losing your account.
+- On the desktop, Profile manages your account: create it, import or back up its key, and link devices by QR code.
+- Sign in with a Daochi account key you already have, such as Inbe's.
+- `werk sync` and `werk auth` work without a window on Linux.
+- Reach every tool from the web app's mini version.
+- Fix the web version freezing when Clock opens.
+- Show π, √ and other symbols on phones older than Android 10.
+- Fix Profile breaking after choosing a file on desktops whose language writes decimals with a comma.
 
 ## [0.3.1] - 2026-10-13
 
