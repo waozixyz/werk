@@ -43,20 +43,22 @@ def tap_label(word):
     tap(*find_label(word))
 
 def dismiss_other_apps_not_responding():
-    """A slow emulator can show another app's "isn't responding" dialog over
-    Werkzeug, as CI's did for Settings. Close it, and stop that other app if
-    the dialog stays. Werkzeug itself must never be the one hanging."""
-    shell("am", "broadcast", "-a", "android.intent.action.CLOSE_SYSTEM_DIALOGS", check=False)
-    for _ in range(3):
-        hung = set(re.findall(r"Application Not Responding: ([\w.]+)", shell("dumpsys", "window", "windows")))
-        if not hung: return
-        assert package not in hung, "Werkzeug stopped responding"
-        shell("am", "broadcast", "-a", "android.intent.action.CLOSE_SYSTEM_DIALOGS", check=False)
-        time.sleep(1)
-        if set(re.findall(r"Application Not Responding: ([\w.]+)", shell("dumpsys", "window", "windows"))):
-            for name in hung: shell("am", "force-stop", name, check=False)
-            time.sleep(1)
-    raise AssertionError("Another app's dialog kept covering Werkzeug")
+    """A slow emulator can show an "isn't responding" dialog for another app
+    or for the system itself over Werkzeug, as CI's did. Choose Wait, found
+    through the accessibility tree; Werkzeug itself must never be hanging."""
+    for _ in range(6):
+        dumped = adb("shell", "uiautomator", "dump", "/sdcard/werk-ui.xml", check=False)
+        tree = shell("cat", "/sdcard/werk-ui.xml", check=False) if dumped.returncode == 0 else ""
+        # The tree escapes the apostrophe in "isn't responding".
+        if " responding" not in tree:
+            return
+        assert "Werkzeug isn" not in tree, "Werkzeug stopped responding"
+        wait = re.search(r'text="Wait"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', tree)
+        if wait:
+            left, top_edge, right, bottom_edge = map(int, wait.groups())
+            tap((left + right) // 2, (top_edge + bottom_edge) // 2)
+        time.sleep(3)
+    raise AssertionError("An \"isn't responding\" dialog kept covering Werkzeug")
 
 def alive():
     if not shell("pidof", package, check=False).strip():

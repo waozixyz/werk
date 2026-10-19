@@ -34,7 +34,7 @@ with Image.open(work / "werk-light.png") as source:
 PY
 rendered=$(tesseract "$work/labels.png" stdout --psm 11 2>/dev/null)
 for app in Pass Auth Calculator Clock; do
-    printf '%s\n' "$rendered" | rg -q "$app" || { echo "Missing preinstalled app: $app" >&2; exit 1; }
+    printf '%s\n' "$rendered" | grep -q "$app" || { echo "Missing preinstalled app: $app" >&2; exit 1; }
 done
 if cmp -s "$work/werk-light.png" "$work/werk-dark.png"; then
     echo 'Werkzeug light and dark themes rendered the same frame' >&2
