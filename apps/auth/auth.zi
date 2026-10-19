@@ -440,8 +440,9 @@ DrawRow :: (index: s32, x: float32, y: float32, inner: float32, row: float32) {
     }
     remaining := cast(s64)account.period - Unix() % cast(s64)account.period
     number: [24]u8
+    // The seconds left, centred beside the code.
     Label(cast(u64)(5000 + index), FormatInteger(remaining, number[:]),
-        Rectangle.{x + inner - 52.0, y + 24.0, 16.0, 18.0}, 12)
+        Rectangle.{x + inner - 52.0, y + 27.0, 16.0, 18.0}, 12)
     edit := ButtonProps.{.key = cast(u64)(6000 + index), .id = 6000 + index, .label = "Edit",
         .bounds = Rectangle.{x + inner - 40.0, y + 16.0, 36.0, 36.0},
         .icon_shape = Edit.Shape, .icon_only = true,

@@ -63,7 +63,8 @@
         output.capabilities = ACCOUNT_CREATE | ACCOUNT_IMPORT | ACCOUNT_SWITCH | ACCOUNT_LINK
         if AccountReady() { output.capabilities |= ACCOUNT_BACKUP | ACCOUNT_ALIAS | ACCOUNT_SYNC | ACCOUNT_LOGOUT | ACCOUNT_CLEAR_REMOTE }
         status := SyncStatus()
-        if status == "" { status = ifx AccountReady() then (ifx AccountSyncEnabled() then "Sync is on" else "Sync paused") else "No account connected" }
+        // Without an account Self's title already says so; it explains the rest.
+        if status == "" && AccountReady() { status = ifx AccountSyncEnabled() then "Sync is on" else "Sync paused" }
         unused CopyCString(status, output.status[:])
         if RecordsOpen("auth") {
             for index: 0..record_table.count - 1 { if record_table.records[index].dirty { output.queued += 1 } }
