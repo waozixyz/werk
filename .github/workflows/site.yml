@@ -48,6 +48,10 @@ jobs:
           test -s build/site/index.html
           test -s build/site/app/index.html
           test -s build/site/app/index.wasm
+      - name: Install screenshot OCR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
       - name: Verify browser input, storage, cache upgrades, and offline launch
         env:
           WERK_WEB_BROWSER: google-chrome

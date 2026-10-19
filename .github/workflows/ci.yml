@@ -34,7 +34,7 @@ jobs:
       - name: Install CLI test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y openssl xclip xvfb xauth
+          sudo apt-get install -y openssl xclip xvfb xauth tesseract-ocr
       - name: Install Emscripten
         run: |
           set -euo pipefail
@@ -175,6 +175,10 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;34.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
+      - name: Install screenshot OCR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
       - name: Run Android input tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
