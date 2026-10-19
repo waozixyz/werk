@@ -72,11 +72,14 @@ def alive():
                     if line.strip().startswith(("mResumedActivity:", "ResumedActivity:"))), "")
     assert package in resumed, f"Werkzeug activity closed or lost foreground: {resumed}"
 
+# CI's software-rendered emulator needs longer to apply each step.
+PAUSE = 1.0 if os.environ.get("CI") else 0.25
+
 def tap(x, y):
-    shell("input", "tap", str(x), str(y)); time.sleep(0.25)
+    shell("input", "tap", str(x), str(y)); time.sleep(PAUSE)
 
 def type_text(text):
-    shell("input", "text", text.replace(" ", "%s")); time.sleep(0.3)
+    shell("input", "text", text.replace(" ", "%s")); time.sleep(PAUSE + 0.05)
 
 def system_bars(height):
     """The app's first and last rows in pixels: Werkzeug keeps its content
