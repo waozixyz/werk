@@ -29,16 +29,18 @@ def shell(*arguments, check=True):
 def shot(name):
     (output / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p").stdout)
 
-def tap_label(word):
+def find_label(word):
     shot("label")
     data = subprocess.check_output(["tesseract", str(output / "label.png"), "stdout", "--psm", "11", "-c", "tessedit_create_tsv=1"],
                                    stderr=subprocess.DEVNULL, text=True)
     for item in csv.DictReader(io.StringIO(data), delimiter="\t"):
         if item["text"].strip().lower() == word.lower():
-            tap(int(item["left"]) + int(item["width"]) // 2,
-                int(item["top"]) + int(item["height"]) // 2)
-            return
+            return (int(item["left"]) + int(item["width"]) // 2,
+                    int(item["top"]) + int(item["height"]) // 2)
     raise AssertionError(f"Could not find {word!r} in the private emulator")
+
+def tap_label(word):
+    tap(*find_label(word))
 
 def alive():
     if not shell("pidof", package, check=False).strip():
@@ -61,8 +63,10 @@ def system_bars(height):
     between the status bar and the navigation bar."""
     dump = shell("dumpsys", "window")
     status = re.search(r"type=statusBars frame=\[0,0\]\[\d+,(\d+)\]", dump)
+    # A display cutout taller than the status bar pushes the app down further.
+    cutout = re.search(r"type=displayCutout frame=\[0,0\]\[\d+,(\d+)\]", dump)
     navigation = re.search(r"type=navigationBars frame=\[0,(\d+)\]\[\d+,(\d+)\]", dump)
-    top = int(status.group(1)) if status else 0
+    top = max(int(status.group(1)) if status else 0, int(cutout.group(1)) if cutout else 0)
     bottom = int(navigation.group(1)) if navigation and int(navigation.group(2)) == height else height
     return top, bottom
 
@@ -124,19 +128,23 @@ try:
     # after the last, at the caret the keyboard reports.
     tap(int(28 * zoom), top + int(28 * zoom)); time.sleep(0.5)
     tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.8); alive()
-    tap(width // 2, top + int(232 * zoom)); type_text("Ada Lovelace")
+    # Self's profile card: the picture, then Name.
+    tap(width // 2, top + int(357 * zoom)); type_text("Ada Lovelace")
     shot("profile-name")
     shell("input", "keyevent", "4"); time.sleep(0.3)
     # Leaving Profile saves it.
     tap(int(28 * zoom), top + int(28 * zoom)); time.sleep(0.5); alive()
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "name=Ada Lovelace\n" in settings, f"Profile name typed out of order: {settings!r}"
-    tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.5)
-    tap(width // 2, top + int(694 * zoom))
-    shell("input", "keycombination", "113", "29")
+    tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.8)
+    # Self's Nodes section: the empty "Node address" field, then Add.
+    tap_label("Node")
     type_text("https://sync.example.invalid:8443/")
-    shell("input", "keyevent", "4"); time.sleep(0.5)
-    tap_label("Save")
+    shell("input", "keyevent", "4"); time.sleep(1.2)
+    # OCR misses Add's white label on the accent. It ends the row above
+    # Appearance, wherever the keyboard left the page scrolled.
+    _, appearance = find_label("Appearance")
+    tap(width - int(81 * zoom), appearance - int(56 * zoom)); time.sleep(0.8)
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "node=https://sync.example.invalid:8443\n" in settings, "Custom node was not saved"
     assert adb("shell", "run-as", package, "test", "-f", "files/account/keys.txt", check=False).returncode != 0
