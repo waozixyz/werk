@@ -19,6 +19,7 @@ NativeSetTerminal :: (fd: s32, action: s32, state: *void) -> s32 #foreign libc "
 NativeSession :: () -> s32 #foreign libc "setsid";
 NativeShutdown :: (fd: s32, direction: s32) -> s32 #foreign libc "shutdown";
 NativePipe :: (fds: *s32) -> s32 #foreign libc "pipe";
+NativeDescriptorFlags :: (fd: s32, command: s32, value: s32) -> s32 #foreign libc "fcntl";
 NativeFork :: () -> s32 #foreign libc "fork";
 NativeDup :: (source: s32, destination: s32) -> s32 #foreign libc "dup2";
 NativeExit :: (code: s32) -> void #foreign libc "_exit";
@@ -128,7 +129,37 @@ DecryptVault :: (vault: string, output: []u8) -> bool {
     passphrase: [1024]u8
     defer { ClearBytes(passphrase[:]) }
     if !ReadSecret(passphrase[:], "Vault passphrase: ") { return false }
-    args: [16]string = .["openssl", "enc", "-d", "-aes-256-cbc", "-md", "sha512", "-a", "-A", "-pbkdf2", "-iter", "100000", "-in", TextUntilNul(path[:]), "-pass", "stdin", "-salt"]
+    // Legacy vaults may wrap their base64 with spaces, tabs or CRLF, which
+    // OpenSSL 3.0 rejects. Send it without whitespace through a pipe that
+    // openssl opens as its input; stdin stays the passphrase.
+    encoded: [60000]u8
+    file := NativeOpen(*path[0], 0)
+    if file < 0 { return false }
+    size: s32 = 0
+    while true {
+        byte: u8
+        count := NativeRead(file, *byte, cast(usize)1)
+        if count != cast(isize)1 { break }
+        if byte == cast(u8)32 || (byte >= cast(u8)9 && byte <= cast(u8)13) { continue }
+        if size >= cast(s32)encoded.count - 1 { unused NativeClose(file); return false }
+        encoded[size] = byte; size += 1
+    }
+    unused NativeClose(file)
+    encoded[size] = cast(u8)10
+    pipe: [2]s32
+    if NativePipe(*pipe[0]) != 0 { return false }
+    // Only openssl keeps the reading end; the writer closes before it starts.
+    if NativeDescriptorFlags(pipe[1], 2, 1) != 0 ||
+    NativeWrite(pipe[1], *encoded[0], cast(usize)(size + 1)) != cast(isize)(size + 1) {
+        unused NativeClose(pipe[0]); unused NativeClose(pipe[1]); return false
+    }
+    unused NativeClose(pipe[1])
+    defer { unused NativeClose(pipe[0]) }
+    digits: [12]u8; place: s32 = 11; number := pipe[0]
+    while true { place -= 1; digits[place] = cast(u8)(48 + number % 10); number /= 10; if number == 0 { break } }
+    input: [32]u8
+    if AppendText(input[:], AppendText(input[:], 0, "/dev/fd/"), TextView(digits[place:11])) < 0 { return false }
+    args: [16]string = .["openssl", "enc", "-d", "-aes-256-cbc", "-md", "sha512", "-a", "-A", "-pbkdf2", "-iter", "100000", "-in", TextUntilNul(input[:]), "-pass", "stdin", "-salt"]
     child := Channel.StartChannel(args[:], false)
     if child.error != 0 { return false }
     defer { unused Channel.CloseChannel(*child, 1000) }

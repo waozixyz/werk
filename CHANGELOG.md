@@ -14,6 +14,7 @@
 - Fix the web version freezing when Clock opens.
 - Show π, √ and other symbols on phones older than Android 10.
 - Fix Profile breaking after choosing a file on desktops whose language writes decimals with a comma.
+- The `pass` command unlocks vaults whose text is wrapped with spaces or tabs on systems with OpenSSL 3.0.
 
 ## [0.3.1] - 2026-10-13
 
