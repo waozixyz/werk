@@ -30,9 +30,9 @@ Builds:
       - vendor/kryon/vendor
     ndk: 28.2.13676358
 
-  - versionName: 0.3.1
-    versionCode: 13
-    commit: bde94573f4eda34fbc9ff46d7d1af2b60f0ce941
+  - versionName: 0.4.0
+    versionCode: 14
+    commit: 0d2c2b3a88e1080d3249848815b185757a1915c2
     subdir: droid/app
     sudo:
       - apt-get update
@@ -41,19 +41,21 @@ Builds:
       - yes
     output: build/outputs/apk/release/app-universal-release-unsigned.apk
     srclibs:
-      - Ziran@201be1072cfb2ad59b4060f8579db36f6848b8cb
-      - Kryon@159563f46c9f6cb4aa011f7372e175042b10fa68
-      - Monocypher@e65d27722a43e9ed88da1987f3ad5675503c8cad
-      - Oqs@5cc7677b290f0448462410f7c7e85f518664b943
-      - Mingcute@933691600cf10e81b1f53d9919dbcb371c1968e1
+      - Ziran@1ad0264d9f6ce3df29e9071ab16eae0e1e557049
+      - Kryon@a78576db722b25216e0096870d313b7d2ace96b0
+      - Monocypher@d1895c3799005122b2e68f47f442cc5ba709d866
+      - Oqs@22d2ddbdc236796953c905a05a2cebf5ab1b4ff3
+      - Mingcute@9cc6872f75447c3a24c16764f9829d0f58751cb0
       - raylib@fafa2cea97d0cb379d832086ba45a989fa6f9c8e
-      - DaochiClient@d453a26642d7e35265d5d4fe2cc33a6a0725b0ca
+      - DaochiClient@42aa3ee773d8abdc6b3a10fbcb1b73c992f0f564
       - liboqs@fd44469daeffe6b28f031f54f9bb66cbae69a572
+      - Self@1ce89cff5a807cca817aec5d1347e18d2f229b27
+      - Qrcode@2944b2e668e735438d8ce24e47a39be3f5c36af5
     prebuild:
       - printf '[overrides]\nziran = "$$Ziran$$"\nkryon = "$$Kryon$$"\nmingcute =
         "$$Mingcute$$"\ndaochi_client = "$$DaochiClient$$"\noqs = "$$Oqs$$"\nliboqs
-        = "$$liboqs$$"\nmonocypher = "$$Monocypher$$"\nraylib = "$$raylib$$"\n' >
-        ../../ziran.local.toml
+        = "$$liboqs$$"\nmonocypher = "$$Monocypher$$"\nraylib = "$$raylib$$"\nself
+        = "$$Self$$"\nqrcode = "$$Qrcode$$"\n' > ../../ziran.local.toml
       - sed -i -e 's|$ENV{KRYON_DIR}|$$Kryon$$|g' -e 's|$ENV{ZIRAN_ROOT}|$$Ziran$$|g'
         -e 's|$ENV{RAYLIB_DIR}|$$raylib$$/src|g' -e 's|$ENV{LIBOQS_DIR}|$$liboqs$$|g'
         -e 's|$ENV{MONOCYPHER_DIR}|$$Monocypher$$|g' src/main/cpp/CMakeLists.txt
@@ -71,5 +73,5 @@ AllowedAPKSigningKeys: 1ac82db5bc8f742b8161fdd7083cefc16b39524dce7d103a7eb7f1ee1
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.3.1
-CurrentVersionCode: 13
+CurrentVersion: 0.4.0
+CurrentVersionCode: 14

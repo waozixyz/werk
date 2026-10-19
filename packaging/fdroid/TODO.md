@@ -1,25 +1,22 @@
 # Werkzeug F-Droid TODO
 
-Updated 2026-10-15. The recipe update is prepared locally. Draft submission
-is approved, but GitLab authentication is still blocked and no new merge
-request has been created. Nothing from this work has been released.
+Updated 2026-10-19. The recipe now targets the public Werkzeug 0.4.0 release
+(Android versionCode 14) with new store text and screenshots. GitLab
+authentication is still blocked and no new merge request has been created.
 
 ## Prepared and verified
 
 - [x] Confirm the [original Pass submission](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/46404)
   was merged and its [0.2.9 reproducible build](https://monitor.f-droid.org/builds/log/xyz.waozi.pass/10) succeeded.
-- [x] Prepare the rename and recipe for the public Werkzeug 0.3.1 release
-  (Android versionCode 13), including pinned toolchain/source dependencies.
-- [x] Validate metadata formatting, lint, source pins, prebuild commands and
-  the public reference APK's identity, label, ABIs and signing certificate.
-- [x] Implement and test the selected logo, all-tools mini navigation,
-  optional Daochi/custom-node settings, persistent sync pause and unsigned
-  F-Droid build mode in the local 0.4.0 app (versionCode 14).
-
-The local app checks cover source/core/CLI compatibility, desktop and browser
-UI, encrypted two-device sync, Android builds, and private-emulator input,
-node settings and update/data preservation. They do **not** establish that
-F-Droid can reproducibly build the 0.3.1 recipe.
+- [x] Rename the listing to Werkzeug and pin 0.4.0's toolchain and nine
+  source dependencies, including Self and its QR code library.
+- [x] Drop 0.3.0 and 0.3.1: their locks pin dependency commits that the
+  2026-10-19 history rewrite removed upstream, so they cannot be rebuilt.
+- [x] Replace the old Pass screenshots with Werkzeug's home screen and tools.
+- [x] Verify the public 0.4.0 universal APK: package `xyz.waozi.pass`,
+  versionCode 14, label Werkzeug, both ARM ABIs and the allowed signing
+  certificate. The recipe pins its tagged commit. `make android-fdroid`
+  builds the unsigned F-Droid candidate from the same lock.
 
 ## Resume the F-Droid submission
 
@@ -30,7 +27,7 @@ F-Droid can reproducibly build the 0.3.1 recipe.
 3. [ ] Submit the metadata and source-library definitions as a **draft**
    using [the prepared merge-request text](MERGE_REQUEST.md). Record its URL here.
 4. [ ] Run the full F-Droid source build and reproducibility comparison
-   against the signed public reference APK. Resolve any CI/build differences.
+   against the signed public 0.4.0 reference APK. Resolve any CI/build differences.
 5. [ ] Verify update compatibility: preserve `xyz.waozi.pass`, the existing
    allowed signing certificate, and the release's versionName/versionCode.
    Keep `-fdroid` in the output filename only.
@@ -39,14 +36,10 @@ F-Droid can reproducibly build the 0.3.1 recipe.
 
 Merge request URL: pending submission.
 
-## Later 0.4.0 release
+## Later
 
-- [ ] Coordinate the separate, uncommitted Clock/alarm work and verify the
-  final release source. Preserve that work during the handoff.
-- [ ] Obtain owner approval before publishing the 0.4.0 app release.
-- [ ] After that signed release is public, update the recipe to its full
-  upstream commit and versioned APK, then repeat the reproducibility checks.
-  The current draft must continue to reference public 0.3.1 until then.
+- [ ] Unfinished Clock/alarm work waits in the git stash "clock features
+  WIP 2". It is not part of 0.4.0; preserve it.
 
 ## Handoff files
 
