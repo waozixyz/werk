@@ -8,6 +8,7 @@
 #import "kryon/hosted_values"
 #import "kryon/widget_codec"
 #import "kryon/widget_host"
+Names :: #import "kryon/bundle_names";
 using UI :: #import "kryon/Widgets";
 #import "android_input"
 
@@ -46,7 +47,8 @@ Characters :: (text: string) -> s32 {
 
 AndroidWidgetCall :: (context: *void, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
-    if count != 2 || TextFromCString(module) != "text_field_widget" ||
+    // Package builds qualify the module name, as Kryon's own host matches it.
+    if count != 2 || !Names.ModuleName(TextFromCString(module), "text_field_widget") ||
     TextFromCString(function) != "TextFieldHostedHost" || !WidgetValidTextFieldProps(arguments[1]) {
         return WidgetHostCall(context, module, function, arguments, count, result)
     }
