@@ -96,7 +96,7 @@ cli-test: cli
 	sh scripts/cli_test.sh ./pass
 lesspass-compat-test: cli
 	python3 scripts/lesspass_compat_test.py --cli ./pass
-self-account-test:
+self-account-test: build/liboqs/lib/liboqs.a
 	ZIRAN_BIN=$(ZIRAN) python3 scripts/self_account_test.py
 test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test self-account-test
 gui-smoke: gui

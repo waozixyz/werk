@@ -44,15 +44,19 @@ def tap_label(word):
 
 def dismiss_other_apps_not_responding():
     """A slow emulator can show another app's "isn't responding" dialog over
-    Werkzeug, as CI's did for Settings. Close that app, never Werkzeug."""
+    Werkzeug, as CI's did for Settings. Close it, and stop that other app if
+    the dialog stays. Werkzeug itself must never be the one hanging."""
+    shell("am", "broadcast", "-a", "android.intent.action.CLOSE_SYSTEM_DIALOGS", check=False)
     for _ in range(3):
-        shot("label")
-        data = subprocess.check_output(["tesseract", str(output / "label.png"), "stdout", "--psm", "11"],
-                                       stderr=subprocess.DEVNULL, text=True)
-        if "responding" not in data or "Werkzeug" in data.split("responding")[0].splitlines()[-1]:
-            return
-        tap(*find_label("Close")); time.sleep(1.5)
-    raise AssertionError("A system dialog kept covering Werkzeug")
+        hung = set(re.findall(r"Application Not Responding: ([\w.]+)", shell("dumpsys", "window", "windows")))
+        if not hung: return
+        assert package not in hung, "Werkzeug stopped responding"
+        shell("am", "broadcast", "-a", "android.intent.action.CLOSE_SYSTEM_DIALOGS", check=False)
+        time.sleep(1)
+        if set(re.findall(r"Application Not Responding: ([\w.]+)", shell("dumpsys", "window", "windows"))):
+            for name in hung: shell("am", "force-stop", name, check=False)
+            time.sleep(1)
+    raise AssertionError("Another app's dialog kept covering Werkzeug")
 
 def alive():
     if not shell("pidof", package, check=False).strip():
@@ -135,7 +139,7 @@ try:
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected, "Android second profile mismatch"
     shell("am", "force-stop", package)
     shell("am", "start", "-n", package + "/android.app.NativeActivity")
-    time.sleep(1); alive()
+    time.sleep(1); alive(); dismiss_other_apps_not_responding()
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected
     assert shell("run-as", package, "stat", "-c", "%a", "files/apps/pass/profiles.tsv").strip() == "600"
     shot("persisted")
@@ -169,7 +173,7 @@ try:
     shell("am", "force-stop", package)
     adb("install", "-r", str(apk))
     shell("am", "start", "-n", package + "/android.app.NativeActivity")
-    time.sleep(1); alive()
+    time.sleep(1); alive(); dismiss_other_apps_not_responding()
     assert shell("run-as", package, "cat", "files/profile/settings.txt") == settings
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected
     shot("updated")
