@@ -42,6 +42,18 @@ def find_label(word):
 def tap_label(word):
     tap(*find_label(word))
 
+def dismiss_other_apps_not_responding():
+    """A slow emulator can show another app's "isn't responding" dialog over
+    Werkzeug, as CI's did for Settings. Close that app, never Werkzeug."""
+    for _ in range(3):
+        shot("label")
+        data = subprocess.check_output(["tesseract", str(output / "label.png"), "stdout", "--psm", "11"],
+                                       stderr=subprocess.DEVNULL, text=True)
+        if "responding" not in data or "Werkzeug" in data.split("responding")[0].splitlines()[-1]:
+            return
+        tap(*find_label("Close")); time.sleep(1.5)
+    raise AssertionError("A system dialog kept covering Werkzeug")
+
 def alive():
     if not shell("pidof", package, check=False).strip():
         details = adb("logcat", "-d", "-b", "crash").stdout.decode()
@@ -62,10 +74,11 @@ def system_bars(height):
     """The app's first and last rows in pixels: Werkzeug keeps its content
     between the status bar and the navigation bar."""
     dump = shell("dumpsys", "window")
-    status = re.search(r"type=statusBars frame=\[0,0\]\[\d+,(\d+)\]", dump)
+    # Android 12 and older name inset sources ITYPE_STATUS_BAR and so on.
+    status = re.search(r"type=(?:statusBars|ITYPE_STATUS_BAR) frame=\[0,0\]\[\d+,(\d+)\]", dump)
     # A display cutout taller than the status bar pushes the app down further.
-    cutout = re.search(r"type=displayCutout frame=\[0,0\]\[\d+,(\d+)\]", dump)
-    navigation = re.search(r"type=navigationBars frame=\[0,(\d+)\]\[\d+,(\d+)\]", dump)
+    cutout = re.search(r"type=(?:displayCutout|ITYPE_[A-Z_]*CUTOUT[A-Z_]*) frame=\[0,0\]\[\d+,(\d+)\]", dump)
+    navigation = re.search(r"type=(?:navigationBars|ITYPE_NAVIGATION_BAR) frame=\[0,(\d+)\]\[\d+,(\d+)\]", dump)
     top = max(int(status.group(1)) if status else 0, int(cutout.group(1)) if cutout else 0)
     bottom = int(navigation.group(1)) if navigation and int(navigation.group(2)) == height else height
     return top, bottom
@@ -77,10 +90,12 @@ try:
     # This is the test emulator and only this package's fixture data is cleared.
     shell("pm", "clear", package)
     shell("am", "start", "-n", package + "/android.app.NativeActivity")
-    time.sleep(2); alive(); shot("launch")
+    time.sleep(2); alive(); dismiss_other_apps_not_responding(); shot("launch")
     size = shell("wm", "size").strip().split()[-1]
     width, height = map(int, size.split("x"))
-    zoom = width / 390
+    # Werkzeug scales by the screen density, as Android's dp do.
+    densities = re.findall(r"density: (\d+)", shell("wm", "density"))
+    zoom = int(densities[-1]) / 160
     top, bottom = system_bars(height)
     # Pass's tile on the home screen, then Pass below Werkzeug's 56-unit bar.
     tap(int(127 * zoom), top + int(132 * zoom)); time.sleep(0.5); alive(); shot("pass")
