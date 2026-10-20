@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import time
 import xml.etree.ElementTree as ET
+from PIL import Image
 
 assert os.environ.get('WERK_TEST_PRIVATE_DISPLAY') == '1', 'Use private Xvfb'
 root = Path(__file__).resolve().parents[1]
@@ -96,6 +97,13 @@ def menu(word):
 
 try:
     start()
+    selection_picture = work/'selection.png'
+    command('import','-window',window,str(selection_picture))
+    with Image.open(selection_picture) as image:
+        pixels = image.convert('RGB')
+        assert pixels.getpixel((88,177)) != pixels.getpixel((184,177)), 'Selected cell needs a visible fill'
+        assert pixels.getpixel((40,177)) != pixels.getpixel((184,177)), 'Selected cell needs a visible outline'
+        assert pixels.getpixel((88,154)) != pixels.getpixel((184,177)), 'Headers need to be distinct from cells'
     click(88,177)
     type_text('5'); key('Return'); expect('5')
     key('ctrl+z'); expect('')

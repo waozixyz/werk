@@ -52,14 +52,6 @@
       "url": "https://github.com/waozixyz/self.git"
     },
     {
-      "commit": "fb367689db7c9a9d25a59ba8d32abb6024ac6423",
-      "dependencies": {"kryon": "p9dcb025ac3b40978", "kss": "p1b13dda539ed2a39", "mingcute": "pe1027b9d16704793"},
-      "id": "p6e738cfd6f7eb617",
-      "name": "workbook",
-      "ref": "master",
-      "url": "https://github.com/waozixyz/workbook.git"
-    },
-    {
       "commit": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3",
       "dependencies": {"liboqs": "pfb3df7cb222b1bdc"},
       "id": "p7098ac9cd92f7e5f",
@@ -92,6 +84,14 @@
       "url": "https://github.com/kryonlabs/mingcute.git"
     },
     {
+      "commit": "ed9d00972932a24f42297fb7f89050bac37ffedd",
+      "dependencies": {"kryon": "p9dcb025ac3b40978", "kss": "p1b13dda539ed2a39", "mingcute": "pe1027b9d16704793"},
+      "id": "pee1a28b0516f6d87",
+      "name": "workbook",
+      "ref": "master",
+      "url": "https://github.com/waozixyz/workbook.git"
+    },
+    {
       "commit": "08bbad051379813d0fd1c3bb7bb6814f3491da75",
       "dependencies": {},
       "id": "pf039d7a776333200",
@@ -110,7 +110,7 @@
     }
   ],
   "root": {
-    "dependencies": {"apps": "p2c4ca8cd46b96384", "daochi_client": "pd5ac70667dc1e0bd", "kryon": "p9dcb025ac3b40978", "liboqs": "pfb3df7cb222b1bdc", "mingcute": "pe1027b9d16704793", "monocypher": "p0bd527640057f7d4", "oqs": "p7098ac9cd92f7e5f", "self": "p6bdf184e35c8cf13", "workbook": "p6e738cfd6f7eb617"},
+    "dependencies": {"apps": "p2c4ca8cd46b96384", "daochi_client": "pd5ac70667dc1e0bd", "kryon": "p9dcb025ac3b40978", "liboqs": "pfb3df7cb222b1bdc", "mingcute": "pe1027b9d16704793", "monocypher": "p0bd527640057f7d4", "oqs": "p7098ac9cd92f7e5f", "self": "p6bdf184e35c8cf13", "workbook": "pee1a28b0516f6d87"},
     "name": "Werkzeug"
   },
   "toolchain": {
