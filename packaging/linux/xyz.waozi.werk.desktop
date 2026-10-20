@@ -1,9 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=Werkzeug
-Comment=Passwords, two-factor codes, a calculator and a clock
+Comment=Private everyday tools
 Exec=werk
 Icon=werk
 Terminal=false
 Categories=Utility;Security;
 StartupNotify=true
+MimeType=application/x-ziran-bundle;

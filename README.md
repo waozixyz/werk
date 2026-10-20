@@ -28,6 +28,8 @@ Small private tools in one app. The home screen opens each one:
 - **Clock**: the local time and date, and a stopwatch that keeps running
   while the app is closed.
 
+- **Workbook** (Linux): a spreadsheet editor with bottom sheet tabs and File/Edit menus. Its own `workbook.zib` bundle runs inside Werkzeug. File → Download Workbook.zib saves a copy you can share or open with `werk --bundle FILE.zib`.
+
 The profile holds your name, a picture and the appearance every tool shares:
 system, light or dark, an accent color and Material or Classic widgets.
 

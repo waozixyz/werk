@@ -12,6 +12,10 @@ ref = "master"
 git = "https://github.com/kryonlabs/kryon.git"
 ref = "master"
 
+[dependencies.apps]
+git = "https://github.com/waozixyz/apps.git"
+ref = "master"
+
 [install]
 bin = "werk"
 
@@ -46,4 +50,8 @@ source = true
 
 [dependencies.self]
 git = "https://github.com/waozixyz/self.git"
+ref = "master"
+
+[dependencies.workbook]
+git = "https://github.com/waozixyz/workbook.git"
 ref = "master"

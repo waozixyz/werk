@@ -12,7 +12,9 @@ MINGCUTE_DIR = $(shell $(ZIRAN) pkg path mingcute $(LOCK_FLAGS))
 LIBOQS_DIR = $(shell $(ZIRAN) pkg path liboqs $(LOCK_FLAGS))
 MONOCYPHER_DIR = $(shell $(ZIRAN) pkg path monocypher $(LOCK_FLAGS))
 QRCODE_DIR = $(shell $(ZIRAN) pkg path qrcode $(LOCK_FLAGS))
+WORKBOOK_DIR = $(shell $(ZIRAN) pkg path workbook $(LOCK_FLAGS))
 SELF_DIR = $(shell $(ZIRAN) pkg path self $(LOCK_FLAGS))
+APPS_DIR = $(shell $(ZIRAN) pkg path apps $(LOCK_FLAGS))
 LIBOQS_FLAGS := -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=OFF -DOQS_BUILD_ONLY_LIB=ON \
 	-DOQS_USE_OPENSSL=OFF -DOQS_DIST_BUILD=OFF -DOQS_OPT_TARGET=generic -DOQS_MINIMAL_BUILD=SIG_ml_dsa_44
 MONOCYPHER_SOURCES = $(MONOCYPHER_DIR)/src/monocypher.c $(MONOCYPHER_DIR)/src/optional/monocypher-ed25519.c
@@ -46,15 +48,26 @@ cli: build/pass
 
 # Each app is its own bundle; Werkzeug runs them in one window.
 APPS := pass auth calculator clock
-APP_BUNDLES := $(APPS:%=build/apps/%.zib) build/apps/self.zib
+APP_BUNDLES := $(APPS:%=build/apps/%.zib) build/apps/self.zib build/apps/apps.zib build/apps/workbook.zib
 SHARED_SOURCES := $(wildcard shared/*.zi)
 APP_MODULE_PATHS = --module-path shared --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
 apps: $(APP_BUNDLES)
+build/apps/apps.zib: ziran.lock apps-controller.sha256
+	mkdir -p $(@D)
+	$(ZIRAN) version > /dev/null
+	env -u DISPLAY -u WAYLAND_DISPLAY \
+		PATH="$(if $(wildcard $(ZIRAN_ROOT)/build/bin/ziran),$(ZIRAN_ROOT)/build/bin,$(CURDIR)/build/toolchain/bin):$$PATH" \
+		python3 '$(APPS_DIR)/scripts/build-ui.py' --output '$(abspath $(@D))'
+	test "$$(cat $(@D)/apps.sha256)" = "$$(cat apps-controller.sha256)"
 .SECONDEXPANSION:
 build/apps/%.zib: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
 	mkdir -p $(@D)
 	$(ZIRAN) bundle --root . --module-path apps/$* $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERK_APP \
 		$(if $(wildcard apps/$*/assets),--asset-dir assets=apps/$*/assets) --entry $*:Main -o $@ apps/$*/$*.zi
+
+build/apps/workbook.zib: $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(WORKBOOK_DIR)/Makefile ziran.lock
+	$(MAKE) -C $(WORKBOOK_DIR) ZIRAN=$(ZIRAN_ROOT)/build/bin/ziran bundle
+	install -m 0600 $(WORKBOOK_DIR)/build/workbook.zib $@
 
 build/apps/self.zib: $(SELF_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile
 	mkdir -p $(@D)
@@ -65,7 +78,7 @@ build/apps/self.zib: $(SELF_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES)
 build/ziran/libziran.a: ziran.lock $(ZIRAN_RUNTIME_SOURCES)
 	env -u DISPLAY -u WAYLAND_DISPLAY $(MAKE) -C $(ZIRAN_ROOT) BUILD_DIR=$(abspath build/ziran) $(abspath $@)
 
-build/generated/desktop/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(SELF_SOURCES) ziran.toml ziran.lock
+build/generated/desktop/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(SELF_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_DESKTOP --target=c --entry desktop:main -o $(@D) src/desktop.zi
@@ -103,6 +116,7 @@ gui-smoke: gui
 	sh scripts/gui_smoke.sh
 gui-test: gui
 	sh scripts/werk_gui_test.sh
+	env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS YUE_DESKTOP_RECOVERY=0 xvfb-run -a env WERK_TEST_PRIVATE_DISPLAY=1 python3 scripts/workbook_gui_test.py
 	sh scripts/migration_test.sh
 	python3 -I scripts/auth_command_test.py
 
@@ -182,11 +196,15 @@ install-cli: cli
 	mkdir -p $(BIN_DIR)
 	install -m 0755 pass $(BIN_DIR)/pass
 install-gui: gui
-	mkdir -p $(BIN_DIR) $(LIB_DIR)/apps $(DATA_DIR)/applications $(DATA_DIR)/icons/hicolor/512x512/apps
+	mkdir -p $(BIN_DIR) $(DATA_DIR)/applications $(DATA_DIR)/icons/hicolor/512x512/apps $(DATA_DIR)/mime/packages
+	install -d -m 0700 $(LIB_DIR) $(LIB_DIR)/apps
 	install -m 0755 build/werk $(BIN_DIR)/werk
-	install -m 0644 $(APP_BUNDLES) $(LIB_DIR)/apps/
+	install -m 0600 $(APP_BUNDLES) $(LIB_DIR)/apps/
 	install -m 0644 build/pfp.png $(LIB_DIR)/pfp.png
-	cp packaging/linux/xyz.waozi.werk.desktop $(DATA_DIR)/applications/xyz.waozi.werk.desktop
+	sed 's|^Exec=werk$$|Exec=$(BIN_DIR)/werk --bundle %f|' packaging/linux/xyz.waozi.werk.desktop > $(DATA_DIR)/applications/xyz.waozi.werk.desktop
+	install -m 0644 packaging/linux/werk-bundle.xml $(DATA_DIR)/mime/packages/werk-bundle.xml
+	@if command -v update-mime-database >/dev/null; then update-mime-database $(DATA_DIR)/mime; fi
+	@if command -v update-desktop-database >/dev/null; then update-desktop-database $(DATA_DIR)/applications; fi
 	cp assets/app/icon.png $(DATA_DIR)/icons/hicolor/512x512/apps/werk.png
 uninstall-cli:
 	rm -f $(BIN_DIR)/pass

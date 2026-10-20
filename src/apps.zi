@@ -4,6 +4,8 @@
 #import "std/bundle_host"
 #import "std/byte_text_linux"
 #import "std/text_buffer"
+#import "std/vec"
+#import "std/number_text"
 #import "std/c_string"
 #import "std/file"
 #import "kryon/hosted_app"
@@ -16,6 +18,8 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/app_local"
 #import "kryon/app_files"
 #import "kryon/key_input"
+Controller :: #import "apps/controller";
+Rules :: #import "apps/protocol";
 #import "platform"
 #import "files"
 #import "sha256"
@@ -32,6 +36,12 @@ using UI :: #import "kryon/Widgets";
     #import "android_fields"
 }
 
+#if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
+    Spreadsheet :: #import "workbook/service";
+    Font :: #import "kryon/font_metrics";
+    Picker :: #import "kryon/file_picker";
+    Json :: #import "std/json_scan";
+}
 using HostValueKind;
 
 APP_LIMIT :: 8
@@ -51,6 +61,9 @@ App :: struct {
     document_root: [PATH_LIMIT]u8
     bundled: bool
     started: bool
+    #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
+        spreadsheet: Spreadsheet.Context
+    }
 }
 
 // What the running app sees this frame.
@@ -89,11 +102,178 @@ AppCount :: () -> s32 {
     return app_count
 }
 
+AppsControllerSha256 :: "3dd75428691d03a79a1644e0fd154b1af4f12f326fe2dd7e0993b5201201eaff";
+
+HomeAppsState :: struct {
+    controller: Controller.AppController
+    bytes: string
+    catalog_bytes: [65536]u8
+    catalog_length: s32
+    revision: s64
+    selected: s32
+    pending_open: s32
+    opened: s32
+    unavailable: bool
+}
+
+home_apps: HomeAppsState;
+
+HomeAppsAppend :: (text: string) {
+    if home_apps.catalog_length + text.count > home_apps.catalog_bytes.count { return }
+    for index: cast(s64)0..text.count - 1 {
+        home_apps.catalog_bytes[home_apps.catalog_length] = text[index]
+        home_apps.catalog_length += 1
+    }
+}
+
+HomeAppsAppendNumber :: (value: s64) {
+    digits: [24]u8
+    HomeAppsAppend(FormatInteger(value, digits[:]))
+}
+
+HomeAppsAppendHexDigit :: (value: s32) {
+    digit := ifx value < 10 then value + 48 else value + 87
+    home_apps.catalog_bytes[home_apps.catalog_length] = cast(u8)digit
+    home_apps.catalog_length += 1
+}
+
+HomeAppsAppendQuoted :: (value: string) {
+    HomeAppsAppend("\"")
+    for index: cast(s64)0..value.count - 1 {
+        byte := value[index]
+        if byte == cast(u8)34 || byte == cast(u8)92 { HomeAppsAppend("\\") }
+        home_apps.catalog_bytes[home_apps.catalog_length] = byte
+        home_apps.catalog_length += 1
+        if byte < cast(u8)32 {
+            home_apps.catalog_length -= 1
+            HomeAppsAppend("\\u00")
+            HomeAppsAppendHexDigit((cast(s32)byte >> 4) & 15)
+            HomeAppsAppendHexDigit(cast(s32)byte & 15)
+        }
+    }
+    HomeAppsAppend("\"")
+}
+
+HomeAppsQuoted :: (key: string, value: string) {
+    HomeAppsAppend(",\"")
+    HomeAppsAppend(key)
+    HomeAppsAppend("\":")
+    HomeAppsAppendQuoted(value)
+}
+
+HomeAppsCatalog :: (selected: s32) {
+    home_apps.catalog_length = 0
+    HomeAppsAppend("{\"v\":1,\"revision\":")
+    HomeAppsAppendNumber(home_apps.revision)
+    HomeAppsAppend(",\"title\":\"Werkzeug\",\"locale\":\"en\",")
+    HomeAppsAppend("\"presentation\":{\"mode\":\"icon\",\"tile_class\":0,\"action_class\":0,\"muted_class\":0},\"children\":[")
+    first := true
+    for index: cast(s32)0..app_count - 1 {
+        if AppId(index) == "self" { continue }
+        if !first { HomeAppsAppend(",") }
+        first = false
+        HomeAppsAppend("{\"id\":")
+        HomeAppsAppendQuoted(AppId(index))
+        HomeAppsQuoted("title", AppName(index))
+        HomeAppsQuoted("icon_shape", AppIcon(index))
+        HomeAppsAppend(",\"installed\":true,\"on_device\":true,\"favorite\":false,\"selected\":")
+        HomeAppsAppend(ifx index == selected then "true" else "false")
+        HomeAppsAppend(",\"bytes\":")
+        HomeAppsAppendNumber(apps[index].bytes.count)
+        HomeAppsAppend(",\"actions\":[\"open\"]}")
+    }
+    HomeAppsAppend("]}")
+}
+
+HomeAppsPrepare :: (selected: s32) {
+    if selected == home_apps.selected { return }
+    home_apps.selected = selected
+    home_apps.revision += 1
+    HomeAppsCatalog(selected)
+}
+
+HomeAppsService :: (context: *void, request: string) -> string {
+    parsed: Rules.AppsRequest
+    if !Rules.AppsReadRequest(request, *parsed) {
+        return "{\"v\":1,\"status\":\"rejected\"}"
+    }
+    if parsed.operation == Rules.APPS_CATALOG {
+        if parsed.revision > 0 && parsed.revision == home_apps.revision {
+            return "{\"v\":1,\"unchanged\":true}"
+        }
+        return TextView(home_apps.catalog_bytes[:home_apps.catalog_length])
+    }
+    if parsed.operation == Rules.APPS_OPEN {
+        for index: cast(s32)0..app_count - 1 {
+            if AppId(index) == TextUntilNul(parsed.id[:]) {
+                home_apps.pending_open = index
+                return "{\"v\":1,\"status\":\"applied\"}"
+            }
+        }
+    }
+    return "{\"v\":1,\"status\":\"rejected\"}"
+}
+
+HomeAppsWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
+    count: s32, result: *HostValue) -> s32 {
+    return WidgetHostCall(context, module, function, arguments, count, result)
+}
+
+HomeAppsAssetAllowed :: (path: string) -> bool {
+    return path == ""
+}
+
+SharedHome :: (session: Session, bounds: Rectangle, dark: bool, selected: s32) -> bool {
+    if home_apps.unavailable { return false }
+    if home_apps.revision == 0 {
+        home_apps.selected = -2
+        home_apps.pending_open = -1
+        home_apps.opened = -1
+        home_apps.revision = 1
+    }
+    if !home_apps.controller.ready {
+        path: [PATH_LIMIT]u8
+        bundle_path := PathJoin(path[:], BundledAppsRoot(), "apps.zib")
+        bytes, found := ReadBundle(bundle_path)
+        if !found {
+            home_apps.unavailable = true
+            return false
+        }
+        home_apps.bytes = bytes
+        if !Controller.AppControllerOpen(*home_apps.controller, home_apps.bytes, AppsControllerSha256,
+            Controller.AppControllerPlatform.{.context = cast(*void)*home_apps.controller,
+                .service = HomeAppsService, .widgets = HomeAppsWidgets}) {
+            home_apps.unavailable = true
+            return false
+        }
+    }
+    HomeAppsPrepare(selected)
+    home_apps.controller.app.session = session
+    home_apps.controller.app.bounds = bounds
+    home_apps.controller.app.dark = dark
+    home_apps.controller.app.scale = 1.0
+    home_apps.controller.app.font = 16
+    WidgetHostBegin(session, HomeAppsAssetAllowed)
+    ran := Controller.AppControllerRun(*home_apps.controller, APP_FRAME)
+    WidgetHostEnd()
+    home_apps.opened = home_apps.pending_open
+    home_apps.pending_open = -1
+    return ran
+}
+
+SharedHomeOpened :: () -> s32 {
+    return home_apps.opened
+}
+
 // Each service is granted to the app that owns it. New app bundles never
 // receive Pass's device secret simply because another app can use it.
 AppServiceAllowed :: (context: *void, name: string) -> bool {
     app := cast(*App)context
     id := TextUntilNul(app.id[:])
+    #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
+        if name == "spreadsheet.v1" { return app.bundled && id == "workbook" }
+        if name == "input.v1" || name == "document.pick.v1" || name == "app.bundle.export.v1" { return true }
+    }
     if name == "self.assets" || name == "self.management" { return id == "self" }
     if name == "media.asset" || name == "media.query" || name == "media.pick" {
         return AppLocalAllows(cast(*void)(*app.local), name)
@@ -335,6 +515,20 @@ AppCall :: (context: *void, module: *u8, function: *u8,
                 return 0
             }
         }
+        #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
+            if name == "AppServiceHost" && count == 2 {
+                service := ArgumentText(arguments[0])
+                request := ArgumentText(arguments[1])
+                if service == "spreadsheet.v1" {
+                    text := Spreadsheet.Call(*app.spreadsheet, *app.local.files, request)
+                    result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"), .data = HostTextData(text), .length = cast(usize)text.count}
+                    return 1
+                }
+                if service == "app.bundle.export.v1" { ReturnText(result, ExportBundle(app)); return 1 }
+                if service == "input.v1" { InputCall(app, request, result); return 1 }
+                if service == "document.pick.v1" { ReturnText(result, DocumentPick(app, request)); return 1 }
+            }
+        }
         return AppLocalCall(cast(*void)(*app.local), module, function, arguments, count, result)
     }
     if name == "ReadStoreHost" && count == 2 {
@@ -555,6 +749,10 @@ LoadApps :: () {
         path: [PATH_LIMIT]u8
         unused LoadApp(ids[index], PathJoin(path[:], root, TextUntilNul(file[:])))
     }
+    #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
+        workbook_path: [PATH_LIMIT]u8
+        unused LoadApp("workbook", PathJoin(workbook_path[:], root, "workbook.zib"))
+    }
     self_path: [PATH_LIMIT]u8
     self_index = app_count
     if !LoadApp("self", PathJoin(self_path[:], root, "self.zib")) { self_index = -1 }
@@ -636,6 +834,12 @@ SaveApps :: () -> bool {
 
 // Explicit local bundle launch uses the same checked lifecycle as built-ins.
 LoadExternalApp :: (path: string) -> s32 {
+    bytes, found := ReadBundle(path)
+    if !found { return -1 }
+    defer { AppFileFree(bytes) }
+    for current: 0..app_count - 1 {
+        if apps[current].bytes == bytes { return cast(s32)current }
+    }
     index := app_count
     return ifx LoadApp("", path) then index else -1
 }
@@ -647,5 +851,111 @@ AppWidgetCall :: (context: *void, module: *u8, function: *u8,
         return AndroidWidgetCall(context, module, function, arguments, count, result)
     } else {
         return WidgetHostCall(context, module, function, arguments, count, result)
+    }
+}
+
+#if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
+    input_text: [8192]u8;
+    InputCall :: (app: *App, request: string, result: *HostValue) {
+        if request == "clipboard-has-text" { ReturnText(result, ifx SystemClipboardHasText() then "true" else "false"); return }
+        if request == "clipboard" {
+            text := SystemClipboardText(input_text[:])
+            result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"), .data = HostTextData(text), .length = cast(usize)text.count}
+            return
+        }
+        if request.count > 0 && request[0] == cast(u8)123 {
+            operation: [32]u8
+            used := Json.ReadStringText(request, Json.FieldAt(request, 0, "op"), operation[:])
+            if used == 7 && TextUntilNul(operation[:]) == "measure" {
+                content: [8192]u8
+                length := Json.ReadStringText(request, Json.FieldAt(request, 0, "text"), content[:])
+                if length >= 0 {
+                    digits: [24]u8
+                    bytes: Vec(u8)
+                    BuilderPrint(*bytes, "{\"width\":%}", Font.GlyphWidth(TextView(content[:length]), 14, ""))
+                    value := BuilderFinish(bytes)
+                    ReturnText(result, value); AppFileFree(value); return
+                }
+            }
+        }
+        if request != "frame" { ReturnText(result, "{}"); return }
+        session := app.portable.session
+        p := PointerSample(session); q := SecondaryPointerSample(session)
+        wheel := PointerWheelTake(session, app.portable.bounds)
+        text: Vec(u8)
+        BuilderPrint(*text, "{\"x\":%,\"y\":%,\"down\":%,\"pressed\":%,\"released\":%,\"secondary_down\":%,\"secondary_pressed\":%,\"secondary_released\":%,\"wheel\":%}",
+            cast(s32)p.x, cast(s32)p.y, ifx p.down then 1 else 0, ifx p.pressed then 1 else 0, ifx p.released then 1 else 0,
+            ifx q.down then 1 else 0, ifx q.pressed then 1 else 0, ifx q.released then 1 else 0, cast(s32)wheel)
+        value := BuilderFinish(text)
+        ReturnText(result, value)
+        AppFileFree(value)
+    }
+    // A picker grants just the selected transfer. Bundles never receive an
+    // arbitrary filesystem path; their editable copy remains in their folder.
+    DocumentPick :: (app: *App, request: string) -> string {
+        if request.count > 4096 { return "error" }
+        operation_bytes: [32]u8
+        name_bytes: [256]u8
+        filter_bytes: [256]u8
+        suggestion_bytes: [256]u8
+        operation := ServiceText(request, "op", operation_bytes[:])
+        name := ServiceText(request, "name", name_bytes[:])
+        if (operation != "import" && operation != "export") || !AppFileNameValid(name) { return "error" }
+        props: Picker.FilePickerProps
+        props.title = ifx operation == "export" then "Save document" else "Open document"
+        props.filter = ServiceText(request, "filter", filter_bytes[:])
+        props.suggested_name = ServiceText(request, "suggested_name", suggestion_bytes[:])
+        props.save = operation == "export"
+        path: [4096]u8
+        selected := Picker.PickFile(props, path[:])
+        if selected == 0 { return "cancelled" }
+        if selected != 1 { return "error" }
+        if operation == "export" {
+            value := AppFileRead(*app.local.files, name)
+            defer { AppFileFree(value) }
+            return ifx app.local.files.status == 1 && WritePrivate(TextUntilNul(path[:]), value) then "ready" else "error"
+        }
+        file := OpenRead(TextUntilNul(path[:]))
+        if !file.valid { return "error" }
+        defer { unused CloseFile(file) }
+        count := FileSize(file)
+        if count < 1 || count > 67108864 { return "error" }
+        bytes: Vec(u8)
+        chunk: [4096]u8
+        offset: s64 = 0
+        while offset < count {
+            used := ReadAt(file, chunk[:], offset)
+            if used <= 0 { return "error" }
+            for index: 0..used - 1 { if !VecPush(bytes, chunk[index]) { return "error" } }
+            offset += used
+            if offset > 67108864 { return "error" }
+        }
+        value := BuilderFinish(bytes)
+        defer { AppFileFree(value) }
+        return ifx AppFileWrite(*app.local.files, name, value) then "ready" else "error"
+    }
+}
+
+#if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
+    ExportBundle :: (app: *App) -> string {
+        name: [256]u8
+        CopyField(name[:], TextUntilNul(app.id[:]))
+        used := TextUntilNul(name[:]).count
+        suffix := ".zib"
+        for index: 0..3 { name[used + index] = suffix[index] }
+        name[used + 4] = 0
+        path: [4096]u8
+        props := Picker.FilePickerProps.{.title = "Download app bundle", .filter = "App bundle | *.zib", .save = true, .suggested_name = TextUntilNul(name[:])}
+        selected := Picker.PickFile(props, path[:])
+        if selected == 0 { return "cancelled" }
+        if selected != 1 { return "error" }
+        return ifx WritePrivate(TextUntilNul(path[:]), app.bytes) then "ready" else "error"
+    }
+}
+
+#if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
+    ServiceText :: (request: string, field: string, out: []u8) -> string {
+        count := Json.ReadStringText(request, Json.FieldAt(request, 0, field), out)
+        return ifx count >= 0 && count < out.count then TextView(out[:count]) else ""
     }
 }
