@@ -180,6 +180,18 @@ TopBar :: (session: Session, viewport: Rectangle) {
 }
 
 Home :: (session: Session, area: Rectangle) {
+    if SharedHome(session, area, ProfileDark(), open_app) {
+        opened := SharedHomeOpened()
+        if opened >= 0 {
+            open_app = opened
+            screen = SCREEN_APP
+        }
+        return
+    }
+    HomeFallback(session, area)
+}
+
+HomeFallback :: (session: Session, area: Rectangle) {
     visible := AppCount() - ifx SelfAppIndex() >= 0 then 1 else 0
     tile: float32 = 120.0
     gap: float32 = 16.0
