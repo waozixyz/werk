@@ -88,10 +88,17 @@ def menu(word):
     click(28,68)
     picture = work/'menu.png'
     command('import','-window',window,str(picture))
-    text = command('tesseract',str(picture),'stdout','--psm','11','-c','tessedit_create_tsv=1')
+    # Isolate the popup so spreadsheet grid lines do not dominate OCR.
+    target = work/'menu-labels.png'
+    factor = 3
+    with Image.open(picture) as image:
+        popup = image.crop((0,82,175,195))
+        popup.resize((popup.width*factor,popup.height*factor)).save(target)
+    text = command('tesseract',str(target),'stdout','--psm','6','-c','tessedit_create_tsv=1')
     for item in csv.DictReader(io.StringIO(text), delimiter='\t'):
         if word.lower() in item['text'].lower():
-            click(int(item['left'])+int(item['width'])//2,int(item['top'])+int(item['height'])//2)
+            click((int(item['left'])+int(item['width'])//2)//factor,
+                  82+(int(item['top'])+int(item['height'])//2)//factor)
             return
     raise AssertionError('Missing menu command '+word)
 
