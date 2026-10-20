@@ -2,7 +2,7 @@
 Type=Application
 Name=Werkzeug
 Comment=Private everyday tools
-Exec=werk
+Exec=werk --bundle %f
 Icon=werk
 Terminal=false
 Categories=Utility;Security;

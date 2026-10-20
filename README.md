@@ -142,7 +142,8 @@ other.
 ## Build and test
 
 Dependencies and the compiler are pinned in `ziran.lock`. Desktop builds need
-SDL2, Cairo, FreeType, Fontconfig, Pango, GTK 3 and X11 development packages; browser
+SDL2, Cairo, FreeType, Fontconfig, Pango, GTK 3 and X11 development packages.
+Workbook uses the installed Gnumeric library; file choosers need Zenity. Browser
 builds need Emscripten; Android builds need JDK 21 and the SDK/NDK versions in
 `droid/app/build.gradle`. Desktop tests use Xvfb, xdotool, xclip and
 ImageMagick on private displays.

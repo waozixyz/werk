@@ -201,7 +201,7 @@ install-gui: gui
 	install -m 0755 build/werk $(BIN_DIR)/werk
 	install -m 0600 $(APP_BUNDLES) $(LIB_DIR)/apps/
 	install -m 0644 build/pfp.png $(LIB_DIR)/pfp.png
-	sed 's|^Exec=werk$$|Exec=$(BIN_DIR)/werk --bundle %f|' packaging/linux/xyz.waozi.werk.desktop > $(DATA_DIR)/applications/xyz.waozi.werk.desktop
+	sed 's|^Exec=werk --bundle %f$$|Exec=$(BIN_DIR)/werk --bundle %f|' packaging/linux/xyz.waozi.werk.desktop > $(DATA_DIR)/applications/xyz.waozi.werk.desktop
 	install -m 0644 packaging/linux/werk-bundle.xml $(DATA_DIR)/mime/packages/werk-bundle.xml
 	@if command -v update-mime-database >/dev/null; then update-mime-database $(DATA_DIR)/mime; fi
 	@if command -v update-desktop-database >/dev/null; then update-desktop-database $(DATA_DIR)/applications; fi

@@ -10,11 +10,12 @@ out="$root/build/release"
 test -n "$version"
 rm -rf "$stage"
 mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/lib/werk/apps" "$stage/usr/share/applications" \
-	"$stage/usr/share/metainfo" "$stage/usr/share/icons/hicolor/512x512/apps" "$stage/usr/share/doc/werk" "$out"
+	"$stage/usr/share/mime/packages" "$stage/usr/share/metainfo" "$stage/usr/share/icons/hicolor/512x512/apps" "$stage/usr/share/doc/werk" "$out"
 cp "$root/build/werk" "$stage/usr/bin/werk"
 cp "$root"/build/apps/*.zib "$stage/usr/lib/werk/apps/"
 cp "$root/build/pfp.png" "$stage/usr/lib/werk/pfp.png"
 cp "$root/packaging/linux/xyz.waozi.werk.desktop" "$stage/usr/share/applications/xyz.waozi.werk.desktop"
+cp "$root/packaging/linux/werk-bundle.xml" "$stage/usr/share/mime/packages/werk-bundle.xml"
 cp "$root/packaging/linux/xyz.waozi.werk.appdata.xml" "$stage/usr/share/metainfo/xyz.waozi.werk.appdata.xml"
 cp "$root/assets/app/icon.png" "$stage/usr/share/icons/hicolor/512x512/apps/werk.png"
 cp "$root/LICENSE" "$root/README.md" "$stage/usr/share/doc/werk/"
@@ -28,7 +29,7 @@ Version: $version
 Architecture: $arch
 Maintainer: Waozi <waozi@proton.me>
 Installed-Size: $installed
-Depends: libc6, libsdl2-2.0-0, libcairo2, libfreetype6, libfontconfig1, libpangocairo-1.0-0, libgtk-3-0, libx11-6
+Depends: libc6, libsdl2-2.0-0, libcairo2, libfreetype6, libfontconfig1, libpangocairo-1.0-0, libgtk-3-0, libx11-6, gnumeric, zenity
 Section: utils
 Priority: optional
 Homepage: https://werk.waozi.xyz/
