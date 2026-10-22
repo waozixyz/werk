@@ -48,8 +48,8 @@ git = "https://github.com/LoupVaillant/Monocypher.git"
 ref = "master"
 source = true
 
-[dependencies.self]
-git = "https://github.com/waozixyz/self.git"
+[dependencies.entity]
+git = "https://github.com/waozixyz/entity.git"
 ref = "master"
 
 [dependencies.workbook]

@@ -1,7 +1,7 @@
-// Native Self recovery joins Werkzeug's existing account and Auth store.
+// Native Entity recovery joins Werkzeug's existing account and Auth store.
 // A switch is staged until its data choice is explicit and its writes succeed.
-Recovery :: #import "self/recovery";
-#import "self/recovery"
+Recovery :: #import "entity/recovery";
+#import "entity/recovery"
 #import "daochi_client/keys"
 #import "daochi_client/crypto"
 #import "account"

@@ -1,6 +1,6 @@
-// Werkzeug supplies its existing preferences to Self. Tool secrets and
+// Werkzeug supplies its existing preferences to Entity. Tool secrets and
 // account credentials never cross this document boundary.
-Self :: #import "self/model";
+Entity :: #import "entity/model";
 #import "profile"
 #import "std/c_string"
 #import "std/text_buffer"
@@ -9,15 +9,15 @@ Self :: #import "self/model";
     #import "sync"
     #import "device_link"
     #import "records"
-    Shared :: #import "self/native_files";
+    Shared :: #import "entity/native_files";
 }
 
-self_document: string;
+entity_document: string;
 
-WerkSelfRead :: () -> string {
-    Self.SelfFree(self_document)
-    state := Self.SelfDefault()
-    state.controls |= Self.SELF_APPEARANCE | Self.SELF_ACCENT | Self.SELF_WIDGETS
+WerkEntityRead :: () -> string {
+    Entity.EntityFree(entity_document)
+    state := Entity.EntityDefault()
+    state.controls |= Entity.ENTITY_APPEARANCE | Entity.ENTITY_ACCENT | Entity.ENTITY_WIDGETS
     state.name = profile.name
     state.picture = profile.picture
     state.theme = profile.theme_mode
@@ -35,14 +35,14 @@ WerkSelfRead :: () -> string {
     #if !#defined(PLATFORM_WEB) {
         if AccountReady() { state.owner_id = account.keys.public_id; unused Shared.SharedProfileLoad(AccountId(), *state) }
     }
-    Self.SelfAddExtension(*state, "account", "Account")
-    self_document = Self.SelfEncode(state)
-    return self_document
+    Entity.EntityAddExtension(*state, "account", "Account")
+    entity_document = Entity.EntityEncode(state)
+    return entity_document
 }
 
-WerkSelfWrite :: (document: string) -> bool {
-    state: Self.SelfState
-    if !Self.SelfDecode(document, *state) { return false }
+WerkEntityWrite :: (document: string) -> bool {
+    state: Entity.EntityState
+    if !Entity.EntityDecode(document, *state) { return false }
     #if !#defined(PLATFORM_WEB) {
         if TextUntilNul(state.owner_id[:]) != AccountId() { return false }
     }

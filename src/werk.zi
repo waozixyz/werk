@@ -8,7 +8,7 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/ScrollDevice"
 #import "kryon/Theme"
 #import "apps"
-#import "self_management"
+#import "entity_management"
 #import "profile"
 #import "platform"
 #import "migrate"
@@ -36,8 +36,8 @@ FieldState :: struct {
 }
 
 screen: s32;
-self_account: bool;
-self_reload: bool;
+entity_account: bool;
+entity_reload: bool;
 open_app: s32 = -1;
 // Started in a page embedding the toolkit, with navigation still available.
 mini: bool;
@@ -121,7 +121,7 @@ OpenHome :: () {
         return
     }
     if screen == SCREEN_PROFILE {
-        if !self_account && !SaveApp(SelfAppIndex()) { return }
+        if !entity_account && !SaveApp(EntityAppIndex()) { return }
         name_field.focused = false
         code_field.focused = false
         node_field.focused = false
@@ -145,10 +145,10 @@ TopBar :: (session: Session, viewport: Rectangle) {
             .icon_shape = Back.Shape, .icon_only = true,
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, back) != 0 {
-            if screen == SCREEN_PROFILE && !self_account && SelfAppBack() { return }
-            if screen == SCREEN_PROFILE && self_account {
-                self_account = false
-                self_reload = true
+            if screen == SCREEN_PROFILE && !entity_account && EntityAppBack() { return }
+            if screen == SCREEN_PROFILE && entity_account {
+                entity_account = false
+                entity_reload = true
                 return
             }
             OpenHome()
@@ -156,7 +156,7 @@ TopBar :: (session: Session, viewport: Rectangle) {
         }
         left = bar.x + 56.0
         title = ifx screen == SCREEN_APP then AppName(open_app) else "Profile"
-        if screen == SCREEN_PROFILE && self_account { title = "Account" }
+        if screen == SCREEN_PROFILE && entity_account { title = "Account" }
     }
     // The profile button names itself, with the picture beside the name.
     profile_width: float32 = 0.0
@@ -173,8 +173,8 @@ TopBar :: (session: Session, viewport: Rectangle) {
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, avatar) != 0 {
             screen = SCREEN_PROFILE
-            self_account = false
-            self_reload = true
+            entity_account = false
+            entity_reload = true
         }
     }
 }
@@ -192,7 +192,7 @@ Home :: (session: Session, area: Rectangle) {
 }
 
 HomeFallback :: (session: Session, area: Rectangle) {
-    visible := AppCount() - ifx SelfAppIndex() >= 0 then 1 else 0
+    visible := AppCount() - ifx EntityAppIndex() >= 0 then 1 else 0
     tile: float32 = 120.0
     gap: float32 = 16.0
     columns := cast(s32)((area.width - gap) / (tile + gap))
@@ -212,7 +212,7 @@ HomeFallback :: (session: Session, area: Rectangle) {
     left := area.x + (area.width - row_width) * 0.5
     index: s32 = 0
     while index < AppCount() {
-        if AppId(index) == "self" { index += 1; continue }
+        if AppId(index) == "entity" { index += 1; continue }
         column := cast(float32)(index % columns)
         row := cast(float32)(index / columns)
         bounds := Rectangle.{left + column * (tile + gap), area.y + gap + row * (tile + gap), tile, tile}
@@ -356,7 +356,7 @@ RevealFocusedField :: (area: Rectangle) {
 }
 
 ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput, key: s32, modifiers: s32) {
-    if self_account {
+    if entity_account {
         width := area.width - 32.0
         scroll := Scroll(session, ScrollProps.{.key = cast(u64)40,
                 .bounds = Rectangle.{area.x + 16.0, area.y, width, area.height},
@@ -369,21 +369,21 @@ ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput, key:
         keyboard_wanted = code_field.focused || account_key_field.focused || passphrase_field.focused
         return
     }
-    index := SelfAppIndex()
-    if self_reload { ReloadApp(index); self_reload = false }
+    index := EntityAppIndex()
+    if entity_reload { ReloadApp(index); entity_reload = false }
     container := Group(session, ColumnProps.{.key = cast(u64)69, .bounds = area})
     if !container.opened { return }
     ran := index >= 0 && RunApp(index, AppView.{.session = session, .bounds = area,
             .dark = ProfileDark(), .key = key, .modifiers = modifiers, .input = input})
     unused End(session)
     if !ran {
-        Label(session, cast(u64)40, "Self could not be loaded", area, 16)
+        Label(session, cast(u64)40, "Entity could not be loaded", area, 16)
         return
     }
     keyboard_wanted = AppWantsKeyboard()
     if AppFrameReply(index) == "account" {
         unused CopyCString(ProfileNode(), node_text[:])
-        self_account = true
+        entity_account = true
         profile_scroll = 0
     }
 }

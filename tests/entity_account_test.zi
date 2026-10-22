@@ -6,7 +6,7 @@
 #import "files"
 #import "platform"
 #import "sync_keys"
-#import "self/recovery"
+#import "entity/recovery"
 #import "daochi_client/keys"
 #import "std/file"
 #import "std/c_string"

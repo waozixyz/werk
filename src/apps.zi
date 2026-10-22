@@ -24,8 +24,8 @@ Rules :: #import "apps/protocol";
 #import "files"
 #import "sha256"
 #import "records"
-#import "self_host"
-#import "self_management"
+#import "entity_host"
+#import "entity_management"
 #if !#defined(PLATFORM_WEB) {
     #import "sync"
 }
@@ -78,7 +78,7 @@ AppView :: struct {
 
 apps: [APP_LIMIT]App;
 app_count: s32;
-self_index: s32 = -1;
+entity_index: s32 = -1;
 app_keyboard: bool;
 // The app whose call the host is answering, for the asset policy.
 running: s32 = -1;
@@ -169,7 +169,7 @@ HomeAppsCatalog :: (selected: s32) {
     HomeAppsAppend("\"presentation\":{\"mode\":\"icon\",\"tile_class\":0,\"action_class\":0,\"muted_class\":0},\"children\":[")
     first := true
     for index: cast(s32)0..app_count - 1 {
-        if AppId(index) == "self" { continue }
+        if AppId(index) == "entity" { continue }
         if !first { HomeAppsAppend(",") }
         first = false
         HomeAppsAppend("{\"id\":")
@@ -274,7 +274,7 @@ AppServiceAllowed :: (context: *void, name: string) -> bool {
         if name == "spreadsheet.v1" { return app.bundled && id == "workbook" }
         if name == "input.v1" || name == "document.pick.v1" || name == "app.bundle.export.v1" { return true }
     }
-    if name == "self.assets" || name == "self.management" { return id == "self" }
+    if name == "entity.assets" || name == "entity.management" { return id == "entity" }
     if name == "media.asset" || name == "media.query" || name == "media.pick" {
         return AppLocalAllows(cast(*void)(*app.local), name)
     }
@@ -475,11 +475,11 @@ AppCall :: (context: *void, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
     app := cast(*App)context
     name := TextFromCString(function)
-    if TextUntilNul(app.id[:]) == "self" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "self.assets" {
+    if TextUntilNul(app.id[:]) == "entity" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "entity.assets" {
         ReturnText(result, TextUntilNul(app.asset_folder[:]))
         return 1
     }
-    if TextUntilNul(app.id[:]) == "self" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "self.management" {
+    if TextUntilNul(app.id[:]) == "entity" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "entity.management" {
         request := ArgumentText(arguments[1])
         if request == "" {
             document := WerkManagementRead()
@@ -488,8 +488,8 @@ AppCall :: (context: *void, module: *u8, function: *u8,
         } else { ReturnText(result, ifx WerkManagementEnqueue(request) then "queued" else "rejected") }
         return 1
     }
-    if TextUntilNul(app.id[:]) == "self" && name == "ReadStoreHost" && count == 2 && ArgumentText(arguments[0]) == "self.json" {
-        text := WerkSelfRead()
+    if TextUntilNul(app.id[:]) == "entity" && name == "ReadStoreHost" && count == 2 && ArgumentText(arguments[0]) == "entity.json" {
+        text := WerkEntityRead()
         output := arguments[1]
         used := cast(s32)text.count
         if output.kind != cast(s32)HostSlice || output.elements == null || cast(usize)(used + 1) > output.length { return 0 }
@@ -501,8 +501,8 @@ AppCall :: (context: *void, module: *u8, function: *u8,
         result.* = HostScalar("s32", used)
         return 1
     }
-    if TextUntilNul(app.id[:]) == "self" && name == "WriteStoreHost" && count == 2 && ArgumentText(arguments[0]) == "self.json" {
-        ReturnBool(result, WerkSelfWrite(ArgumentText(arguments[1])))
+    if TextUntilNul(app.id[:]) == "entity" && name == "WriteStoreHost" && count == 2 && ArgumentText(arguments[0]) == "entity.json" {
+        ReturnBool(result, WerkEntityWrite(ArgumentText(arguments[1])))
         return 1
     }
     if name == "AppServiceHost" || name == "AppLocaleHost" || name == "DocumentReadHost" ||
@@ -659,15 +659,15 @@ UnpackAssets :: (app: *App) {
     while index < count {
         name := TextFromCString(BundleAssetPath(bundle, index))
         prefix := "assets/"
-        self_picture := TextUntilNul(app.id[:]) == "self" &&
-        (name == "assets/self/pfp.png" || name == "assets/self/flowers.png")
+        entity_picture := TextUntilNul(app.id[:]) == "entity" &&
+        (name == "assets/entity/pfp.png" || name == "assets/entity/flowers.png")
         flat_asset := name.count > prefix.count && name[0:prefix.count] == prefix && SafeName(name[prefix.count:name.count])
-        if self_picture || flat_asset {
+        if entity_picture || flat_asset {
             data := TextFromBytes(BytesFromPointer(BundleAssetBytes(bundle, index), BundleAssetLength(bundle, index)))
             path: [PATH_LIMIT]u8
-            if self_picture {
+            if entity_picture {
                 parent: [PATH_LIMIT]u8
-                if EnsureDirectory(PathJoin(parent[:], folder, "assets/self")) {
+                if EnsureDirectory(PathJoin(parent[:], folder, "assets/entity")) {
                     unused WritePrivate(PathJoin(path[:], folder, name), data)
                 }
             } else {
@@ -753,16 +753,16 @@ LoadApps :: () {
         workbook_path: [PATH_LIMIT]u8
         unused LoadApp("workbook", PathJoin(workbook_path[:], root, "workbook.zib"))
     }
-    self_path: [PATH_LIMIT]u8
-    self_index = app_count
-    if !LoadApp("self", PathJoin(self_path[:], root, "self.zib")) { self_index = -1 }
+    entity_path: [PATH_LIMIT]u8
+    entity_index = app_count
+    if !LoadApp("entity", PathJoin(entity_path[:], root, "entity.zib")) { entity_index = -1 }
 }
 
-SelfAppIndex :: () -> s32 { return self_index }
-SelfAppBack :: () -> bool {
-    if self_index < 0 { return false }
-    apps[self_index].portable.command = "back"
-    return AppContextRun(*apps[self_index].portable, APP_COMMAND) && apps[self_index].portable.reply == "handled"
+EntityAppIndex :: () -> s32 { return entity_index }
+EntityAppBack :: () -> bool {
+    if entity_index < 0 { return false }
+    apps[entity_index].portable.command = "back"
+    return AppContextRun(*apps[entity_index].portable, APP_COMMAND) && apps[entity_index].portable.reply == "handled"
 }
 
 AppFrameReply :: (index: s32) -> string {

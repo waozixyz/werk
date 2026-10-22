@@ -29,7 +29,7 @@ cache.mkdir(parents=True)
 environment = dict(os.environ)
 environment.pop("WAYLAND_DISPLAY", None)
 environment["WERK_DATA"] = str(data)
-environment["SELF_DATA"] = str(output / "shared-self")
+environment["ENTITY_DATA"] = str(output / "shared-entity")
 environment["XDG_DATA_HOME"] = str(output / "xdg-data")
 environment["XDG_CONFIG_HOME"] = str(output / "xdg-config")
 environment["XDG_CACHE_HOME"] = str(cache)
@@ -361,7 +361,7 @@ try:
     click(*field_below("Name"))
     type_text("Fixture Person")
     home()
-    assert "name=Fixture Person\n" in (data / "profile/settings.txt").read_text(), "Leaving Self lost the pending name edit"
+    assert "name=Fixture Person\n" in (data / "profile/settings.txt").read_text(), "Leaving Entity lost the pending name edit"
     click(390, 28)
     scroll_down()
     click_word("Dark")
@@ -369,7 +369,7 @@ try:
     settings = (data / "profile/settings.txt").read_text()
     assert "name=Fixture Person\n" in settings and "theme_mode=2\n" in settings, settings
     assert (data / "profile/settings.txt").stat().st_mode & 0o077 == 0
-    # Nodes belong to the common Self bundle; choosing one creates no account.
+    # Nodes belong to the common Entity bundle; choosing one creates no account.
     scroll_up()
     node_field = field_below("Nodes", 120)
     click(*node_field)
@@ -404,7 +404,7 @@ try:
     account_file = data / "account/keys.txt"
     assert account_file.exists() and "paused=0\n" in account_file.read_text()
     click_word("Sync", toggle=True)
-    assert "paused=1\n" in account_file.read_text(), "Self's sync switch did not pause"
+    assert "paused=1\n" in account_file.read_text(), "Entity's sync switch did not pause"
     capture("sync-paused")
     stop()
     start()

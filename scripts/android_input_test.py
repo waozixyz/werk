@@ -157,7 +157,7 @@ try:
     # after the last, at the caret the keyboard reports.
     tap(int(28 * zoom), top + int(28 * zoom)); time.sleep(0.5)
     tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.8); alive()
-    # Self's profile card: the picture, then Name.
+    # Entity's profile card: the picture, then Name.
     tap(width // 2, top + int(357 * zoom)); type_text("Ada Lovelace")
     shot("profile-name")
     shell("input", "keyevent", "4"); time.sleep(0.3)
@@ -166,7 +166,7 @@ try:
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "name=Ada Lovelace\n" in settings, f"Profile name typed out of order: {settings!r}"
     tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.8)
-    # Self's Nodes section: the empty "Node address" field, then Add.
+    # Entity's Nodes section: the empty "Node address" field, then Add.
     tap_label("Node")
     type_text("https://sync.example.invalid:8443/")
     shell("input", "keyevent", "4"); time.sleep(1.2)

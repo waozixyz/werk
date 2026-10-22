@@ -26,7 +26,7 @@ fixture.write_text('''<?xml version="1.0"?><gnm:Workbook xmlns:gnm="http://www.g
 original = fixture.read_bytes()
 env = dict(os.environ, HOME=str(work/'home'), WERK_DATA=str(work/'data'),
            XDG_CACHE_HOME=str(work/'cache'), XDG_CONFIG_HOME=str(work/'home/.config'),
-           XDG_DATA_HOME=str(work/'home/.local/share'), SELF_DATA=str(work/'self'),
+           XDG_DATA_HOME=str(work/'home/.local/share'), ENTITY_DATA=str(work/'entity'),
            WERK_ASSETS=str(root/'build'), WORKBOOK_TEST_SELECTION=str(selector),
            PATH=str(work/'bin')+':'+os.environ['PATH'])
 app = None

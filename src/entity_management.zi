@@ -1,16 +1,16 @@
-// Native capabilities for the common Self UI. Account keys, Auth records,
+// Native capabilities for the common Entity UI. Account keys, Auth records,
 // pairing payloads and file selections stay outside the portable bundle.
 #import "std/c_string"
 #import "std/text_buffer"
 #import "std/vec"
 #import "profile"
 #if !#defined(PLATFORM_WEB) {
-    Self :: #import "self/model";
-    #import "self/management"
-    #import "self/native_management"
-    #import "self/recovery"
-    Pairing :: #import "self/pairing_client";
-    #import "self/pairing"
+    Entity :: #import "entity/model";
+    #import "entity/management"
+    #import "entity/native_management"
+    #import "entity/recovery"
+    Pairing :: #import "entity/pairing_client";
+    #import "entity/pairing"
     #import "daochi_client/client"
     #import "account"
     #import "account_transition"
@@ -63,7 +63,7 @@
         output.capabilities = ACCOUNT_CREATE | ACCOUNT_IMPORT | ACCOUNT_SWITCH | ACCOUNT_LINK
         if AccountReady() { output.capabilities |= ACCOUNT_BACKUP | ACCOUNT_ALIAS | ACCOUNT_SYNC | ACCOUNT_LOGOUT | ACCOUNT_CLEAR_REMOTE }
         status := SyncStatus()
-        // Without an account Self's title already says so; it explains the rest.
+        // Without an account Entity's title already says so; it explains the rest.
         if status == "" && AccountReady() { status = ifx AccountSyncEnabled() then "Sync is on" else "Sync paused" }
         unused CopyCString(status, output.status[:])
         if RecordsOpen("auth") {
@@ -82,7 +82,7 @@
             BuilderPrint(*message, "Compare this number on both devices: %", Pairing.device_link.confirmation)
             text := BuilderFinish(message)
             unused CopyCString(text, output.link_message[:])
-            Self.SelfFree(text)
+            Entity.EntityFree(text)
         } else if output.link_stage == 4 { unused CopyCString("Send your account to this device?", output.link_message[:]) }
         else if output.link_stage == 7 { unused CopyCString("The connection could not finish. Start a new code to try again.", output.link_message[:]) }
     }
@@ -129,7 +129,7 @@
             text: Vec(u8)
             BuilderPrint(*text, "%\n%", AccountId(), TextUntilNul(request.value[:]))
             document := BuilderFinish(text)
-            defer { Self.SelfFree(document) }
+            defer { Entity.EntityFree(document) }
             if !WritePrivate(WerkAliasPath(path[:]), document) { return 0 }
             unused CopyCString(TextUntilNul(request.value[:]), werk_management_alias[:])
             return 1
