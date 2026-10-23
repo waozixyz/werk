@@ -15,7 +15,7 @@ Launcher :: #import "apps/launcher";
 Controller :: #import "apps/controller";
 Rules :: #import "apps/protocol";
 
-AppsControllerSha256 :: "8c5806d7ff5a4fdaf6b98a7668acbf0aad236ece1d5e68ffe1f7b268a1afb077";
+AppsControllerSha256 :: "dfc835742d58dc714e175e5adde718c58d51b4132ab80bdb7983eb2985734932";
 
 HomePreference :: struct {
     title: [256]u8
@@ -209,7 +209,7 @@ HomeAssetAllowed :: (path: string) -> bool { return path == "" }
 HomeCards :: (context: *void, indices: []s32, bounds: Rectangle,
     input: TextFieldInput, section_break: s32, columns: s32) -> bool {
     bytes: Vec(u8)
-    BuilderPrint(*bytes, "\"title\":\"Werkzeug\",\"locale\":\"en\",\"presentation\":{\"mode\":\"%\",\"columns\":%",
+    BuilderPrint(*bytes, "\"title\":\"Werkzeug\",\"locale\":\"en\",\"presentation\":{\"mode\":\"%\",\"hide_sizes\":true,\"columns\":%",
         ifx home.view.grid then "icon" else "list", columns)
     if section_break >= 0 { BuilderPrint(*bytes, ",\"section_break\":%", section_break) }
     BuilderPrint(*bytes, "},\"children\":[")

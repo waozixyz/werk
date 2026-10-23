@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -97,11 +98,11 @@ try:
     deadline = time.monotonic() + 20
     while True:
         home = capture("home")
-        # The native fallback does not display package sizes.
-        if "kB" in home or "MB" in home:
+        if all(name in home for name in ("Pass", "Auth", "Calculator", "Clock", "Workbook")):
             break
         assert app.poll() is None, "Werkzeug exited while loading Apps"
         assert time.monotonic() < deadline, "Shared Apps controller did not render: " + home
+    assert not re.search(r"\d[\d.]*\s*(?:kB|MB)\b", home, re.I), home
     for name in ("Auth", "Calculator", "Clock", "Workbook", "Pass"):
         click_word(name)
         assert command("xdotool", "getwindowname", window).strip() == name
@@ -119,6 +120,7 @@ try:
     assert json.loads(preferences.read_text())["list"] is True
     text = capture("list")
     assert all(name in text for name in ("Pass", "Auth", "Calculator", "Clock", "Workbook")), text
+    assert not re.search(r"\d[\d.]*\s*(?:kB|MB)\b", text, re.I), text
     click(100, 92)
     type_text("clock")
     text = capture("search")
