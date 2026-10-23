@@ -20,7 +20,7 @@ if not serial:
     serial = next((line.split()[0] for line in devices if line.startswith("emulator-") and line.split()[-1] == "device"), None)
 if not serial or not serial.startswith("emulator-"):
     raise SystemExit("Android input tests require a private emulator")
-package = "xyz.waozi.werk"
+package = "xyz.waozi.pass"
 
 def adb(*arguments, check=True, input=None):
     return subprocess.run(["adb", "-s", serial, *arguments], check=check, capture_output=True, input=input, timeout=90)
@@ -31,8 +31,8 @@ def shell(*arguments, check=True):
 def shot(name):
     (output / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p").stdout)
 
-def find_label(word):
-    deadline = time.monotonic() + 15
+def find_label(word, timeout=15):
+    deadline = time.monotonic() + timeout
     while True:
         shot("label")
         data = subprocess.check_output(["tesseract", str(output / "label.png"), "stdout", "--psm", "11", "-c", "tessedit_create_tsv=1"],
@@ -47,6 +47,20 @@ def find_label(word):
 
 def tap_label(word):
     tap(*find_label(word))
+
+def scroll_to_label(word, direction="down"):
+    hide_keyboard()
+    for attempt in range(7):
+        try:
+            return find_label(word, timeout=2)
+        except AssertionError:
+            if attempt == 6:
+                raise
+        upper = top + int(150 * zoom)
+        lower = bottom - int(80 * zoom)
+        start, end = (lower, upper) if direction == "down" else (upper, lower)
+        shell("input", "swipe", str(width // 2), str(start), str(width // 2), str(end), "450")
+        time.sleep(PAUSE)
 
 def dismiss_other_apps_not_responding():
     """A slow emulator can show an "isn't responding" dialog for another app,
@@ -117,7 +131,7 @@ def system_bars(height):
     bottom = int(navigation.group(1)) if navigation and int(navigation.group(2)) == height else height
     return top, bottom
 
-apk = root / "build/werk-android-emulator.apk"
+apk = Path(os.environ.get("WERK_ANDROID_APK", root / "build/werk-android-emulator.apk"))
 check_apk(apk)
 try:
     adb("install", "-r", str(apk))
@@ -186,16 +200,20 @@ try:
     tap_label("Fixture"); time.sleep(0.8); alive()
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "name=Fixture Person\n" in settings, "Profile lost the retained name"
-    tap_label("Dark"); time.sleep(0.5)
+    tap(*scroll_to_label("Dark")); time.sleep(0.5)
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "theme_mode=2\n" in settings and "name=Fixture Person\n" in settings
     shot("profile-appearance")
     print("Android: retained profile name and appearance verified", flush=True)
-    tap_label("Light")
-    tap_label("Connect"); time.sleep(0.8)
-    fill_field("Node", "https://sync.example.invalid:8443/")
-    shell("input", "keyevent", "4"); time.sleep(1.2)
-    tap_label("Add"); time.sleep(0.8)
+    tap(*scroll_to_label("Light"))
+    # Android exposes Nodes directly in Profile.
+    hide_keyboard()
+    tap(*scroll_to_label("Node", direction="up"))
+    type_text("https://sync.example.invalid:8443/")
+    hide_keyboard()
+    # The accent button's white label is not reliable in screenshot OCR.
+    _, appearance = scroll_to_label("Appearance")
+    tap(width - int(81 * zoom), appearance - int(56 * zoom)); time.sleep(0.8)
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "node=https://sync.example.invalid:8443\n" in settings, "Custom node was not saved"
     assert adb("shell", "run-as", package, "test", "-f", "files/account/keys.txt", check=False).returncode != 0

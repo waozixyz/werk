@@ -14,7 +14,7 @@ rm -rf "$appdir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/lib/werk/apps" "$appdir/usr/share/applications" \
 	"$appdir/usr/share/mime/packages" "$appdir/usr/share/metainfo" "$appdir/usr/share/icons/hicolor/512x512/apps" "$(dirname "$out")"
 cp "$artifacts/werk" "$appdir/usr/bin/werk"
-cp "$artifacts"/apps/*.zib "$appdir/usr/lib/werk/apps/"
+cp "$artifacts"/apps/*.zx "$appdir/usr/lib/werk/apps/"
 cp "$artifacts/pfp.png" "$appdir/usr/lib/werk/pfp.png"
 python3 "$root/scripts/install-launchers.py" --data-dir "$appdir/usr/share"
 cp "$root/packaging/linux/werk-bundle.xml" "$appdir/usr/share/mime/packages/werk-bundle.xml"

@@ -76,5 +76,9 @@ target_link_libraries(main oqs)
 kryon_android_app(main)
 target_link_libraries(main "${BUNDLE_RUNTIME_DIR}/libziran.a")
 target_link_options(main PRIVATE -Wl,--wrap=pthread_attr_init)
+# Linker build IDs include debug-path differences even after stripping. The
+# installed code is identical; omit this note for reproducible signed APKs.
+# https://f-droid.org/docs/Reproducible_Builds/#ndk-build-id
+target_link_options(main PRIVATE -Wl,--build-id=none)
 # Werkzeug has no handwritten native sources; every app translation unit above is
 # generated from .zi for this ABI. raylib and the NDK own native_app_glue.

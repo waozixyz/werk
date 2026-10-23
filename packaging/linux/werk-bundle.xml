@@ -2,6 +2,6 @@
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-ziran-bundle">
     <comment>Ziran application bundle</comment>
-    <glob pattern="*.zib"/>
+    <glob pattern="*.zx"/>
   </mime-type>
 </mime-info>

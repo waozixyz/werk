@@ -60,6 +60,7 @@ secret_snapshot: [17664]u8;
 forget_pending: bool;
 choosing_picture: bool;
 profile_scroll: s32;
+profile_content_height: s32 = 760;
 // Where Profile's focused field was drawn, so Profile can scroll it into
 // view when it gains focus or the keyboard changes the visible height.
 focused_top: float32;
@@ -332,10 +333,13 @@ ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput, key:
         width := area.width - 32.0
         scroll := Scroll(session, ScrollProps.{.key = cast(u64)40,
                 .bounds = Rectangle.{area.x + 16.0, area.y, width, area.height},
-                .content_height = 760, .scroll_offset = profile_scroll})
+                .content_height = profile_content_height, .scroll_offset = profile_scroll})
         profile_scroll = scroll.scroll_offset
         if scroll.opened {
-            SyncSection(session, scroll.content.x, scroll.content.y + 16.0, scroll.content.width - 12.0, input)
+            bottom := SyncSection(session, scroll.content.x, scroll.content.y + 16.0, scroll.content.width - 12.0, input)
+            height := cast(s32)(bottom - scroll.content.y + 16.0)
+            if height < 0 { height = 0 }
+            profile_content_height = height
             unused End(session)
         }
         keyboard_wanted = code_field.focused || account_key_field.focused || passphrase_field.focused
@@ -357,6 +361,7 @@ ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput, key:
         unused CopyCString(ProfileNode(), node_text[:])
         entity_account = true
         profile_scroll = 0
+        profile_content_height = 760
     }
 }
 
@@ -531,11 +536,12 @@ SaveNode :: () -> bool {
 
 // The account that syncs Auth: create one, connect to one, or connect
 // another device to it.
-SyncSection :: (session: Session, x: float32, y: float32, width: float32, input: TextFieldInput) {
+SyncSection :: (session: Session, x: float32, y: float32, width: float32, input: TextFieldInput) -> float32 {
     Heading(session, cast(u64)46, "Account", x, y, width)
     y += 32.0
     #if #defined(PLATFORM_WEB) {
         Note(session, cast(u64)47, "Sync Auth between your devices in the desktop and Android apps.", x, y, width)
+        return y + 48.0
     } else {
         half := (width - 8.0) / 2.0
         phase := LinkPhaseNow()
@@ -549,7 +555,7 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
                 if Action(session, 72, "Cancel", Rectangle.{x, y + 28.0, width, 40.0}, false) {
                     LinkCancel()
                 }
-                return
+                return y + 76.0
             }
             if Action(session, 70, "Create account", Rectangle.{x, y, width, 40.0}, false) {
                 if !SaveNode() || !CreateAccount() {
@@ -603,7 +609,7 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
                     Label(session, cast(u64)86, TextUntilNul(account_key_status[:]), Rectangle.{x, y, width, 20.0}, 14)
                 }
             }
-            return
+            return y + 48.0
         }
         Label(session, cast(u64)80, AccountServer(), Rectangle.{x, y, width, 24.0}, 14)
         y += 32.0
@@ -666,6 +672,7 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
                 forget_pending = true
             }
         }
+        return y + 48.0
     }
 }
 

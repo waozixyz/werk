@@ -71,8 +71,17 @@ def start():
         if found.returncode == 0:
             window = found.stdout.splitlines()[0]
             command("xdotool", "windowfocus", "--sync", window)
-            time.sleep(0.5)
-            return
+            ready = time.monotonic() + 20
+            while time.monotonic() < ready:
+                assert app.poll() is None, "Werkzeug exited while loading its tools"
+                capture("startup")
+                with Image.open(output / "startup.png") as source:
+                    labels = source.convert("L").point(lambda value: 0 if value < 140 else 255)
+                    labels.resize((source.width * 3, source.height * 3)).save(output / "startup-labels.png")
+                text = command("tesseract", str(output / "startup-labels.png"), "stdout", "--psm", "11")
+                if all(name in text for name in ("Pass", "Auth", "Calculator", "Clock")):
+                    return
+            raise AssertionError("Werkzeug did not finish drawing its home screen")
         time.sleep(0.1)
     raise AssertionError("Werkzeug did not show its window")
 
@@ -417,8 +426,8 @@ try:
     start()
     assert "paused=1\n" in account_file.read_text()
     click(390, 28)
-    # The connected account's public-ID button opens management.
-    click(210, 310)
+    # Use the visible account-management action after a restart.
+    click_scrolled("Manage", exact_case=True)
     capture("sync-paused-restarted")
     previous_account = account_file.read_text()
     scroll_down()

@@ -1,8 +1,9 @@
 # Google Play testing
 
-The public app is **Werkzeug**, package `xyz.waozi.werk`. Preserve the existing
-release certificate. This new package installs separately from legacy Pass
-(`xyz.waozi.pass`); it cannot read or replace the legacy app’s private data.
+The public app is **Werkzeug**, package `xyz.waozi.pass`. Preserve the existing
+release certificate. This package updates the existing Pass app
+(`xyz.waozi.pass`) in place and keeps its private data. A separate
+`xyz.waozi.werk` installation remains separate and untouched.
 
 `make android-bundle` builds a release AAB for both ARM architectures, targeting
 Android 16/API 36. Supply the existing `keystore.*` Gradle properties to sign it;

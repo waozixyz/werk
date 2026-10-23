@@ -44,7 +44,10 @@ for tool, name in (("", "Werkzeug"), ("pass", "Pass"), ("auth", "Auth"),
     config.read(entry)
     values = config["Desktop Entry"]
     assert values["Name"] == name
-    assert (share / "icons/hicolor/512x512/apps" / (values["Icon"] + ".png")).is_file()
+    icon = Path(values["Icon"])
+    if not icon.is_absolute():
+        icon = share / "icons/hicolor/512x512/apps" / (values["Icon"] + ".png")
+    assert icon.is_file()
     argv = shlex.split(values["Exec"])
     if not tool:
         argv = argv[:1]

@@ -29,6 +29,13 @@ for source in sorted((root / "packaging/linux").glob("xyz.waozi.werk*.desktop"))
     if args.bin_dir:
         content = content.replace("Exec=werk ", "Exec=" + executable(args.bin_dir / "werk") + " ")
         content = content.replace("TryExec=werk", "TryExec=" + str(args.bin_dir / "werk"))
+        # Local launchers resolve their installed icon directly, including
+        # custom data directories and paths containing spaces.
+        for line in content.splitlines():
+            if line.startswith("Icon="):
+                name = line.removeprefix("Icon=")
+                icon = args.data_dir / "icons/hicolor/512x512/apps" / (name + ".png")
+                content = content.replace(line, "Icon=" + str(icon.resolve()))
     for target in destinations:
         if args.uninstall:
             target.unlink(missing_ok=True)

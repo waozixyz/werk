@@ -1,19 +1,17 @@
-# Werkzeug F-Droid status
+# Werkzeug F-Droid update status
 
-The owner chose `xyz.waozi.werk` as a separate Android installation after
-reviewing the reinstall requirement on 2026-10-23. Preserve the existing release
-signing key and leave legacy Pass installations and data untouched.
+The owner's latest request is an update of the existing Pass app. Keep `xyz.waozi.pass`, the existing author signing certificate and private app data. The visible name remains Werkzeug. Preserve any separate `xyz.waozi.werk` installation as well.
 
-- [x] Use the correct Android application ID and Werkzeug display name.
-- [x] Open the [new-package draft](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/53912) using the current official new-app template.
-- [x] Close the superseded old-ID draft.
-- [x] Validate the metadata locally with `fdroid lint` and `fdroid rewritemeta`.
-- [ ] Finish source-build and reproducibility verification against the published reference APK.
-- [ ] Resolve missing explicit licenses in author-maintained source dependencies.
-- [ ] Resolve or explain all GitLab pipeline results and source-library template exceptions.
-- [ ] Obtain owner approval before marking the merge request ready for review.
+- [x] Prepare the original Android application ID and matching artifact verifiers.
+- [x] Prepare 0.4.4 with version code 18 through `update_version.sh`.
+- [x] Build the compatible ARM and private-emulator candidates with matching ZX dependencies and current app bundles.
+- [x] Verify both ARM native libraries match byte for byte after independent builds in different directories.
+- [ ] Publish the compatible candidate through the normal release workflow and pin its exact source revision in the recipe.
+- [ ] Complete source-build and reproducibility verification against its reference APK.
+- [ ] Resolve missing explicit dependency licenses and remaining GitLab pipeline results.
+- [ ] Obtain owner approval before marking the update ready for review.
 - [ ] Verify catalog publication after maintainers merge and F-Droid publishes it.
 
-[Recipe](metadata/xyz.waozi.werk.yml) · [Merge-request text](MERGE_REQUEST.md)
+[Update draft](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/53909) · [Recipe](metadata/xyz.waozi.pass.yml) · [Merge-request text](MERGE_REQUEST.md)
 
-No F-Droid catalog publication is implied by a source build or draft request.
+The local recipe is being prepared; its source pin still needs the verified compatible candidate. A Draft or a successful source build does not imply F-Droid catalog publication.

@@ -19,7 +19,7 @@
     },
     {
       "commit": "6a5f6189ca51e45a59c9ef77c4ec4112393225e0",
-      "dependencies": {"kryon": "p62b1df489d9e5c45", "kss": "p1b13dda539ed2a39", "mingcute": "pe1027b9d16704793"},
+      "dependencies": {"kryon": "p430ae3c4377f052f", "kss": "p1b13dda539ed2a39", "mingcute": "pe1027b9d16704793"},
       "id": "p0e0131936e76f979",
       "name": "workbook",
       "ref": "master",
@@ -27,11 +27,19 @@
     },
     {
       "commit": "1cb9df183089a77c8a16448a556186f30b261a98",
-      "dependencies": {"kryon": "p62b1df489d9e5c45"},
+      "dependencies": {"kryon": "p430ae3c4377f052f"},
       "id": "p1b13dda539ed2a39",
       "name": "Kss",
       "ref": "master",
       "url": "https://github.com/kryonlabs/kss.git"
+    },
+    {
+      "commit": "1d2d987699cbb1a864b688a8b7ff480baa6ccf4d",
+      "dependencies": {"raylib": "p5a77c9c35110e925"},
+      "id": "p430ae3c4377f052f",
+      "name": "kryon",
+      "ref": "master",
+      "url": "https://github.com/kryonlabs/kryon.git"
     },
     {
       "commit": "e1f480f382d9443c4412133b55948374c77a5c21",
@@ -52,14 +60,6 @@
       "url": "https://github.com/raysan5/raylib.git"
     },
     {
-      "commit": "55af1b53b186f5eaaf7249ac7653da3ef1e606d0",
-      "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "id": "p62b1df489d9e5c45",
-      "name": "kryon",
-      "ref": "master",
-      "url": "https://github.com/kryonlabs/kryon.git"
-    },
-    {
       "commit": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3",
       "dependencies": {"liboqs": "p4b0a50b49959e674"},
       "id": "p7098ac9cd92f7e5f",
@@ -78,7 +78,7 @@
     },
     {
       "commit": "33f888e50ebefdbee532731fe2aad9ea6f5ab964",
-      "dependencies": {"crypto": "pf039d7a776333200", "kryon": "p62b1df489d9e5c45"},
+      "dependencies": {"crypto": "pf039d7a776333200", "kryon": "p430ae3c4377f052f"},
       "id": "pae8cbf8fa0578bfc",
       "name": "Apps",
       "ref": "master",
@@ -86,7 +86,7 @@
     },
     {
       "commit": "f7449b379540f6f6f53c64c980cb5d4d4abcf399",
-      "dependencies": {"daochi_client": "p0cff069893bdc938", "kryon": "p62b1df489d9e5c45", "monocypher": "p809b4d31a48625a3", "qrcode": "p0dfa70137405b096"},
+      "dependencies": {"daochi_client": "p0cff069893bdc938", "kryon": "p430ae3c4377f052f", "monocypher": "p809b4d31a48625a3", "qrcode": "p0dfa70137405b096"},
       "id": "pb7942f184eef21db",
       "name": "Entity",
       "ref": "master",
@@ -110,11 +110,11 @@
     }
   ],
   "root": {
-    "dependencies": {"apps": "pae8cbf8fa0578bfc", "daochi_client": "p0cff069893bdc938", "entity": "pb7942f184eef21db", "kryon": "p62b1df489d9e5c45", "liboqs": "p4b0a50b49959e674", "mingcute": "pe1027b9d16704793", "monocypher": "p809b4d31a48625a3", "oqs": "p7098ac9cd92f7e5f", "workbook": "p0e0131936e76f979"},
+    "dependencies": {"apps": "pae8cbf8fa0578bfc", "daochi_client": "p0cff069893bdc938", "entity": "pb7942f184eef21db", "kryon": "p430ae3c4377f052f", "liboqs": "p4b0a50b49959e674", "mingcute": "pe1027b9d16704793", "monocypher": "p809b4d31a48625a3", "oqs": "p7098ac9cd92f7e5f", "workbook": "p0e0131936e76f979"},
     "name": "Werkzeug"
   },
   "toolchain": {
-    "commit": "ec43f576478d4a0028d560be560585749a92f3ed",
+    "commit": "e79092d2f6c3d95c773cfc1a202832dbf06cd799",
     "ref": "master",
     "url": "https://github.com/ziranlang/ziran.git"
   }

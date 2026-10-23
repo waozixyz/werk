@@ -15,7 +15,7 @@ Launcher :: #import "apps/launcher";
 Controller :: #import "apps/controller";
 Rules :: #import "apps/protocol";
 
-AppsControllerSha256 :: "dfc835742d58dc714e175e5adde718c58d51b4132ab80bdb7983eb2985734932";
+AppsControllerSha256 :: "952db2717c6d8500aa9a4c29b78c3028a19821e11bf511f39471bf04cf02c6cd";
 
 HomePreference :: struct {
     title: [256]u8
@@ -258,7 +258,7 @@ SharedHome :: (session: Session, bounds: Rectangle, dark: bool, selected: s32,
     if home.unavailable { return false }
     if !home.controller.ready {
         path: [PATH_LIMIT]u8
-        bytes, found := ReadBundle(PathJoin(path[:], BundledAppsRoot(), "apps.zib"))
+        bytes, found := ReadBundle(PathJoin(path[:], BundledAppsRoot(), "apps.zx"))
         if !found { home.unavailable = true; return false }
         home.bytes = bytes
         if !Controller.AppControllerOpen(*home.controller, home.bytes, AppsControllerSha256,

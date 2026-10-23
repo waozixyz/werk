@@ -1,0 +1,2 @@
+- Werkzeug updates the existing Pass Android app using its original application ID and signing certificate, keeping its saved data.
+- The app continues to appear as Werkzeug, with Pass, Auth, Calculator and Clock together.

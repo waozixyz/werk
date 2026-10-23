@@ -574,7 +574,7 @@ LoadApps :: () {
         file: [64]u8
         CopyField(file[:], ids[index])
         used := ids[index].count
-        suffix := ".zib"
+        suffix := ".zx"
         position: s64 = 0
         while position < suffix.count {
             file[used + position] = suffix[position]
@@ -586,11 +586,11 @@ LoadApps :: () {
     }
     #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
         workbook_path: [PATH_LIMIT]u8
-        unused LoadApp("workbook", PathJoin(workbook_path[:], root, "workbook.zib"))
+        unused LoadApp("workbook", PathJoin(workbook_path[:], root, "workbook.zx"))
     }
     entity_path: [PATH_LIMIT]u8
     entity_index = app_count
-    if !LoadApp("entity", PathJoin(entity_path[:], root, "entity.zib")) { entity_index = -1 }
+    if !LoadApp("entity", PathJoin(entity_path[:], root, "entity.zx")) { entity_index = -1 }
 }
 
 EntityAppIndex :: () -> s32 { return entity_index }
@@ -776,11 +776,11 @@ AppWidgetCall :: (context: *void, module: *u8, function: *u8,
         name: [256]u8
         CopyField(name[:], TextUntilNul(app.id[:]))
         used := TextUntilNul(name[:]).count
-        suffix := ".zib"
-        for index: 0..3 { name[used + index] = suffix[index] }
-        name[used + 4] = 0
+        suffix := ".zx"
+        for index: 0..suffix.count - 1 { name[used + index] = suffix[index] }
+        name[used + suffix.count] = 0
         path: [4096]u8
-        props := Picker.FilePickerProps.{.title = "Download app bundle", .filter = "App bundle | *.zib", .save = true, .suggested_name = TextUntilNul(name[:])}
+        props := Picker.FilePickerProps.{.title = "Download app bundle", .filter = "App bundle | *.zx", .save = true, .suggested_name = TextUntilNul(name[:])}
         selected := Picker.PickFile(props, path[:])
         if selected == 0 { return "cancelled" }
         if selected != 1 { return "error" }

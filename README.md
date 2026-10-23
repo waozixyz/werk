@@ -36,10 +36,11 @@ shortcut, with its own icon.
 Password generation and local tools work on your device. Account sync and
 node connections are optional. Each tool keeps its own private files.
 
-Werkzeug was formerly Pass. The new Android package installs separately from
-the legacy Pass app; the older app and its data remain available.
+Werkzeug was formerly Pass. Android keeps the original `xyz.waozi.pass`
+package and signing certificate so existing Pass installations can update
+to Werkzeug while keeping their saved data.
 
-[F-Droid submission (draft)](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/53912)
+[F-Droid update submission (draft)](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/53909)
 · [Report a problem](https://github.com/waozixyz/werk/issues)
 · [Build, command-line tools and data details](docs/development.md)
 

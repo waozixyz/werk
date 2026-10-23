@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.4] - 2026-10-23
+
+- Werkzeug updates the existing Pass Android app using its original application ID and signing certificate, keeping its saved data.
+- The app continues to appear as Werkzeug, with Pass, Auth, Calculator and Clock together.
+
 ## [0.4.3] - 2026-10-23
 
 - Werkzeug uses its own Android application ID, `xyz.waozi.werk`.

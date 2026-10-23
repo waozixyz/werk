@@ -10,14 +10,14 @@ kryon=$("$ziran" pkg path kryon)
 mingcute=$("$ziran" pkg path mingcute)
 mkdir -p build/app-logic-test
 "$ziran" bundle --root . --module-path apps/auth --module-path shared --module-path "$ziran_root/std" \
-    --entry totp_test:Run -o build/app-logic-test/totp.zib apps/auth/totp_test.zi
-test "$("$ziran" run build/app-logic-test/totp.zib)" = 0
+    --entry totp_test:Run -o build/app-logic-test/totp.zx apps/auth/totp_test.zi
+test "$("$ziran" run build/app-logic-test/totp.zx)" = 0
 "$ziran" bundle --root . --module-path apps/auth --module-path shared --module-path "$ziran_root/std" \
-    --entry exports_test:Run -o build/app-logic-test/exports.zib apps/auth/exports_test.zi
-test "$("$ziran" run build/app-logic-test/exports.zib)" = 0
+    --entry exports_test:Run -o build/app-logic-test/exports.zx apps/auth/exports_test.zi
+test "$("$ziran" run build/app-logic-test/exports.zx)" = 0
 "$ziran" bundle --root . --module-path apps/calculator --module-path "$ziran_root/std" \
-    --entry arithmetic_test:Run -o build/app-logic-test/arithmetic.zib apps/calculator/arithmetic_test.zi
-test "$("$ziran" run build/app-logic-test/arithmetic.zib)" = 0
+    --entry arithmetic_test:Run -o build/app-logic-test/arithmetic.zx apps/calculator/arithmetic_test.zi
+test "$("$ziran" run build/app-logic-test/arithmetic.zx)" = 0
 set -- --root tests --module-path apps/calculator \
     --module-path "kryon=$kryon/src/backend" --module-path "kryon=$kryon/src/ui" \
     --module-path "$kryon/src/ui" --module-path "$mingcute/src" --module-path "$ziran_root/std" \
@@ -25,8 +25,8 @@ set -- --root tests --module-path apps/calculator \
 "$ziran" bundle "$@" --define KRYON_HOSTED_UI \
     --bind app_context:AppKeyHost=calculator_input_test:AppKeyHost \
     --bind app_context:AppFieldInputHost=calculator_input_test:AppFieldInputHost \
-    -o build/app-logic-test/input.zib tests/calculator_input_test.zi
-test "$("$ziran" run build/app-logic-test/input.zib)" = 42
+    -o build/app-logic-test/input.zx tests/calculator_input_test.zi
+test "$("$ziran" run build/app-logic-test/input.zx)" = 42
 "$ziran" build "$@" --target=c -o build/app-logic-test/input-c tests/calculator_input_test.zi
 ${CC:-cc} -std=c99 -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections \
     -I"$ziran_root/include" -Ibuild/app-logic-test/input-c build/app-logic-test/input-c/*.c -lm \

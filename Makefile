@@ -53,8 +53,8 @@ cli: build/pass
 # Each app is its own bundle; Werkzeug runs them in one window. Workbook runs
 # only in the Linux desktop app, so the web and Android apps leave it out.
 APPS := pass auth calculator clock
-PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zib) build/apps/entity.zib build/apps/apps.zib
-APP_BUNDLES := $(PORTABLE_BUNDLES) build/apps/workbook.zib
+PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zx) build/apps/entity.zx build/apps/apps.zx
+APP_BUNDLES := $(PORTABLE_BUNDLES) build/apps/workbook.zx
 SHARED_SOURCES := $(wildcard shared/*.zi)
 APPS_UI_SOURCES = $(wildcard $(APPS_DIR)/src/*.zi $(APPS_DIR)/ui/*.zi $(APPS_DIR)/ui/locales/*.json)
 APP_MODULE_PATHS = --module-path shared --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
@@ -62,7 +62,7 @@ apps: $(APP_BUNDLES)
 portable-apps: $(PORTABLE_BUNDLES)
 # Compile the shared screen with the host's compiler and UI library. The
 # reviewed payload must match both the build pin and the native host pin.
-build/apps/apps.zib: $(APPS_UI_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock apps-controller.sha256 Makefile scripts/ziran.sh
+build/apps/apps.zx: $(APPS_UI_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock apps-controller.sha256 Makefile scripts/ziran.sh
 	mkdir -p $(@D)
 	python3 '$(APPS_DIR)/scripts/generate-ui-locales.py' --check
 	$(ZIRAN) bundle --root $(APPS_DIR)/ui --module-path $(APPS_DIR)/src $(APP_MODULE_PATHS) \
@@ -70,23 +70,24 @@ build/apps/apps.zib: $(APPS_UI_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURC
 	sha256sum $@ | cut -d ' ' -f 1 > $(@D)/apps.sha256
 	test "$$(cat $(@D)/apps.sha256)" = "$$(cat apps-controller.sha256)"
 .SECONDEXPANSION:
-build/apps/%.zib: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
+build/apps/%.zx: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
 	mkdir -p $(@D)
 	$(ZIRAN) bundle --root . --module-path apps/$* $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERK_APP \
 		$(if $(wildcard apps/$*/assets),--asset-dir assets=apps/$*/assets) --entry $*:Main -o $@ apps/$*/$*.zi
 
-build/apps/workbook.zib: $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(WORKBOOK_DIR)/Makefile ziran.lock
-	$(MAKE) -C $(WORKBOOK_DIR) ZIRAN=$(ZIRAN_ROOT)/build/bin/ziran bundle
-	install -m 0600 $(WORKBOOK_DIR)/build/workbook.zib $@
+build/apps/workbook.zx: $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile
+	mkdir -p $(@D)
+	$(ZIRAN) bundle --root $(WORKBOOK_DIR) --module-path $(WORKBOOK_DIR)/src $(APP_MODULE_PATHS) \
+		--module-path kryon=$(KRYON_DIR)/src/backend --define KRYON_HOSTED_UI --entry app:Main -o $@ $(WORKBOOK_DIR)/src/app.zi
 
-build/apps/entity.zib: $(ENTITY_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile
+build/apps/entity.zx: $(ENTITY_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile
 	mkdir -p $(@D)
 	$(ZIRAN) bundle --root $(ENTITY_DIR) --module-path $(ENTITY_DIR)/src $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI \
 		--module-path qrcode=$(QRCODE_DIR)/src --asset-dir assets=$(ENTITY_DIR)/assets --entry entity:Main -o $@ $(ENTITY_DIR)/src/entity.zi
 
 # The portable bundle runtime the host links, built from the locked Ziran.
 build/ziran/libziran.a: ziran.lock $(ZIRAN_RUNTIME_SOURCES)
-	env -u DISPLAY -u WAYLAND_DISPLAY $(MAKE) -C $(ZIRAN_ROOT) BUILD_DIR=$(abspath build/ziran) $(abspath $@)
+	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BUILD_DIR=$(abspath build/ziran) $(abspath $@)
 
 build/generated/desktop/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(ENTITY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
@@ -136,7 +137,7 @@ gui-test: gui
 # The bundle runtime for the browser, built from the locked Ziran.
 WEB_AR ?= $(dir $(WEB_CC))emar
 build/web-runtime/libziran.a: ziran.lock
-	env -u DISPLAY -u WAYLAND_DISPLAY $(MAKE) -C $(ZIRAN_ROOT) BOOTSTRAP=1 BUILD_DIR=$(abspath build/web-runtime) \
+	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BOOTSTRAP=1 BUILD_DIR=$(abspath build/web-runtime) \
 		CC=$(WEB_CC) AR=$(WEB_AR) OBJCOPY=true CFLAGS=-O2 $(abspath $@)
 build/generated/browser/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
@@ -223,7 +224,6 @@ install-gui: gui
 	install -m 0644 packaging/linux/werk-bundle.xml "$(DATA_DIR)/mime/packages/werk-bundle.xml"
 	@if command -v update-mime-database >/dev/null; then update-mime-database "$(DATA_DIR)/mime"; fi
 	@if command -v update-desktop-database >/dev/null; then update-desktop-database "$(DATA_DIR)/applications"; fi
-	@if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -f -t "$(DATA_DIR)/icons/hicolor"; fi
 uninstall-cli:
 	rm -f $(BIN_DIR)/pass
 uninstall-gui:

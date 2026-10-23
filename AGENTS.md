@@ -6,7 +6,7 @@ first.
 ## Tools are separate apps
 
 - Each tool lives in `apps/<tool>/` and builds into its own bundle,
-  `build/apps/<tool>.zib`. A tool reaches the host only through
+  `build/apps/<tool>.zx`. A tool reaches the host only through
   `shared/werk_app.zi`; the host (`src/apps.zi`) checks every call a
   bundle asks for and keeps each tool's files, assets and secret separate.
 - Tools never import another tool's modules. Code two tools need goes in
@@ -23,9 +23,10 @@ first.
 - Never commit, print or log a real master password, Auth secret, otpauth
   link, export file or current code. Tests use fixture values only, such as
   the RFC 6238 keys.
-- Keep Pass's on-disk formats and `src/migrate.zi`. The owner changed the
-  Android package to `xyz.waozi.werk` on 2026-10-23. Werkzeug installs
-  separately from legacy `xyz.waozi.pass`; never clear the legacy app's data.
+- Keep Pass's on-disk formats and `src/migrate.zi`. The owner's latest choice
+  on 2026-10-23 is an update of the existing Android/F-Droid app: keep
+  `xyz.waozi.pass` and its signing certificate, with the display name Werkzeug.
+  Preserve existing Pass data and any separate `xyz.waozi.werk` installation.
 - Every file Werkzeug writes is private (0600 in 0700 folders).
 
 ## Platforms and tests

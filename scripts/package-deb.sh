@@ -13,7 +13,7 @@ rm -rf "$stage"
 mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/lib/werk/apps" "$stage/usr/share/applications" \
 	"$stage/usr/share/mime/packages" "$stage/usr/share/metainfo" "$stage/usr/share/icons/hicolor/512x512/apps" "$stage/usr/share/doc/werk" "$out"
 cp "$artifacts/werk" "$stage/usr/bin/werk"
-cp "$artifacts"/apps/*.zib "$stage/usr/lib/werk/apps/"
+cp "$artifacts"/apps/*.zx "$stage/usr/lib/werk/apps/"
 cp "$artifacts/pfp.png" "$stage/usr/lib/werk/pfp.png"
 python3 "$root/scripts/install-launchers.py" --data-dir "$stage/usr/share"
 cp "$root/packaging/linux/werk-bundle.xml" "$stage/usr/share/mime/packages/werk-bundle.xml"

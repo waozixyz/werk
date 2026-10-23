@@ -8,7 +8,7 @@ work="$root/build/gui-smoke"
 rm -rf "$work"
 mkdir -p "$work/home/.local/lib/werk/apps"
 for app in pass auth calculator clock; do
-    printf 'obsolete bundle\n' > "$work/home/.local/lib/werk/apps/$app.zib"
+    printf 'obsolete bundle\n' > "$work/home/.local/lib/werk/apps/$app.zx"
 done
 for mode in light dark; do
     mkdir -p "$work/$mode/data/profile" "$work/$mode/cache"

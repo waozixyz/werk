@@ -18,6 +18,6 @@ for name in ReadStoreHost WriteStoreHost ClipboardCopyHost SecureAvailableHost S
     binds="$binds --bind app_context:$name=pass_state_host:$name"
 done
 "$ziran" bundle $args --entry pass_state_test:PassStateAnswer $binds \
-    -o build/pass-state-test/portable.zib tests/pass_state_test.zi tests/pass_state_host.zi
-test "$("$ziran" run build/pass-state-test/portable.zib)" = 42
+    -o build/pass-state-test/portable.zx tests/pass_state_test.zi tests/pass_state_host.zi
+test "$("$ziran" run build/pass-state-test/portable.zx)" = 42
 echo 'Pass state: native and portable tests pass'

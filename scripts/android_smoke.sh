@@ -3,7 +3,7 @@ set -euo pipefail
 
 root_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 apk="$root_dir/build/werk-android-debug.apk"
-package_name="${WERK_ANDROID_PACKAGE:-xyz.waozi.werk}"
+package_name="${WERK_ANDROID_PACKAGE:-xyz.waozi.pass}"
 
 if [ ! -s "$apk" ]; then
   echo "android smoke: missing APK artifact: $apk" >&2

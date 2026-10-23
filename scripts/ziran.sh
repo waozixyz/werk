@@ -2,6 +2,10 @@
 # Run the Ziran toolchain commit pinned by ziran.lock. Package commands fetch
 # their own locked sources into the user's Ziran cache.
 set -eu
+# An application's installation paths are not compiler build options. In
+# particular a staged BIN_DIR containing spaces must not become Ziran's
+# binary directory through GNU Make's recursive command-line environment.
+unset MAKEFLAGS MFLAGS MAKEOVERRIDES
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"

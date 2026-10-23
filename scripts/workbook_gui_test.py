@@ -115,13 +115,13 @@ try:
     type_text('5'); key('Return'); expect('5')
     key('ctrl+z'); expect('')
     key('ctrl+y'); expect('5')
-    bundle = work/'downloaded.zib'
+    bundle = work/'downloaded.zx'
     selector.write_text(str(bundle)+'\n')
     menu('Download')
     for _ in range(50):
         if bundle.exists(): break
         time.sleep(.1)
-    assert bundle.read_bytes() == (root/'build/apps/workbook.zib').read_bytes(), 'Downloaded bytes differ'
+    assert bundle.read_bytes() == (root/'build/apps/workbook.zx').read_bytes(), 'Downloaded bytes differ'
     selector.write_text(str(fixture)+'\n')
     menu('Open')
     expect('11'); expect('=A1*3',col=1)

@@ -94,7 +94,7 @@ opens the window on one tool, as Harmony's Auth entry does.
 ## Tools are separate apps
 
 Each tool lives in `apps/<tool>/` and is built into its own portable bundle,
-`build/apps/<tool>.zib`. All four are preinstalled. A tool reaches the host
+`build/apps/<tool>.zx`. All four are preinstalled. A tool reaches the host
 only through the calls in `shared/werk_app.zi` (its private files,
 clipboard, clock, key derivation and device-protected secret), and the host
 checks every call a bundle asks for before it runs. Tools never import each

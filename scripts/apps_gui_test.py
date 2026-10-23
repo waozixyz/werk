@@ -20,7 +20,7 @@ assets = Path(os.environ.get("WERK_TEST_ASSETS", root / "build"))
 shutil.rmtree(work, ignore_errors=True)
 work.mkdir(parents=True)
 expected = (root / "apps-controller.sha256").read_text().strip()
-assert hashlib.sha256((assets / "apps/apps.zib").read_bytes()).hexdigest() == expected
+assert hashlib.sha256((assets / "apps/apps.zx").read_bytes()).hexdigest() == expected
 environment = dict(os.environ, HOME=str(work / "home"), WERK_DATA=str(work / "data"),
                    WERK_ASSETS=str(assets), ENTITY_DATA=str(work / "entity"),
                    XDG_CONFIG_HOME=str(work / "config"), XDG_DATA_HOME=str(work / "share"),
@@ -80,6 +80,18 @@ def type_text(value):
     time.sleep(.3)
 
 
+def expect_title(expected):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        assert app.poll() is None, "Werkzeug exited during navigation"
+        title = command("xdotool", "getwindowname", window).strip()
+        if title == expected:
+            return
+        time.sleep(.1)
+    capture("navigation-failure")
+    raise AssertionError(f"Expected window title {expected!r}, got {title!r}")
+
+
 app = subprocess.Popen([str(binary)], env=environment)
 try:
     deadline = time.monotonic() + 30
@@ -105,10 +117,10 @@ try:
     assert not re.search(r"\d[\d.]*\s*(?:kB|MB)\b", home, re.I), home
     for name in ("Auth", "Calculator", "Clock", "Workbook", "Pass"):
         click_word(name)
-        assert command("xdotool", "getwindowname", window).strip() == name
+        expect_title(name)
         assert "stopped" not in capture(name.lower()).lower(), name + " failed to run"
         click(28, 28)
-        assert command("xdotool", "getwindowname", window).strip() == "Werkzeug"
+        expect_title("Werkzeug")
     for width, height in ((360, 640), (720, 520)):
         command("xdotool", "windowsize", "--sync", window, str(width), str(height))
         text = capture(f"home-{width}")
