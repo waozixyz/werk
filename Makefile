@@ -53,15 +53,18 @@ APPS := pass auth calculator clock
 PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zib) build/apps/entity.zib build/apps/apps.zib
 APP_BUNDLES := $(PORTABLE_BUNDLES) build/apps/workbook.zib
 SHARED_SOURCES := $(wildcard shared/*.zi)
+APPS_UI_SOURCES = $(wildcard $(APPS_DIR)/src/*.zi $(APPS_DIR)/ui/*.zi $(APPS_DIR)/ui/locales/*.json)
 APP_MODULE_PATHS = --module-path shared --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
 apps: $(APP_BUNDLES)
 portable-apps: $(PORTABLE_BUNDLES)
-build/apps/apps.zib: ziran.lock apps-controller.sha256
+# Compile the shared screen with the host's compiler and UI library. The
+# reviewed payload must match both the build pin and the native host pin.
+build/apps/apps.zib: $(APPS_UI_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock apps-controller.sha256 Makefile scripts/ziran.sh
 	mkdir -p $(@D)
-	$(ZIRAN) version > /dev/null
-	env -u DISPLAY -u WAYLAND_DISPLAY \
-		PATH="$(if $(wildcard $(ZIRAN_ROOT)/build/bin/ziran),$(ZIRAN_ROOT)/build/bin,$(CURDIR)/build/toolchain/bin):$$PATH" \
-		python3 '$(APPS_DIR)/scripts/build-ui.py' --output '$(abspath $(@D))'
+	python3 '$(APPS_DIR)/scripts/generate-ui-locales.py' --check
+	$(ZIRAN) bundle --root $(APPS_DIR)/ui --module-path $(APPS_DIR)/src $(APP_MODULE_PATHS) \
+		--define KRYON_HOSTED_UI --entry apps:Main -o $@ $(APPS_DIR)/ui/apps.zi
+	sha256sum $@ | cut -d ' ' -f 1 > $(@D)/apps.sha256
 	test "$$(cat $(@D)/apps.sha256)" = "$$(cat apps-controller.sha256)"
 .SECONDEXPANSION:
 build/apps/%.zib: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
@@ -120,6 +123,7 @@ test: source-check core-test pass-state-test app-logic-test cli-test lesspass-co
 gui-smoke: gui
 	sh scripts/gui_smoke.sh
 gui-test: gui
+	python3 scripts/private-display.py python3 scripts/apps_gui_test.py
 	sh scripts/werk_gui_test.sh
 	python3 scripts/private-display.py python3 scripts/workbook_gui_test.py
 	python3 scripts/private-display.py python3 scripts/launcher_gui_test.py

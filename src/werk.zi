@@ -8,6 +8,7 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/ScrollDevice"
 #import "kryon/Theme"
 #import "apps"
+#import "home"
 #import "entity_management"
 #import "profile"
 #import "platform"
@@ -185,53 +186,18 @@ TopBar :: (session: Session, viewport: Rectangle) {
     }
 }
 
-Home :: (session: Session, area: Rectangle) {
-    if SharedHome(session, area, ProfileDark(), open_app) {
+Home :: (session: Session, area: Rectangle, input: TextFieldInput, key: s32, modifiers: s32) {
+    if SharedHome(session, area, ProfileDark(), open_app, input, key, modifiers) {
         opened := SharedHomeOpened()
         if opened >= 0 {
             open_app = opened
             screen = SCREEN_APP
         }
+        keyboard_wanted = SharedHomeKeyboard()
         return
     }
-    HomeFallback(session, area)
-}
-
-HomeFallback :: (session: Session, area: Rectangle) {
-    visible := AppCount() - ifx EntityAppIndex() >= 0 then 1 else 0
-    tile: float32 = 120.0
-    gap: float32 = 16.0
-    columns := cast(s32)((area.width - gap) / (tile + gap))
-    if columns < 2 {
-        columns = 2
-        tile = (area.width - gap * 3.0) / 2.0
-    }
-    if columns > visible && visible > 0 {
-        columns = visible
-    }
-    if visible == 0 {
-        Label(session, cast(u64)20, "No apps are installed.", Rectangle.{area.x + 16.0, area.y + 16.0,
-                area.width - 32.0, 24.0}, 16)
-        return
-    }
-    row_width := cast(float32)columns * tile + cast(float32)(columns - 1) * gap
-    left := area.x + (area.width - row_width) * 0.5
-    index: s32 = 0
-    while index < AppCount() {
-        if AppId(index) == "entity" { index += 1; continue }
-        column := cast(float32)(index % columns)
-        row := cast(float32)(index / columns)
-        bounds := Rectangle.{left + column * (tile + gap), area.y + gap + row * (tile + gap), tile, tile}
-        props := ButtonProps.{.key = cast(u64)(100 + index), .id = 100 + index, .bounds = bounds,
-            .label = AppName(index), .icon_shape = AppIcon(index),
-            .icon_placement = IconPlacement.IconPlacementAbove,
-            .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
-        if Button(session, props) != 0 {
-            open_app = index
-            screen = SCREEN_APP
-        }
-        index += 1
-    }
+    Label(session, cast(u64)20, "Apps are unavailable.",
+        Rectangle.{area.x + 16.0, area.y + 16.0, area.width - 32.0, 28.0}, 16)
 }
 
 // Applies a text field's edit to a terminated buffer.
@@ -745,7 +711,7 @@ WerkFrame :: (session: Session, viewport: Rectangle) -> s32 {
     TopBar(session, viewport)
     content = Rectangle.{viewport.x, viewport.y + BAR_HEIGHT, viewport.width, viewport.height - BAR_HEIGHT}
     if screen == SCREEN_HOME {
-        Home(session, content)
+        Home(session, content, input, key, modifiers)
     } else if screen == SCREEN_PROFILE {
         ProfileScreen(session, content, input, key, modifiers)
     } else if screen == SCREEN_APP && open_app >= 0 {

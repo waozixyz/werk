@@ -1,0 +1,301 @@
+// Werkzeug supplies tools and private preferences to the shared Apps screen.
+#import "apps"
+#import "platform"
+#import "files"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/vec"
+#import "std/json_scan"
+#import "kryon/widget_host"
+#import "kryon/app_files"
+#import "kryon/app_protocol"
+#import "std/bundle_host"
+using UI :: #import "kryon/Widgets";
+Launcher :: #import "apps/launcher";
+Controller :: #import "apps/controller";
+Rules :: #import "apps/protocol";
+
+AppsControllerSha256 :: "8c5806d7ff5a4fdaf6b98a7668acbf0aad236ece1d5e68ffe1f7b268a1afb077";
+
+HomePreference :: struct {
+    title: [256]u8
+    icon: [64]u8
+    favorite: bool
+}
+
+HomeState :: struct {
+    controller: Controller.AppController
+    view: Launcher.AppLauncherState
+    preferences: [APP_LIMIT]HomePreference
+    indices: [APP_LIMIT]s32
+    bytes: string
+    body: string
+    catalog: string
+    response: string
+    revision: s64
+    sequence: s64
+    status: string
+    selected: s32
+    session: Session
+    opened: s32
+    pending: Rules.AppsRequest
+    has_pending: bool
+    loaded: bool
+    unavailable: bool
+}
+home: HomeState;
+
+HomeIndex :: (id: string) -> s32 {
+    for index: cast(s32)0..AppCount() - 1 {
+        if AppId(index) == id && id != "entity" { return index }
+    }
+    return -1
+}
+
+HomeTitle :: (index: s32) -> string {
+    title := TextUntilNul(home.preferences[index].title[:])
+    return ifx title == "" then AppName(index) else title
+}
+
+HomeIcon :: (index: s32) -> string {
+    choice := HomeIndex(TextUntilNul(home.preferences[index].icon[:]))
+    return AppIcon(ifx choice >= 0 then choice else index)
+}
+
+HomePreferencesPath :: (output: []u8) -> string {
+    folder: [PATH_LIMIT]u8
+    path := PathJoin(folder[:], DataRoot(), "profile")
+    if !EnsureDirectory(path) { return "" }
+    return PathJoin(output, path, "apps.json")
+}
+
+HomeBool :: (text: string, at: s32) -> bool { return at >= 0 && MatchLiteral(text, at, "true") }
+
+HomeLoad :: () {
+    home.loaded = true
+    home.view.grid = true
+    path: [PATH_LIMIT]u8
+    bytes: [8192]u8
+    count := ReadPrivate(HomePreferencesPath(path[:]), bytes[:])
+    if count <= 0 { return }
+    text := TextView(bytes[:count])
+    if HomeBool(text, FieldAt(text, 0, "list")) { home.view.grid = false }
+    entries := FieldAt(text, 0, "apps")
+    at := Space(text, entries + 1)
+    for index: cast(s32)0..ArrayCount(text, entries) - 1 {
+        id: [128]u8
+        if Rules.AppsReadText(text, at, "id", id[:]) {
+            tool := HomeIndex(TextUntilNul(id[:]))
+            if tool >= 0 {
+                preference: HomePreference
+                if Rules.AppsReadText(text, at, "title", preference.title[:]) &&
+                Rules.AppTitleValid(TextUntilNul(preference.title[:])) &&
+                Rules.AppsReadText(text, at, "icon", preference.icon[:]) &&
+                (preference.icon[0] == 0 || HomeIndex(TextUntilNul(preference.icon[:])) >= 0) {
+                    preference.favorite = HomeBool(text, FieldAt(text, at, "favorite"))
+                    home.preferences[tool] = preference
+                }
+            }
+        }
+        at = Space(text, ValueEnd(text, at, 0))
+        if at < text.count && text[at] == cast(u8)44 { at = Space(text, at + 1) }
+    }
+}
+
+HomeSave :: () -> bool {
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "{\"v\":1,\"list\":%,\"apps\":[", ifx home.view.grid then "false" else "true")
+    first := true
+    for index: cast(s32)0..AppCount() - 1 {
+        if AppId(index) == "entity" { continue }
+        if !first { BuilderPrint(*bytes, ",") }
+        first = false
+        BuilderPrint(*bytes, "{\"id\":")
+        Rules.AppsWriteQuoted(*bytes, AppId(index))
+        BuilderPrint(*bytes, ",\"title\":")
+        Rules.AppsWriteQuoted(*bytes, TextUntilNul(home.preferences[index].title[:]))
+        BuilderPrint(*bytes, ",\"icon\":")
+        Rules.AppsWriteQuoted(*bytes, TextUntilNul(home.preferences[index].icon[:]))
+        BuilderPrint(*bytes, ",\"favorite\":%}", ifx home.preferences[index].favorite then "true" else "false")
+    }
+    BuilderPrint(*bytes, "]}\n")
+    path: [PATH_LIMIT]u8
+    saved := WritePrivate(HomePreferencesPath(path[:]), TextView(VecSlice(bytes, 0, bytes.count)))
+    VecFree(bytes)
+    return saved
+}
+
+HomeReply :: (status: string) -> string {
+    AppFileFree(home.response)
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "{\"v\":1,\"status\":\"%\",\"request\":%}", status, home.sequence)
+    home.response = BuilderFinish(bytes)
+    return home.response
+}
+
+HomeIcons :: (tool: s32) -> string {
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "{\"v\":1,\"icons\":[{\"id\":\"\",\"shape\":")
+    Rules.AppsWriteQuoted(*bytes, AppIcon(tool))
+    BuilderPrint(*bytes, "}")
+    for index: cast(s32)0..AppCount() - 1 {
+        if AppId(index) == "entity" { continue }
+        BuilderPrint(*bytes, ",{\"id\":")
+        Rules.AppsWriteQuoted(*bytes, AppId(index))
+        BuilderPrint(*bytes, ",\"shape\":")
+        Rules.AppsWriteQuoted(*bytes, AppIcon(index))
+        BuilderPrint(*bytes, "}")
+    }
+    BuilderPrint(*bytes, "]}")
+    AppFileFree(home.response)
+    home.response = BuilderFinish(bytes)
+    return home.response
+}
+
+HomeService :: (context: *void, text: string) -> string {
+    request: Rules.AppsRequest
+    if !Rules.AppsReadRequest(text, *request) { return "" }
+    if request.operation == Rules.APPS_CATALOG {
+        if request.revision > 0 && request.revision == home.revision { return "{\"v\":1,\"unchanged\":true}" }
+        return home.catalog
+    }
+    if request.operation == Rules.APPS_STATUS {
+        if request.request != home.sequence { return "" }
+        return HomeReply(home.status)
+    }
+    tool := HomeIndex(TextUntilNul(request.id[:]))
+    if tool < 0 { return HomeReply("rejected") }
+    if request.operation == Rules.APPS_ICONS { return HomeIcons(tool) }
+    if home.has_pending || (request.operation != Rules.APPS_OPEN && request.operation != Rules.APPS_PIN &&
+        request.operation != Rules.APPS_UNPIN && request.operation != Rules.APPS_PROPERTIES) { return HomeReply("rejected") }
+    home.pending = request
+    home.has_pending = true
+    home.sequence += 1
+    home.status = "queued"
+    return HomeReply(home.status)
+}
+
+HomeDrain :: () {
+    if !home.has_pending { return }
+    home.has_pending = false
+    request := home.pending
+    index := HomeIndex(TextUntilNul(request.id[:]))
+    home.status = "rejected"
+    if index < 0 { return }
+    if request.operation == Rules.APPS_OPEN {
+        home.opened = index
+        home.status = "applied"
+        return
+    }
+    before := home.preferences[index]
+    if request.operation == Rules.APPS_PIN || request.operation == Rules.APPS_UNPIN {
+        home.preferences[index].favorite = request.operation == Rules.APPS_PIN
+    } else if request.operation == Rules.APPS_PROPERTIES {
+        if request.icon[0] != 0 && HomeIndex(TextUntilNul(request.icon[:])) < 0 { return }
+        home.preferences[index].title = request.title
+        home.preferences[index].icon = request.icon
+    } else { return }
+    if HomeSave() { home.status = "applied" }
+    else { home.preferences[index] = before }
+}
+
+HomeWidgets :: (context: *void, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    return AppWidgetCall(context, module, function, arguments, count, result)
+}
+
+HomeAssetAllowed :: (path: string) -> bool { return path == "" }
+
+HomeCards :: (context: *void, indices: []s32, bounds: Rectangle,
+    input: TextFieldInput, section_break: s32, columns: s32) -> bool {
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "\"title\":\"Werkzeug\",\"locale\":\"en\",\"presentation\":{\"mode\":\"%\",\"columns\":%",
+        ifx home.view.grid then "icon" else "list", columns)
+    if section_break >= 0 { BuilderPrint(*bytes, ",\"section_break\":%", section_break) }
+    BuilderPrint(*bytes, "},\"children\":[")
+    for at: cast(s32)0..cast(s32)indices.count - 1 {
+        index := home.indices[indices[at]]
+        if at > 0 { BuilderPrint(*bytes, ",") }
+        BuilderPrint(*bytes, "{\"id\":")
+        Rules.AppsWriteQuoted(*bytes, AppId(index))
+        BuilderPrint(*bytes, ",\"title\":")
+        Rules.AppsWriteQuoted(*bytes, HomeTitle(index))
+        BuilderPrint(*bytes, ",\"original_title\":")
+        Rules.AppsWriteQuoted(*bytes, AppName(index))
+        BuilderPrint(*bytes, ",\"icon_choice\":")
+        Rules.AppsWriteQuoted(*bytes, TextUntilNul(home.preferences[index].icon[:]))
+        BuilderPrint(*bytes, ",\"icon_shape\":")
+        Rules.AppsWriteQuoted(*bytes, HomeIcon(index))
+        BuilderPrint(*bytes, ",\"installed\":true,\"on_device\":true,\"favorite\":%,\"selected\":%,\"bytes\":%,\"actions\":[\"open\",\"%\",\"properties\"]}",
+            ifx home.preferences[index].favorite then "true" else "false", ifx index == home.selected then "true" else "false",
+            apps[index].bytes.count, ifx home.preferences[index].favorite then "unpin" else "pin")
+    }
+    BuilderPrint(*bytes, "]}")
+    body := BuilderFinish(bytes)
+    if body == home.body { AppFileFree(body) }
+    else {
+        AppFileFree(home.body)
+        home.body = body
+        home.revision += 1
+        catalog: Vec(u8)
+        BuilderPrint(*catalog, "{\"v\":1,\"revision\":%,%", home.revision, home.body)
+        AppFileFree(home.catalog)
+        home.catalog = BuilderFinish(catalog)
+    }
+    home.controller.app.session = home.session
+    home.controller.app.bounds = bounds
+    home.controller.app.input = input
+    WidgetHostBegin(home.controller.app.session, HomeAssetAllowed)
+    ran := Controller.AppControllerRun(*home.controller, APP_FRAME)
+    WidgetHostEnd()
+    return ran
+}
+
+SharedHome :: (session: Session, bounds: Rectangle, dark: bool, selected: s32,
+    input: TextFieldInput, key: s32, modifiers: s32) -> bool {
+    if !home.loaded { HomeLoad() }
+    home.opened = -1
+    if home.unavailable { return false }
+    if !home.controller.ready {
+        path: [PATH_LIMIT]u8
+        bytes, found := ReadBundle(PathJoin(path[:], BundledAppsRoot(), "apps.zib"))
+        if !found { home.unavailable = true; return false }
+        home.bytes = bytes
+        if !Controller.AppControllerOpen(*home.controller, home.bytes, AppsControllerSha256,
+            Controller.AppControllerPlatform.{.service = HomeService, .widgets = HomeWidgets}) {
+            home.unavailable = true
+            return false
+        }
+    }
+    home.session = session
+    home.selected = selected
+    home.controller.app.dark = dark
+    home.controller.app.scale = 1.0
+    home.controller.app.font = 16
+    home.controller.app.key = key
+    home.controller.app.modifiers = modifiers
+    count: s32
+    items: [APP_LIMIT]Launcher.AppLauncherItem
+    titles: [APP_LIMIT][256]u8
+    for index: cast(s32)0..AppCount() - 1 {
+        if AppId(index) == "entity" { continue }
+        home.indices[count] = index
+        unused CopyCString(HomeTitle(index), titles[count][:])
+        items[count] = Launcher.AppLauncherItem.{.title = TextUntilNul(titles[count][:]),
+            .search = AppName(index), .favorite = home.preferences[index].favorite}
+        count += 1
+    }
+    area := Rectangle.{bounds.x + 16.0, bounds.y + 12.0, bounds.width - 32.0, bounds.height - 24.0}
+    result := Launcher.AppLauncherScreen(session, *home.view,
+        Launcher.AppLauncherProps.{.bounds = area, .scale = 1.0, .locale = "en", .input = input,
+            .cards = HomeCards}, items[:count])
+    if result.clipboard_write { unused SetClipboard(TextUntilNul(result.clipboard_text[:])) }
+    if result.changed { unused HomeSave() }
+    HomeDrain()
+    AppFileFree(home.response)
+    home.response = ""
+    return result.ran
+}
+
+SharedHomeOpened :: () -> s32 { return home.opened }
+SharedHomeKeyboard :: () -> bool { return home.view.focused || home.controller.app.keyboard }

@@ -95,9 +95,18 @@ try {
   };
   const expectText = async (name, expected) => {
     await screenshot(name);
-    const result = spawnSync('tesseract', [join(output, name + '.png'), 'stdout', '--psm', '11'],
+    let result = spawnSync('tesseract', [join(output, name + '.png'), 'stdout', '--psm', '11'],
       {env: environment, encoding: 'utf8', timeout: 20000});
     if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
+    if (!result.stdout.toLowerCase().includes(expected.toLowerCase())) {
+      const readable = join(output, name + '-labels.png');
+      const prepared = spawnSync('convert', [join(output, name + '.png'), '-colorspace', 'Gray',
+        '-threshold', '55%', '-resize', '300%', readable], {env: environment, encoding: 'utf8'});
+      if (prepared.status !== 0) throw Error('Could not prepare UI text: ' + prepared.stderr);
+      result = spawnSync('tesseract', [readable, 'stdout', '--psm', '11'],
+        {env: environment, encoding: 'utf8', timeout: 20000});
+      if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
+    }
     if (!result.stdout.toLowerCase().includes(expected.toLowerCase()))
       throw Error(`${name}: expected ${expected}, saw ${result.stdout}`);
   };
@@ -105,6 +114,21 @@ try {
     await command('Input.dispatchMouseEvent', {type: 'mousePressed', x, y, button: 'left', clickCount: 1});
     await command('Input.dispatchMouseEvent', {type: 'mouseReleased', x, y, button: 'left', clickCount: 1});
     await delay(350);
+  };
+  const clickText = async label => {
+    await screenshot('control');
+    const readable = join(output, 'control-labels.png');
+    const prepared = spawnSync('convert', [join(output, 'control.png'), '-colorspace', 'Gray',
+      '-threshold', '55%', '-resize', '300%', readable], {env: environment, encoding: 'utf8'});
+    if (prepared.status !== 0) throw Error('Could not prepare UI text: ' + prepared.stderr);
+    const result = spawnSync('tesseract', [readable, 'stdout', '--psm', '11',
+      '-c', 'tessedit_create_tsv=1'], {env: environment, encoding: 'utf8', timeout: 20000});
+    if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
+    const rows = result.stdout.trim().split('\n').slice(1).map(line => line.split('\t'));
+    const row = rows.find(values => values[11]?.trim() === label);
+    if (!row) throw Error('Missing visible app control: ' + label);
+    await click((Number(row[6]) + Number(row[8]) / 2) / 3,
+      (Number(row[7]) + Number(row[9]) / 2) / 3);
   };
   // The canvas has drawn a frame with something besides the background.
   const painted = `(() => {
@@ -151,7 +175,8 @@ try {
   await command('Emulation.setDeviceMetricsOverride', {width: 420, height: 760, deviceScaleFactor: 1, mobile: false});
   await open('', 'home');
   const timezoneReadsBefore = await evaluate('window.__timezoneReads');
-  await click(318, 189);
+  await click(330, 92); // Shared List view.
+  await clickText('Clock');
   await expectText('home-clock', 'Clock');
   await delay(1200);
   const timezoneReads = (await evaluate('window.__timezoneReads')) - timezoneReadsBefore;
@@ -168,18 +193,20 @@ try {
   // would show its own name as the title.
   await open('?mini', 'mini-home');
   await expectText('mini-home', 'Werkzeug');
-  for (const [index, app] of ['pass', 'auth', 'calculator', 'clock'].entries()) {
+  for (const app of ['pass', 'auth', 'calculator', 'clock']) {
     await open('?mini&app=' + app, app + '-mini-direct');
     await expectText(app + '-mini-direct', app);
     await click(28, 28);
     await expectText(app + '-mini-home', 'Werkzeug');
-    await click(102 + (index % 2) * 216, 100 + Math.floor(index / 2) * 90);
+    await clickText(app[0].toUpperCase() + app.slice(1));
     await expectText(app + '-mini-reopened', app);
   }
   await command('Emulation.setDeviceMetricsOverride', {width: 280, height: 480, deviceScaleFactor: 1, mobile: false});
   await open('?mini&app=unknown', 'mini-narrow-home');
-  await expectText('mini-narrow-home', 'Clock');
-  await click(140, 399);
+  await expectText('mini-narrow-home', 'Find an app');
+  await click(100, 92);
+  await type('clock');
+  await clickText('Clock');
   await expectText('mini-narrow-clock', 'Clock');
   await click(28, 28);
   await click(250, 28);
