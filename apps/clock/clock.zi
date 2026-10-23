@@ -32,6 +32,8 @@ running: bool;
 started_at: float64;
 elapsed: float64;
 session: Session;
+local_offset: s32;
+local_offset_read_at: float64 = -61.0;
 
 // The civil date of a day count since 1970-01-01 (proleptic Gregorian).
 CivilFromDays :: (days: s64) -> Civil {
@@ -78,11 +80,15 @@ AppendNumber :: (output: []u8, used: s32, value: s64) -> s32 {
 
 LocalSeconds :: () -> s64 {
     now := AppNow()
+    if now - local_offset_read_at > 60.0 {
+        local_offset = AppLocalOffset()
+        local_offset_read_at = now
+    }
     seconds := cast(s64)now
     if cast(float64)seconds > now {
         seconds -= 1
     }
-    return seconds + cast(s64)AppLocalOffset()
+    return seconds + cast(s64)local_offset
 }
 
 TimeText :: (output: []u8) -> string {

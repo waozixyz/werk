@@ -1,6 +1,6 @@
 // Exercise the built site's Werkzeug app in a private headless browser with a
-// disposable profile: the home screen, a tool opened by ?app=, Calculator
-// typing, Clock, and every tool plus navigation in embedded mini mode.
+// disposable profile: the home screen, a tool opened by clicking Home and by
+// ?app=, Calculator typing, Clock, and every tool in embedded mini mode.
 import {spawn, spawnSync} from 'node:child_process';
 import {readFile, writeFile, mkdir, mkdtemp} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -140,14 +140,29 @@ try {
   };
   await command('Runtime.enable');
   await command('Page.enable');
+  await command('Page.addScriptToEvaluateOnNewDocument', {source: `
+    window.__timezoneReads = 0;
+    const getTimezoneOffset = Date.prototype.getTimezoneOffset;
+    Date.prototype.getTimezoneOffset = function() {
+      window.__timezoneReads++;
+      return getTimezoneOffset.call(this);
+    };
+  `});
   await command('Emulation.setDeviceMetricsOverride', {width: 420, height: 760, deviceScaleFactor: 1, mobile: false});
   await open('', 'home');
+  const timezoneReadsBefore = await evaluate('window.__timezoneReads');
+  await click(318, 189);
+  await expectText('home-clock', 'Clock');
+  await delay(1200);
+  const timezoneReads = (await evaluate('window.__timezoneReads')) - timezoneReadsBefore;
+  if (timezoneReads > 6) throw Error(`Clock read the time zone ${timezoneReads} times in 1.2 seconds`);
+  await click(28, 28);
+  await expectText('home-returned', 'Werkzeug');
   await open('?app=calculator', 'calculator');
   await type('12+30*2=');
   await delay(400);
   await expectText('calculator-typed', '72');
-  // Clock reads the local time zone every frame; a broken time binding
-  // froze the page here.
+  // Clock also opens directly, where a broken time binding froze the page.
   await open('?app=clock', 'clock');
   await open('?mini', 'pass-mini');
   await expectText('pass-mini', 'Pass');
@@ -156,13 +171,13 @@ try {
     await expectText(app + '-mini-direct', app);
     await click(28, 28);
     await expectText(app + '-mini-home', 'Werkzeug');
-    await click(142 + (index % 2) * 136, 132 + Math.floor(index / 2) * 136);
+    await click(102 + (index % 2) * 216, 100 + Math.floor(index / 2) * 90);
     await expectText(app + '-mini-reopened', app);
   }
   await command('Emulation.setDeviceMetricsOverride', {width: 280, height: 480, deviceScaleFactor: 1, mobile: false});
   await open('?mini&app=unknown', 'mini-narrow-home');
-  await expectText('mini-narrow-home', 'Werkzeug');
-  await click(206, 264);
+  await expectText('mini-narrow-home', 'Clock');
+  await click(140, 399);
   await expectText('mini-narrow-clock', 'Clock');
   await click(28, 28);
   await click(250, 28);
