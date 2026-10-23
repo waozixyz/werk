@@ -18,6 +18,14 @@
       "url": "https://github.com/ziranlang/qrcode.git"
     },
     {
+      "commit": "6a5f6189ca51e45a59c9ef77c4ec4112393225e0",
+      "dependencies": {"kryon": "p88faf314c87eb03a", "kss": "p1b13dda539ed2a39", "mingcute": "pe1027b9d16704793"},
+      "id": "p0e0131936e76f979",
+      "name": "workbook",
+      "ref": "master",
+      "url": "https://github.com/waozixyz/workbook.git"
+    },
+    {
       "commit": "1cb9df183089a77c8a16448a556186f30b261a98",
       "dependencies": {"kryon": "p88faf314c87eb03a"},
       "id": "p1b13dda539ed2a39",
@@ -93,14 +101,6 @@
       "url": "https://github.com/kryonlabs/mingcute.git"
     },
     {
-      "commit": "ed9d00972932a24f42297fb7f89050bac37ffedd",
-      "dependencies": {"kryon": "p88faf314c87eb03a", "kss": "p1b13dda539ed2a39", "mingcute": "pe1027b9d16704793"},
-      "id": "pee1a28b0516f6d87",
-      "name": "workbook",
-      "ref": "master",
-      "url": "https://github.com/waozixyz/workbook.git"
-    },
-    {
       "commit": "08bbad051379813d0fd1c3bb7bb6814f3491da75",
       "dependencies": {},
       "id": "pf039d7a776333200",
@@ -110,7 +110,7 @@
     }
   ],
   "root": {
-    "dependencies": {"apps": "p2c4ca8cd46b96384", "daochi_client": "p0cff069893bdc938", "entity": "pb7942f184eef21db", "kryon": "p88faf314c87eb03a", "liboqs": "p4b0a50b49959e674", "mingcute": "pe1027b9d16704793", "monocypher": "p809b4d31a48625a3", "oqs": "p7098ac9cd92f7e5f", "workbook": "pee1a28b0516f6d87"},
+    "dependencies": {"apps": "p2c4ca8cd46b96384", "daochi_client": "p0cff069893bdc938", "entity": "pb7942f184eef21db", "kryon": "p88faf314c87eb03a", "liboqs": "p4b0a50b49959e674", "mingcute": "pe1027b9d16704793", "monocypher": "p809b4d31a48625a3", "oqs": "p7098ac9cd92f7e5f", "workbook": "p0e0131936e76f979"},
     "name": "Werkzeug"
   },
   "toolchain": {

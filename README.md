@@ -83,8 +83,8 @@ for the same verified account ID. Account keys and Auth records stay in the
 host's private store. Android retains its existing native Account screen and
 legacy device-link flow; browser account sync is unavailable.
 
-The embedded web app (`/app/?mini`) also provides Home and Profile, so all
-four tools are reachable. Use `?mini&app=auth`, `calculator` or `clock` to
+The embedded web app (`/app/?mini`) opens on Home with every tool, and also
+provides Profile. Use `?mini&app=pass`, `auth`, `calculator` or `clock` to
 open a particular tool first. Browser sync is currently unavailable.
 
 - Each record is sealed on the device with XChaCha20-Poly1305 under a random

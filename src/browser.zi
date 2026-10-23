@@ -1,5 +1,5 @@
 // The browser host. ?app=ID opens a tool at start. Embedded ?mini opens
-// Pass first unless ?app selects another, with navigation to every tool.
+// the home screen with every tool unless ?app selects one.
 #import "werk"
 #import "apps"
 #import "browser_storage"
@@ -43,14 +43,9 @@ main :: () -> s32 {
     }
     WerkStart()
     query := BrowserQuery()
-    if QueryValue(query, "mini") != "" {
-        selected := QueryValue(query, "app")
-        if selected == "" {
-            selected = "pass"
-        }
-        unused WerkOpen(selected, true)
-    } else if QueryValue(query, "app") != "" {
-        unused WerkOpen(QueryValue(query, "app"), false)
+    selected := QueryValue(query, "app")
+    if selected != "" {
+        unused WerkOpen(selected, QueryValue(query, "mini") != "")
     }
     ok: bool = true
     while ok && Browser.PollCanvas() {

@@ -164,8 +164,10 @@ try {
   await expectText('calculator-typed', '72');
   // Clock also opens directly, where a broken time binding froze the page.
   await open('?app=clock', 'clock');
-  await open('?mini', 'pass-mini');
-  await expectText('pass-mini', 'Pass');
+  // The embedded mini version opens on Home with every tool; a tool
+  // would show its own name as the title.
+  await open('?mini', 'mini-home');
+  await expectText('mini-home', 'Werkzeug');
   for (const [index, app] of ['pass', 'auth', 'calculator', 'clock'].entries()) {
     await open('?mini&app=' + app, app + '-mini-direct');
     await expectText(app + '-mini-direct', app);
