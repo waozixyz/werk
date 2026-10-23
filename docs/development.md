@@ -131,7 +131,7 @@ those shortcuts. Debian packages include the same application-menu entries.
 
 F-Droid metadata is maintained in `packaging/fdroid`. The `android-fdroid`
 target disables developer signing even when a release keystore is configured
-and writes `build/werk-VERSION-fdroid-unsigned.apk`. It adds no version or
+and writes `build/fdroid/werk.apk` for comparison with the signed release. It adds no version or
 package suffix, preserving existing installations and reference-APK checks.
 The unsigned candidate is for builders, not installation. Werkzeug currently
 has no built-in updater: F-Droid or your chosen installer handles updates.

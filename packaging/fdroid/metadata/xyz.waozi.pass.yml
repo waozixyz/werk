@@ -32,12 +32,6 @@ Builds:
 
 AllowedAPKSigningKeys: 1ac82db5bc8f742b8161fdd7083cefc16b39524dce7d103a7eb7f1ee19589c2d
 
-MaintainerNotes: Updates the existing Pass entry as Werkzeug using xyz.waozi.pass
-  and its existing author signing certificate. The 0.4.4 / 18 candidate is being prepared;
-  add its build entry only after the compatible source commit and reference APK are
-  verified. Keep the merge request Draft pending owner approval and successful source/reproducibility
-  builds.
-
 AutoUpdateMode: None
 UpdateCheckMode: Tags
 CurrentVersion: 0.2.9

@@ -106,11 +106,15 @@ def makeApps = tasks.register('makeApps', Exec) {
     workingDir '../..'
     commandLine 'make', 'portable-apps'
 }
+def kryonSource = providers.exec {
+    workingDir '../..'
+    commandLine rootProject.file('../scripts/ziran.sh').absolutePath, 'pkg', 'path', 'kryon'
+}.standardOutput.asText.map { it.trim() }
 android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/appAssets'))
 def prepareImages = tasks.register('prepareImages', Sync) {
     dependsOn makeApps
     from('../../assets/app/icon.png')
-    from("${System.getenv('KRYON_DIR')}/icons/pfp.png")
+    from(kryonSource.map { "${it}/icons/pfp.png" })
     from('../../build/apps') { include '*.zx'; exclude 'workbook.zx'; into 'apps' }
     into layout.buildDirectory.dir('generated/appAssets')
 }

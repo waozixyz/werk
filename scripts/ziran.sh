@@ -44,7 +44,7 @@ if [ "$current" != "$tool_commit" ]; then
 fi
 
 if [ ! -x "$ziran" ]; then
-    env -u DISPLAY -u WAYLAND_DISPLAY make -C "$bootstrap" -s all >&2
+    env -u DISPLAY -u WAYLAND_DISPLAY make -j1 -C "$bootstrap" -s all >&2
 fi
 
 exec "$ziran" "$@"

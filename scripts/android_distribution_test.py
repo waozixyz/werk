@@ -31,5 +31,5 @@ for path, expected_abis in [(fdroid, {"armeabi-v7a", "arm64-v8a"}),
         assert abis == expected_abis, f"{path}: wrong ABIs {abis}"
         assert archive.read("assets/icon.png") == (root / "assets/app/icon.png").read_bytes(), "Stale app logo"
     signature = subprocess.run(["apksigner", "verify", str(path)], capture_output=True)
-    assert (signature.returncode != 0) == (path == fdroid), "F-Droid must be unsigned; debug must be signed"
+    assert (signature.returncode != 0) == (path == fdroid), "The source-comparison APK omits signing; debug APKs must be signed"
 print("Android distribution: matching package/version, Werkzeug label/logo, correct ABIs, builder signing and no installer permissions")

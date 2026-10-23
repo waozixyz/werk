@@ -189,12 +189,12 @@ android-bundle: portable-apps
 	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew bundleRelease -Pabi=$(ANDROID_ABIS) $(GRADLE_ARGS)
 	cp droid/app/build/outputs/bundle/release/app-release.aab build/werk-$(shell cat VERSION).aab
 .PHONY: android-fdroid
-# F-Droid owns signing and updates. Keep the same package/version as the
-# reference release; the suffix belongs to the unsigned output filename.
+# F-Droid compares this source build with the signed upstream release.
 android-fdroid:
 	$(MAKE) android-release GRADLE_ARGS="$(GRADLE_ARGS) -PfDroidBuild=true"
-	cp droid/app/build/outputs/apk/release/app-universal-release-unsigned.apk build/werk-$(shell cat VERSION)-fdroid-unsigned.apk
-	python3 scripts/android_apk_check.py build/werk-$(shell cat VERSION)-fdroid-unsigned.apk
+	mkdir -p build/fdroid
+	cp droid/app/build/outputs/apk/release/app-universal-release-unsigned.apk build/fdroid/werk.apk
+	python3 scripts/android_apk_check.py build/fdroid/werk.apk
 android-smoke:
 	bash scripts/android_smoke.sh
 android-input-test:
