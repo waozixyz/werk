@@ -1,0 +1,71 @@
+Categories:
+  - Password & 2FA
+  - Security
+License: BSD-3-Clause
+AuthorName: Waozi
+WebSite: https://werk.waozi.xyz
+SourceCode: https://github.com/waozixyz/werk
+IssueTracker: https://github.com/waozixyz/werk/issues
+Changelog: https://github.com/waozixyz/werk/blob/HEAD/CHANGELOG.md
+
+AutoName: Werkzeug
+
+RepoType: git
+Repo: https://github.com/waozixyz/werk.git
+Binaries: https://github.com/waozixyz/werk/releases/download/v%v/werk-%v.apk
+
+Builds:
+  - versionName: 0.4.3
+    versionCode: 17
+    commit: c801c625423f7656c3887e71786ea75aa4646715
+    subdir: droid/app
+    sudo:
+      - apt-get update
+      - apt-get install -y build-essential libssl-dev
+    gradle:
+      - yes
+    output: build/outputs/apk/release/app-universal-release-unsigned.apk
+    srclibs:
+      - Ziran@ec43f576478d4a0028d560be560585749a92f3ed
+      - DaochiClient@ac9489451a93903030c50550a99ce234a49716ce
+      - Qrcode@2944b2e668e735438d8ce24e47a39be3f5c36af5
+      - Workbook@6a5f6189ca51e45a59c9ef77c4ec4112393225e0
+      - Kss@1cb9df183089a77c8a16448a556186f30b261a98
+      - liboqs@e1f480f382d9443c4412133b55948374c77a5c21
+      - raylib@fafa2cea97d0cb379d832086ba45a989fa6f9c8e
+      - Kryon@55af1b53b186f5eaaf7249ac7653da3ef1e606d0
+      - Oqs@22d2ddbdc236796953c905a05a2cebf5ab1b4ff3
+      - Monocypher@f5f0a19a5dc6c14a49adb3cd63ea79a60f6ba77b
+      - Apps@33f888e50ebefdbee532731fe2aad9ea6f5ab964
+      - Entity@f7449b379540f6f6f53c64c980cb5d4d4abcf399
+      - Mingcute@9cc6872f75447c3a24c16764f9829d0f58751cb0
+      - Crypto@08bbad051379813d0fd1c3bb7bb6814f3491da75
+    prebuild:
+      - printf '[overrides]\nziran = "$$Ziran$$"\ndaochi_client = "$$DaochiClient$$"\nqrcode
+        = "$$Qrcode$$"\nworkbook = "$$Workbook$$"\nkss = "$$Kss$$"\nliboqs = "$$liboqs$$"\nraylib
+        = "$$raylib$$"\noqs = "$$Oqs$$"\nmonocypher = "$$Monocypher$$"\nentity = "$$Entity$$"\nkryon
+        = "$$Kryon$$"\nmingcute = "$$Mingcute$$"\ncrypto = "$$Crypto$$"\napps = "$$Apps$$"\n'
+        > ../../ziran.local.toml
+      - sed -i -e 's|$ENV{KRYON_DIR}|$$Kryon$$|g' -e 's|$ENV{ZIRAN_ROOT}|$$Ziran$$|g'
+        -e 's|$ENV{RAYLIB_DIR}|$$raylib$$/src|g' -e 's|$ENV{LIBOQS_DIR}|$$liboqs$$|g'
+        -e 's|$ENV{MONOCYPHER_DIR}|$$Monocypher$$|g' src/main/cpp/CMakeLists.txt
+      - sed -i 's@from(.*KRYON_DIR.*@from("$$Kryon$$/icons/pfp.png")@' build.gradle
+    build:
+      - make -C $$Ziran$$ all
+      - make -C ../.. portable-apps ZIRAN=$$Ziran$$/build/bin/ziran
+    ndk: 28.2.13676358
+    gradleprops:
+      - fDroidBuild=true
+      - abi=armeabi-v7a,arm64-v8a
+      - splitApks=true
+
+AllowedAPKSigningKeys: 1ac82db5bc8f742b8161fdd7083cefc16b39524dce7d103a7eb7f1ee19589c2d
+
+MaintainerNotes: New package xyz.waozi.werk at the author’s request; installs separately
+  from legacy Pass. Dependency pins must be updated from each release lock. Draft
+  until owner approval and successful source/reproducibility builds.
+
+AutoUpdateMode: None
+UpdateCheckMode: Tags
+CurrentVersion: 0.4.3
+CurrentVersionCode: 17

@@ -13,6 +13,8 @@ root = Path(__file__).resolve().parents[1]
 output = root / "build/android-input"
 output.mkdir(parents=True, exist_ok=True)
 serial = os.environ.get("WERK_ANDROID_EMULATOR")
+if not serial and not os.environ.get("CI"):
+    raise SystemExit("Set WERK_ANDROID_EMULATOR to your own private test emulator")
 if not serial:
     devices = subprocess.check_output(["adb", "devices"], text=True).splitlines()
     serial = next((line.split()[0] for line in devices if line.startswith("emulator-") and line.split()[-1] == "device"), None)
@@ -20,8 +22,8 @@ if not serial or not serial.startswith("emulator-"):
     raise SystemExit("Android input tests require a private emulator")
 package = "xyz.waozi.werk"
 
-def adb(*arguments, check=True):
-    return subprocess.run(["adb", "-s", serial, *arguments], check=check, capture_output=True)
+def adb(*arguments, check=True, input=None):
+    return subprocess.run(["adb", "-s", serial, *arguments], check=check, capture_output=True, input=input, timeout=90)
 
 def shell(*arguments, check=True):
     return adb("shell", *arguments, check=check).stdout.decode()
@@ -30,14 +32,18 @@ def shot(name):
     (output / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p").stdout)
 
 def find_label(word):
-    shot("label")
-    data = subprocess.check_output(["tesseract", str(output / "label.png"), "stdout", "--psm", "11", "-c", "tessedit_create_tsv=1"],
-                                   stderr=subprocess.DEVNULL, text=True)
-    for item in csv.DictReader(io.StringIO(data), delimiter="\t"):
-        if item["text"].strip().lower() == word.lower():
-            return (int(item["left"]) + int(item["width"]) // 2,
-                    int(item["top"]) + int(item["height"]) // 2)
-    raise AssertionError(f"Could not find {word!r} in the private emulator")
+    deadline = time.monotonic() + 15
+    while True:
+        shot("label")
+        data = subprocess.check_output(["tesseract", str(output / "label.png"), "stdout", "--psm", "11", "-c", "tessedit_create_tsv=1"],
+                                       stderr=subprocess.DEVNULL, text=True)
+        for item in csv.DictReader(io.StringIO(data), delimiter="\t"):
+            if item["text"].strip().lower() == word.lower():
+                return (int(item["left"]) + int(item["width"]) // 2,
+                        int(item["top"]) + int(item["height"]) // 2)
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"Could not find {word!r} in the private emulator")
+        time.sleep(0.3)
 
 def tap_label(word):
     tap(*find_label(word))
@@ -81,6 +87,23 @@ def tap(x, y):
 def type_text(text):
     shell("input", "text", text.replace(" ", "%s")); time.sleep(PAUSE + 0.05)
 
+def hide_keyboard():
+    if "mInputShown=true" in shell("dumpsys", "input_method"):
+        shell("input", "keyevent", "4")
+        for _ in range(20):
+            time.sleep(0.15)
+            if "mInputShown=true" not in shell("dumpsys", "input_method"):
+                return
+        raise AssertionError("Soft keyboard did not close")
+
+
+def fill_field(label, text):
+    hide_keyboard()
+    _, y = find_label(label)
+    tap(int(90 * zoom), y + int(40 * zoom))
+    type_text(text)
+
+
 def system_bars(height):
     """The app's first and last rows in pixels: Werkzeug keeps its content
     between the status bar and the navigation bar."""
@@ -100,6 +123,9 @@ try:
     adb("install", "-r", str(apk))
     # This is the test emulator and only this package's fixture data is cleared.
     shell("pm", "clear", package)
+    shell("run-as", package, "mkdir", "-p", "files/profile")
+    adb("shell", f"run-as {package} sh -c 'umask 077; cat > files/profile/settings.txt'",
+        input=b"name=Fixture Person\ntheme_mode=1\n")
     shell("am", "start", "-n", package + "/android.app.NativeActivity")
     time.sleep(2); alive(); dismiss_other_apps_not_responding(); shot("launch")
     size = shell("wm", "size").strip().split()[-1]
@@ -108,23 +134,25 @@ try:
     densities = re.findall(r"density: (\d+)", shell("wm", "density"))
     zoom = int(densities[-1]) / 160
     top, bottom = system_bars(height)
-    # Pass's tile on the home screen, then Pass below Werkzeug's 56-unit bar.
-    tap(int(127 * zoom), top + int(132 * zoom)); time.sleep(0.5); alive(); shot("pass")
+    # The shared Apps screen can change layout; select the visible tool.
+    tap_label("Pass"); time.sleep(0.5); alive(); shot("pass")
+    find_label("Site")
     bar = 56
-    tap(int(90 * zoom), top + int((55 + bar) * zoom)); type_text("example.com")
+    fill_field("Site", "example.com")
     assert "mInputShown=true" in shell("dumpsys", "input_method"), "Soft keyboard did not open"
-    tap(int(90 * zoom), top + int((130 + bar) * zoom)); type_text("alice")
-    tap(int(90 * zoom), top + int((205 + bar) * zoom)); type_text("test master")
+    fill_field("Login", "alice")
+    fill_field("Master", "test master")
     shot("keyboard")
-    shell("input", "keyevent", "4"); time.sleep(0.4); alive()
+    hide_keyboard(); alive()
     tap(width // 2, bottom - int(35 * zoom))
-    tap(int(90 * zoom), top + int((55 + bar) * zoom)); type_text("Android test")
+    fill_field("Profile", "Android test")
     shell("input", "keyevent", "4"); time.sleep(0.3)
     tap(int(100 * zoom), top + int((105 + bar) * zoom))
     expected = "Android test\texample.com\talice\t16\t1\t1\t1\t1\t1\t\n"
     saved = shell("run-as", package, "cat", "files/apps/pass/profiles.tsv")
     assert saved == expected, f"Profile input/persistence mismatch: {saved!r}"
     assert "test master" not in saved
+    print("Android: keyboard input and first saved profile verified", flush=True)
     # Generate from the saved profile and copy it.
     tap(int(100 * zoom), top + int((210 + bar) * zoom))
     # A slow emulator may still be deriving the password.
@@ -134,8 +162,8 @@ try:
     tap(width // 2, bottom - int(35 * zoom))
     tap(int(90 * zoom), top + int((55 + bar) * zoom))
     shell("input", "keyevent", "123")  # Move to the end.
-    for _ in "Android test":
-        shell("input", "keyevent", "67"); time.sleep(0.1)
+    shell("input", "keyevent", *["67" for _ in "Android test"])
+    time.sleep(0.5)
     dismiss_other_apps_not_responding()
     # Type the reference password as the new name. Pasting the copy works
     # through the keyboard's clipboard suggestion, which Gboard offers only
@@ -153,27 +181,21 @@ try:
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected
     assert shell("run-as", package, "stat", "-c", "%a", "files/apps/pass/profiles.tsv").strip() == "600"
     shot("persisted")
-    # Profile's name is one of Werkzeug's own fields. Each letter must land
-    # after the last, at the caret the keyboard reports.
-    tap(int(28 * zoom), top + int(28 * zoom)); time.sleep(0.5)
-    tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.8); alive()
-    # Entity's profile card: the picture, then Name.
-    tap(width // 2, top + int(357 * zoom)); type_text("Ada Lovelace")
-    shot("profile-name")
-    shell("input", "keyevent", "4"); time.sleep(0.3)
-    # Leaving Profile saves it.
-    tap(int(28 * zoom), top + int(28 * zoom)); time.sleep(0.5); alive()
+    print("Android: second profile, restart and private permissions verified", flush=True)
+    # The shared Profile retains existing names and edits appearance.
+    tap_label("Fixture"); time.sleep(0.8); alive()
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
-    assert "name=Ada Lovelace\n" in settings, f"Profile name typed out of order: {settings!r}"
-    tap(width - int(60 * zoom), top + int(28 * zoom)); time.sleep(0.8)
-    # Entity's Nodes section: the empty "Node address" field, then Add.
-    tap_label("Node")
-    type_text("https://sync.example.invalid:8443/")
+    assert "name=Fixture Person\n" in settings, "Profile lost the retained name"
+    tap_label("Dark"); time.sleep(0.5)
+    settings = shell("run-as", package, "cat", "files/profile/settings.txt")
+    assert "theme_mode=2\n" in settings and "name=Fixture Person\n" in settings
+    shot("profile-appearance")
+    print("Android: retained profile name and appearance verified", flush=True)
+    tap_label("Light")
+    tap_label("Connect"); time.sleep(0.8)
+    fill_field("Node", "https://sync.example.invalid:8443/")
     shell("input", "keyevent", "4"); time.sleep(1.2)
-    # OCR misses Add's white label on the accent. It ends the row above
-    # Appearance, wherever the keyboard left the page scrolled.
-    _, appearance = find_label("Appearance")
-    tap(width - int(81 * zoom), appearance - int(56 * zoom)); time.sleep(0.8)
+    tap_label("Add"); time.sleep(0.8)
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "node=https://sync.example.invalid:8443\n" in settings, "Custom node was not saved"
     assert adb("shell", "run-as", package, "test", "-f", "files/account/keys.txt", check=False).returncode != 0

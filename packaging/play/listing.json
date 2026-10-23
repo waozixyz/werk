@@ -1,0 +1,14 @@
+{
+  "packageName": "xyz.waozi.werk",
+  "title": "Werkzeug",
+  "defaultLanguage": "en-US",
+  "applicationType": "app",
+  "category": "TOOLS",
+  "price": "free",
+  "contactEmail": "waozi@proton.me",
+  "website": "https://werk.waozi.xyz",
+  "privacyPolicy": "https://werk.waozi.xyz/privacy.html",
+  "initialTrack": "internal",
+  "storeMetadata": "fastlane/metadata/android",
+  "status": "prepared; Play Console creation, declarations and upload pending"
+}
