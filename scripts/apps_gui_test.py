@@ -87,7 +87,7 @@ try:
     while time.monotonic() < deadline:
         assert app.poll() is None, "Werkzeug exited during startup"
         found = subprocess.run(["xdotool", "search", "--onlyvisible", "--pid", str(app.pid)],
-                               env=environment, capture_output=True, text=True)
+                               env=environment, capture_output=True, text=True, timeout=5)
         if found.returncode == 0:
             window = found.stdout.splitlines()[0]
             break
@@ -156,7 +156,7 @@ try:
     deadline = time.monotonic() + 30
     while True:
         found = subprocess.run(["xdotool", "search", "--onlyvisible", "--pid", str(app.pid)],
-                               env=environment, capture_output=True, text=True)
+                               env=environment, capture_output=True, text=True, timeout=5)
         if found.returncode == 0:
             window = found.stdout.splitlines()[0]
             if "Timepiece" in capture("restarted"):
