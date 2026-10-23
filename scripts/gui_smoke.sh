@@ -17,7 +17,7 @@ for mode in light dark; do
         value=2
     fi
     printf 'theme_mode=%s\n' "$value" > "$work/$mode/data/profile/settings.txt"
-    env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS xvfb-run -a -e /dev/stderr \
+    python3 scripts/private-display.py \
         env -u WERK_ASSETS HOME="$work/home" WERK_DATA="$work/$mode/data" XDG_CACHE_HOME="$work/$mode/cache" \
         KRYON_CAPTURE_PATH="$work/werk-$mode.png" "$root/build/werk"
     test -s "$work/werk-$mode.png"

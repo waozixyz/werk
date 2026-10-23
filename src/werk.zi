@@ -96,6 +96,12 @@ WerkOpen :: (id: string, alone: bool) -> bool {
     return false
 }
 
+// The desktop shell uses the open tool's name for its window title.
+WerkWindowTitle :: () -> string {
+    if screen == SCREEN_APP && open_app >= 0 { return AppName(open_app) }
+    return "Werkzeug"
+}
+
 // Whether the touch keyboard should show.
 WerkKeyboard :: () -> bool {
     return keyboard_wanted

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Pass
+Comment=Generate repeatable passwords with Werkzeug
+Exec=werk --app pass
+TryExec=werk
+Icon=werk-pass
+Terminal=false
+Categories=Utility;Security;
+Keywords=Werkzeug;Password;LessPass;
+StartupNotify=true
+StartupWMClass=werk-pass

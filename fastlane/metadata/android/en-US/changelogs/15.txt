@@ -1,0 +1,3 @@
+- Open Pass, Auth, Calculator, Clock and Workbook directly from the Linux application menu, each with its own icon.
+- Desktop installs add shortcuts for Werkzeug and every tool to your configured desktop folder.
+- Tool windows show their own names and icons in the desktop switcher.

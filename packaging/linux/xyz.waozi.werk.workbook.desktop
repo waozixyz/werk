@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Workbook
+Comment=Edit spreadsheets with Werkzeug
+Exec=werk --app workbook
+TryExec=werk
+Icon=werk-workbook
+Terminal=false
+Categories=Office;Spreadsheet;
+Keywords=Werkzeug;Spreadsheet;Formula;
+StartupNotify=true
+StartupWMClass=werk-workbook

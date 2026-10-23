@@ -21,6 +21,7 @@ MONOCYPHER_SOURCES = $(MONOCYPHER_DIR)/src/monocypher.c $(MONOCYPHER_DIR)/src/op
 CC ?= cc
 BIN_DIR ?= $(HOME)/bin
 DATA_DIR ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)
+DESKTOP_DIR ?= $(shell xdg-user-dir DESKTOP 2>/dev/null)
 # The tool bundles and Werkzeug's other files.
 LIB_DIR ?= $(HOME)/.local/lib/werk
 WEB_CC ?= $(if $(wildcard $(HOME)/emsdk/upstream/emscripten/emcc),$(HOME)/emsdk/upstream/emscripten/emcc,emcc)
@@ -92,7 +93,8 @@ build/liboqs/lib/liboqs.a: ziran.lock
 build/werk: build/generated/desktop/.complete build/ziran/libziran.a build/liboqs/lib/liboqs.a Makefile
 	$(CC) $(CFLAGS) -Ibuild/generated/desktop -I$(MONOCYPHER_DIR)/src -I$(MONOCYPHER_DIR)/src/optional \
 		build/generated/desktop/*.c $(MONOCYPHER_SOURCES) build/ziran/libziran.a build/liboqs/lib/liboqs.a \
-		$(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo gtk+-3.0) -lX11 -l:libcurl.so.4 -lm -lpthread -o $@
+		$(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo gtk+-3.0) -lX11 -l:libcurl.so.4 -lm -lpthread -o $@.new
+	mv -f $@.new $@
 build/pfp.png: $(KRYON_DIR)/icons/pfp.png
 	cp $< $@
 gui: build/werk build/pfp.png apps
@@ -119,7 +121,8 @@ gui-smoke: gui
 	sh scripts/gui_smoke.sh
 gui-test: gui
 	sh scripts/werk_gui_test.sh
-	env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS YUE_DESKTOP_RECOVERY=0 xvfb-run -a env WERK_TEST_PRIVATE_DISPLAY=1 python3 scripts/workbook_gui_test.py
+	python3 scripts/private-display.py python3 scripts/workbook_gui_test.py
+	python3 scripts/private-display.py python3 scripts/launcher_gui_test.py
 	sh scripts/migration_test.sh
 	python3 -I scripts/auth_command_test.py
 
@@ -173,6 +176,10 @@ android-emulator: portable-apps
 	python3 scripts/android_apk_check.py build/werk-android-emulator.apk
 android-release: portable-apps
 	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
+.PHONY: android-bundle
+android-bundle: portable-apps
+	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew bundleRelease -Pabi=$(ANDROID_ABIS) $(GRADLE_ARGS)
+	cp droid/app/build/outputs/bundle/release/app-release.aab build/werk-$(shell cat VERSION).aab
 .PHONY: android-fdroid
 # F-Droid owns signing and updates. Keep the same package/version as the
 # reference release; the suffix belongs to the unsigned output filename.
@@ -199,20 +206,22 @@ install-cli: cli
 	mkdir -p $(BIN_DIR)
 	install -m 0755 pass $(BIN_DIR)/pass
 install-gui: gui
-	mkdir -p $(BIN_DIR) $(DATA_DIR)/applications $(DATA_DIR)/icons/hicolor/512x512/apps $(DATA_DIR)/mime/packages
-	install -d -m 0700 $(LIB_DIR) $(LIB_DIR)/apps
-	install -m 0755 build/werk $(BIN_DIR)/werk
-	install -m 0600 $(APP_BUNDLES) $(LIB_DIR)/apps/
-	install -m 0644 build/pfp.png $(LIB_DIR)/pfp.png
-	sed 's|^Exec=werk --bundle %f$$|Exec=$(BIN_DIR)/werk --bundle %f|' packaging/linux/xyz.waozi.werk.desktop > $(DATA_DIR)/applications/xyz.waozi.werk.desktop
-	install -m 0644 packaging/linux/werk-bundle.xml $(DATA_DIR)/mime/packages/werk-bundle.xml
-	@if command -v update-mime-database >/dev/null; then update-mime-database $(DATA_DIR)/mime; fi
-	@if command -v update-desktop-database >/dev/null; then update-desktop-database $(DATA_DIR)/applications; fi
-	cp assets/app/icon.png $(DATA_DIR)/icons/hicolor/512x512/apps/werk.png
+	mkdir -p "$(BIN_DIR)" "$(DATA_DIR)/applications" "$(DATA_DIR)/icons/hicolor/512x512/apps" "$(DATA_DIR)/mime/packages"
+	install -d -m 0700 "$(LIB_DIR)" "$(LIB_DIR)/apps"
+	install -m 0755 build/werk "$(BIN_DIR)/werk.new"
+	mv -f "$(BIN_DIR)/werk.new" "$(BIN_DIR)/werk"
+	install -m 0600 $(APP_BUNDLES) "$(LIB_DIR)/apps/"
+	install -m 0644 build/pfp.png "$(LIB_DIR)/pfp.png"
+	python3 scripts/install-launchers.py --data-dir "$(DATA_DIR)" --bin-dir "$(BIN_DIR)" $(if $(filter-out $(HOME),$(DESKTOP_DIR)),--desktop-dir "$(DESKTOP_DIR)")
+	install -m 0644 packaging/linux/werk-bundle.xml "$(DATA_DIR)/mime/packages/werk-bundle.xml"
+	@if command -v update-mime-database >/dev/null; then update-mime-database "$(DATA_DIR)/mime"; fi
+	@if command -v update-desktop-database >/dev/null; then update-desktop-database "$(DATA_DIR)/applications"; fi
+	@if command -v gtk-update-icon-cache >/dev/null; then gtk-update-icon-cache -f -t "$(DATA_DIR)/icons/hicolor"; fi
 uninstall-cli:
 	rm -f $(BIN_DIR)/pass
 uninstall-gui:
-	rm -f $(BIN_DIR)/werk $(DATA_DIR)/applications/xyz.waozi.werk.desktop $(DATA_DIR)/icons/hicolor/512x512/apps/werk.png
+	python3 scripts/install-launchers.py --data-dir "$(DATA_DIR)" $(if $(filter-out $(HOME),$(DESKTOP_DIR)),--desktop-dir "$(DESKTOP_DIR)") --uninstall
+	rm -f $(BIN_DIR)/werk
 	rm -rf $(LIB_DIR)
 package-deb: gui
 	./scripts/package-deb.sh

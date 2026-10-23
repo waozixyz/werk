@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Auth
+Comment=Two-factor sign-in codes with Werkzeug
+Exec=werk --app auth
+TryExec=werk
+Icon=werk-auth
+Terminal=false
+Categories=Utility;Security;
+Keywords=Werkzeug;TOTP;2FA;Authenticator;
+StartupNotify=true
+StartupWMClass=werk-auth

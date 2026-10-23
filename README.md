@@ -150,6 +150,7 @@ ImageMagick on private displays.
 
 ```sh
 make gui            # build/werk and the app bundles in build/apps
+make install-gui    # Werkzeug and each tool in the app menu and on the desktop
 make test           # Pass/CLI, Auth, Calculator and private account recovery fixtures
 make gui-smoke      # light and dark home screens on a private Xvfb display
 make gui-test       # every tool, clipboard and profile on a private display,
@@ -160,6 +161,12 @@ make android-debug  # ARM32, ARM64 and universal APKs
 make android-fdroid # unsigned F-Droid candidate, same Android ID and version
 make android-emulator # the x86_64 APK for a private emulator
 ```
+
+Linux installs include separate Pass, Auth, Calculator, Clock and Workbook
+launchers, each with its own icon. They open the selected tool directly and
+share Werkzeug's existing private data. `make install-gui` also adds shortcuts
+to the desktop folder configured by `xdg-user-dir`; set `DESKTOP_DIR=` to skip
+those shortcuts. Debian packages include the same application-menu entries.
 
 F-Droid metadata is maintained in `packaging/fdroid`. The `android-fdroid`
 target disables developer signing even when a release keystore is configured

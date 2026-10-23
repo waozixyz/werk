@@ -8,7 +8,7 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/Frame"
 
 sdl :: #system_library "SDL2";
-SetTitle :: (window: *void, title: *u8) #foreign sdl "SDL_SetWindowTitle";
+SetEnvironment :: (name: *u8, value: *u8, overwrite: s32) -> s32 #foreign sdl "SDL_setenv";
 libc :: #system_library "libc";
 WriteError :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign libc "write";
 
@@ -23,6 +23,7 @@ Report :: (message: string) {
 }
 
 DrawDesktop :: (session: Session) -> bool {
+    unused Desktop.DesktopSetTitle(WerkWindowTitle())
     Desktop.BeginDesktopFrame()
     // After BeginDesktopFrame, which applies a resize from the last frame.
     viewport := Desktop.DesktopViewport()
@@ -60,6 +61,19 @@ main :: (argc: s32, argv: **u8) -> s32 {
             return Command.RunCommand(argc, argv)
         }
     }
+    window_class: [64]u8
+    unused CopyCString("werk", window_class[:])
+    if argc >= 3 && TextFromCString(argv[1]) == "--app" {
+        id := TextFromCString(argv[2])
+        if id == "pass" { unused CopyCString("werk-pass", window_class[:]) }
+        if id == "auth" { unused CopyCString("werk-auth", window_class[:]) }
+        if id == "calculator" { unused CopyCString("werk-calculator", window_class[:]) }
+        if id == "clock" { unused CopyCString("werk-clock", window_class[:]) }
+        if id == "workbook" { unused CopyCString("werk-workbook", window_class[:]) }
+    }
+    hint: [32]u8
+    unused CopyCString("SDL_VIDEO_X11_WMCLASS", hint[:])
+    unused SetEnvironment(*hint[0], *window_class[0], 1)
     if !Desktop.OpenDesktopSized(DESKTOP_WIDTH, DESKTOP_HEIGHT) {
         Desktop.CloseDesktop()
         Report("Werkzeug: could not open desktop\n")
@@ -69,9 +83,6 @@ main :: (argc: s32, argv: **u8) -> s32 {
         Desktop.CloseDesktop()
         return 1
     }
-    title: [16]u8
-    unused CopyCString("Werkzeug", title[:])
-    SetTitle(Desktop.window, *title[0])
     session := SessionOpen()
     if !SessionValid(session) {
         Desktop.CloseDesktop()
@@ -80,7 +91,12 @@ main :: (argc: s32, argv: **u8) -> s32 {
     WerkStart()
     // `werk --app auth` opens one tool first, as Harmony's Auth entry does.
     if argc >= 3 && TextFromCString(argv[1]) == "--app" {
-        unused WerkOpen(TextFromCString(argv[2]), false)
+        if !WerkOpen(TextFromCString(argv[2]), false) {
+            Report("Werkzeug: app is unavailable\n")
+            SessionClose(session)
+            Desktop.CloseDesktop()
+            return 1
+        }
     }
     if argc >= 3 && TextFromCString(argv[1]) == "--bundle" {
         index := LoadExternalApp(TextFromCString(argv[2]))

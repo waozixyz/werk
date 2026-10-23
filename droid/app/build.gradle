@@ -14,9 +14,9 @@ android {
     }
 
     def getKeystorePath = { -> project.findProperty('keystore.path') ?: keystoreProps['keystore.path'] ?: System.getenv("HOME") + "/.android/pass-release.keystore" }
-    def getKeystoreAlias = { -> project.findProperty('keystore.alias') ?: keystoreProps['keystore.alias'] ?: "pass-key" }
+    def getKeystoreAlias = { -> project.findProperty('keystore.alias') ?: keystoreProps['keystore.alias'] ?: System.getenv('KEY_ALIAS') ?: "pass-key" }
 
-    def releasePassword = project.findProperty('keystore.password') ?: ""
+    def releasePassword = project.findProperty('keystore.password') ?: System.getenv('KEYSTORE_PASSWORD') ?: ""
 
     def releaseKeystorePath = getKeystorePath()
     def releaseKeystore = releaseKeystorePath ? file(releaseKeystorePath) : null
@@ -43,8 +43,8 @@ android {
         applicationId 'xyz.waozi.pass'
         minSdk 21
         targetSdk 36
-        versionCode 14
-        versionName "0.4.0"
+        versionCode 15
+        versionName "0.4.1"
         // Default to the two realistic phone targets; override with
         // -Pabi=x86_64 etc. for emulator builds.
         def abis = project.findProperty('abi') ?: 'armeabi-v7a,arm64-v8a'
@@ -80,6 +80,7 @@ android {
 
     dependenciesInfo {
         includeInApk = false
+        includeInBundle = false
     }
 
     packaging {

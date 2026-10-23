@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.1] - 2026-10-23
+
+- Open Pass, Auth, Calculator, Clock and Workbook directly from the Linux application menu, each with its own icon.
+- Desktop installs add shortcuts for Werkzeug and every tool to your configured desktop folder.
+- Tool windows show their own names and icons in the desktop switcher.
+
 ## [0.4.0] - 2026-10-19
 
 - A new purple W logo across the app, Android and the website.

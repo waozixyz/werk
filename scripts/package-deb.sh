@@ -14,10 +14,9 @@ mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/lib/werk/apps" "$stage/usr
 cp "$root/build/werk" "$stage/usr/bin/werk"
 cp "$root"/build/apps/*.zib "$stage/usr/lib/werk/apps/"
 cp "$root/build/pfp.png" "$stage/usr/lib/werk/pfp.png"
-cp "$root/packaging/linux/xyz.waozi.werk.desktop" "$stage/usr/share/applications/xyz.waozi.werk.desktop"
+python3 "$root/scripts/install-launchers.py" --data-dir "$stage/usr/share"
 cp "$root/packaging/linux/werk-bundle.xml" "$stage/usr/share/mime/packages/werk-bundle.xml"
 cp "$root/packaging/linux/xyz.waozi.werk.appdata.xml" "$stage/usr/share/metainfo/xyz.waozi.werk.appdata.xml"
-cp "$root/assets/app/icon.png" "$stage/usr/share/icons/hicolor/512x512/apps/werk.png"
 cp "$root/LICENSE" "$root/README.md" "$stage/usr/share/doc/werk/"
 find "$stage" -type d -exec chmod 0755 {} \;
 chmod 0755 "$stage/usr/bin/werk"

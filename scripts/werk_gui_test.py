@@ -26,6 +26,8 @@ data = output / "data"
 cache = output / "cache"
 data.mkdir(parents=True)
 cache.mkdir(parents=True)
+(data / "profile").mkdir()
+(data / "profile/settings.txt").write_text("name=Fixture Person\ntheme_mode=1\n")
 environment = dict(os.environ)
 environment.pop("WAYLAND_DISPLAY", None)
 environment["WERK_DATA"] = str(data)
@@ -125,10 +127,10 @@ def click_word(word, toggle=False, last=False, exact_case=False):
     raise AssertionError(f"Could not find {word!r} in the private test window")
 
 
-def click_scrolled(word):
+def click_scrolled(word, **options):
     for attempt in range(12):
         try:
-            return click_word(word)
+            return click_word(word, **options)
         except AssertionError:
             command("xdotool", "mousemove", "--window", window, "200", "650")
             command("xdotool", "click", "--window", window, "--repeat", "3", "--delay", "50", "5")
@@ -188,10 +190,9 @@ def clipboard():
     return command("xclip", "-selection", "clipboard", "-out")
 
 
-def tile(index):
-    """The centre of a home screen tile; the window is 420 wide."""
-    left = (420 - (2 * 120 + 16)) // 2
-    return left + (index % 2) * 136 + 60, 56 + 16 + (index // 2) * 136 + 60
+def open_tool(name):
+    click_word(name, exact_case=True)
+    assert command("xdotool", "getwindowname", window).strip() == name
 
 
 def home():
@@ -265,7 +266,7 @@ try:
     capture("home")
 
     # Pass: the same inputs give the LessPass reference password.
-    click(*tile(0))
+    open_tool("Pass")
     capture("pass-open")
     left = (420 - 384) // 2
     click(left + 100, 56 + 12 + 24 + 20)
@@ -284,18 +285,29 @@ try:
     home()
 
     # Calculator: keyboard input.
-    click(*tile(2))
+    open_tool("Calculator")
     type_text("12+30*2=")
     capture("calculator")
+    assert "72" in screen_text(), "Calculator did not show the expected result"
     home()
 
     # Clock.
-    click(*tile(3))
+    open_tool("Clock")
     capture("clock")
+    click_word("Stopwatch")
+    click(110, 382)
+    time.sleep(1.2)
+    click(110, 382)
+    stopwatch = next(data.rglob("stopwatch.txt"))
+    state = [int(value) for value in stopwatch.read_text().split()]
+    assert state[0] == 0 and state[2] >= 1000, "Stopwatch did not advance and stop"
+    capture("stopwatch")
+    click(310, 382)
+    assert stopwatch.read_text().split() == ["0", "0", "0"], "Stopwatch did not reset"
     home()
 
     # Auth: import a fixture link and copy its code.
-    click(*tile(1))
+    open_tool("Auth")
     capture("auth-empty")
     click(210, 56 + 12 + 20)
     click(210, 56 + 12 + 24 + 20)
@@ -356,12 +368,8 @@ try:
     assert saved.count("\tV\t") == 2 and "Third:carol" in saved, saved.count("\tV\t")
     home()
 
-    # Profile: a name and dark appearance are saved privately.
-    click(420 - 30, 28)
-    click(*field_below("Name"))
-    type_text("Fixture Person")
-    home()
-    assert "name=Fixture Person\n" in (data / "profile/settings.txt").read_text(), "Leaving Entity lost the pending name edit"
+    # Entity retains existing names; its current profile edits appearance.
+    assert "name=Fixture Person\n" in (data / "profile/settings.txt").read_text()
     click(390, 28)
     scroll_down()
     click_word("Dark")
@@ -370,7 +378,9 @@ try:
     assert "name=Fixture Person\n" in settings and "theme_mode=2\n" in settings, settings
     assert (data / "profile/settings.txt").stat().st_mode & 0o077 == 0
     # Nodes belong to the common Entity bundle; choosing one creates no account.
+    click_word("Light")
     scroll_up()
+    click_word("Connect", exact_case=True)
     node_field = field_below("Nodes", 120)
     click(*node_field)
     type_text("https://example.invalid/path")
@@ -387,14 +397,11 @@ try:
     stop()
     start()
     click(390, 28)
+    click_word("Connect", exact_case=True)
     capture("node-restarted")
     assert "node=https://sync.example.invalid:8443\n" in (data / "profile/settings.txt").read_text()
     assert not (data / "account/keys.txt").exists()
-    # OCR uses light controls; the dark appearance was checked above.
-    scroll_down()
-    click_word("Light")
-    scroll_down()
-    click_word("Account")
+    scroll_up()
     # The filled action's painted bounds are stable even when OCR misses
     # white labels. Creating an account explicitly asks to merge Auth data.
     click_filled()
@@ -403,17 +410,19 @@ try:
     time.sleep(.8)
     account_file = data / "account/keys.txt"
     assert account_file.exists() and "paused=0\n" in account_file.read_text()
-    click_word("Sync", toggle=True)
+    click_scrolled("Sync", toggle=True)
     assert "paused=1\n" in account_file.read_text(), "Entity's sync switch did not pause"
     capture("sync-paused")
     stop()
     start()
     assert "paused=1\n" in account_file.read_text()
     click(390, 28)
+    # The connected account's public-ID button opens management.
+    click(210, 310)
     capture("sync-paused-restarted")
     previous_account = account_file.read_text()
     scroll_down()
-    node_field = click_word("Node", exact_case=True)
+    node_field = click_scrolled("address")
     type_text("https://second.example.invalid")
     add_node(node_field)
     account = account_file.read_text()
@@ -422,7 +431,6 @@ try:
     assert ([line for line in previous_account.splitlines() if not line.startswith("server=")]
             == [line for line in account.splitlines() if not line.startswith("server=")]), "Changing node altered account credentials"
     scroll_up()
-    click_scrolled("Manage")
     click_scrolled("out")
     click_filled()
     time.sleep(.8)

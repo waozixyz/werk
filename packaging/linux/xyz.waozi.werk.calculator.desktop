@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Calculator
+Comment=Everyday and scientific calculations with Werkzeug
+Exec=werk --app calculator
+TryExec=werk
+Icon=werk-calculator
+Terminal=false
+Categories=Utility;Calculator;
+Keywords=Werkzeug;Math;Scientific;
+StartupNotify=true
+StartupWMClass=werk-calculator

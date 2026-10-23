@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Clock
+Comment=Local time and stopwatch with Werkzeug
+Exec=werk --app clock
+TryExec=werk
+Icon=werk-clock
+Terminal=false
+Categories=Utility;Clock;
+Keywords=Werkzeug;Time;Stopwatch;
+StartupNotify=true
+StartupWMClass=werk-clock

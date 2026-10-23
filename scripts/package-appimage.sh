@@ -15,10 +15,9 @@ mkdir -p "$appdir/usr/bin" "$appdir/usr/lib/werk/apps" "$appdir/usr/share/applic
 cp "$root/build/werk" "$appdir/usr/bin/werk"
 cp "$root"/build/apps/*.zib "$appdir/usr/lib/werk/apps/"
 cp "$root/build/pfp.png" "$appdir/usr/lib/werk/pfp.png"
-cp "$root/packaging/linux/xyz.waozi.werk.desktop" "$appdir/usr/share/applications/xyz.waozi.werk.desktop"
+python3 "$root/scripts/install-launchers.py" --data-dir "$appdir/usr/share"
 cp "$root/packaging/linux/werk-bundle.xml" "$appdir/usr/share/mime/packages/werk-bundle.xml"
 cp "$root/packaging/linux/xyz.waozi.werk.appdata.xml" "$appdir/usr/share/metainfo/xyz.waozi.werk.appdata.xml"
-cp "$root/assets/app/icon.png" "$appdir/usr/share/icons/hicolor/512x512/apps/werk.png"
 cp "$root/assets/app/icon.png" "$root/build/package/appimage/werk.png"
 rm -f "$root"/Werkzeug-*.AppImage "$root"/werk-*.AppImage
 ARCH="$arch" "$linuxdeploy" --appdir "$appdir" --desktop-file "$root/packaging/linux/xyz.waozi.werk.desktop" \
