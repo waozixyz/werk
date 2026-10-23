@@ -32,7 +32,7 @@ CFLAGS := -std=c99 -O2 -Wno-unused-variable -I$(ZIRAN_ROOT)/include
 PROJECT := --project $(LOCK_FLAGS)
 ANDROID_ABIS ?= armeabi-v7a,arm64-v8a
 
-.PHONY: all apps cli gui native run test source-check core-test ziran-core-test cli-test pass-state-test app-logic-test lesspass-compat-test entity-account-test gui-smoke gui-test web web-canvas site web-smoke android-debug android-emulator android-release android-smoke android-input-test e2e check-package-urls install install-cli install-gui uninstall-cli uninstall-gui package-deb package-appimage plan9-c
+.PHONY: all apps portable-apps cli gui native run test source-check core-test ziran-core-test cli-test pass-state-test app-logic-test lesspass-compat-test entity-account-test gui-smoke gui-test web web-canvas site web-smoke android-debug android-emulator android-release android-smoke android-input-test e2e check-package-urls install install-cli install-gui uninstall-cli uninstall-gui package-deb package-appimage plan9-c
 all: cli gui
 native: all
 
@@ -46,12 +46,15 @@ build/pass: build/generated/cli/.complete
 cli: build/pass
 	cp build/pass pass
 
-# Each app is its own bundle; Werkzeug runs them in one window.
+# Each app is its own bundle; Werkzeug runs them in one window. Workbook runs
+# only in the Linux desktop app, so the web and Android apps leave it out.
 APPS := pass auth calculator clock
-APP_BUNDLES := $(APPS:%=build/apps/%.zib) build/apps/entity.zib build/apps/apps.zib build/apps/workbook.zib
+PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zib) build/apps/entity.zib build/apps/apps.zib
+APP_BUNDLES := $(PORTABLE_BUNDLES) build/apps/workbook.zib
 SHARED_SOURCES := $(wildcard shared/*.zi)
 APP_MODULE_PATHS = --module-path shared --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
 apps: $(APP_BUNDLES)
+portable-apps: $(PORTABLE_BUNDLES)
 build/apps/apps.zib: ziran.lock apps-controller.sha256
 	mkdir -p $(@D)
 	$(ZIRAN) version > /dev/null
@@ -130,14 +133,14 @@ build/generated/browser/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBR
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target=c -o $(@D) src/browser.zi
 	touch $@
-build/web-app/index.js: build/generated/browser/.complete build/web-runtime/libziran.a $(APP_BUNDLES) build/pfp.png assets/app/icon.png assets/fonts/NotoSans-Regular.ttf
+build/web-app/index.js: build/generated/browser/.complete build/web-runtime/libziran.a $(PORTABLE_BUNDLES) build/pfp.png assets/app/icon.png assets/fonts/NotoSans-Regular.ttf
 	mkdir -p $(@D)
 	$(WEB_CC) -O2 -Wno-parentheses-equality -I$(ZIRAN_ROOT)/include -iquote build/generated/browser build/generated/browser/*.c \
 		build/web-runtime/libziran.a \
 		--js-library $(ZIRAN_ROOT)/web/ziran_web.js -sEXPORTED_RUNTIME_METHODS=FS,IDBFS -lidbfs.js \
 		-sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=16777216 -sASYNCIFY_STACK_SIZE=1048576 -sENVIRONMENT=web \
 		--embed-file assets/fonts/NotoSans-Regular.ttf@/kryon-font.ttf \
-		--embed-file build/apps@/apps --embed-file build/pfp.png@/pfp.png --embed-file assets/app/icon.png@/icon.png -o $@
+		$(foreach bundle,$(PORTABLE_BUNDLES),--embed-file $(bundle)@/apps/$(notdir $(bundle))) --embed-file build/pfp.png@/pfp.png --embed-file assets/app/icon.png@/icon.png -o $@
 build/web-app/index.html: build/web-app/index.js web/site/app/index.html
 	cp web/site/app/index.html $@
 build/generated/worker/.complete: src/service_worker.zi ziran.toml ziran.lock
@@ -156,19 +159,19 @@ web-smoke: site
 	bash scripts/web_smoke.sh
 
 # CMake emits JNI and foreign ABI types separately for each Android ABI.
-android-debug: apps
+android-debug: portable-apps
 	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
 	mkdir -p build
 	cp droid/app/build/outputs/apk/debug/app-universal-debug.apk build/werk-android-debug.apk
 	python3 scripts/android_apk_check.py build/werk-android-debug.apk
 	cp droid/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk build/werk-android-arm64-v8a-debug.apk
 	cp droid/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk build/werk-android-armeabi-v7a-debug.apk
-android-emulator: apps
+android-emulator: portable-apps
 	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=x86_64 $(GRADLE_ARGS)
 	mkdir -p build
 	cp droid/app/build/outputs/apk/debug/app-debug.apk build/werk-android-emulator.apk
 	python3 scripts/android_apk_check.py build/werk-android-emulator.apk
-android-release: apps
+android-release: portable-apps
 	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
 .PHONY: android-fdroid
 # F-Droid owns signing and updates. Keep the same package/version as the

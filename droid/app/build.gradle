@@ -103,14 +103,14 @@ tasks.named('preBuild').configure { dependsOn prepareFonts }
 // The tool apps are portable bundles, built once for every ABI.
 def makeApps = tasks.register('makeApps', Exec) {
     workingDir '../..'
-    commandLine 'make', 'apps'
+    commandLine 'make', 'portable-apps'
 }
 android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/appAssets'))
 def prepareImages = tasks.register('prepareImages', Copy) {
     dependsOn makeApps
     from('../../assets/app/icon.png')
     from("${System.getenv('KRYON_DIR')}/icons/pfp.png")
-    from('../../build/apps') { include '*.zib'; into 'apps' }
+    from('../../build/apps') { include '*.zib'; exclude 'workbook.zib'; into 'apps' }
     into layout.buildDirectory.dir('generated/appAssets')
 }
 tasks.named('preBuild').configure { dependsOn prepareImages }
