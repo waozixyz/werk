@@ -1,0 +1,2 @@
+- Linux packages include the libraries needed for sync and importing QR-code pictures.
+- Packaging a new AppImage preserves previous downloads.

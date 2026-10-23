@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.2] - 2026-10-23
+
+- Linux packages include the libraries needed for sync and importing QR-code pictures.
+- Packaging a new AppImage preserves previous downloads.
+
 ## [0.4.1] - 2026-10-23
 
 - Open Pass, Auth, Calculator, Clock and Workbook directly from the Linux application menu, each with its own icon.

@@ -64,10 +64,15 @@ for tool, name in (("", "Werkzeug"), ("pass", "Pass"), ("auth", "Auth"),
         assert window and command("xdotool", "getwindowname", window).strip() == name
         wm_class = command("xprop", "-id", window, "WM_CLASS")
         assert values["StartupWMClass"] in wm_class, wm_class
-        time.sleep(.5)
         picture = work / ((tool or "werkzeug") + ".png")
-        command("import", "-window", window, str(picture))
-        text = command("tesseract", str(picture), "stdout", "--psm", "11")
+        deadline = time.monotonic() + 15
+        text = ""
+        while time.monotonic() < deadline:
+            assert process.poll() is None, f"{name} exited before rendering"
+            time.sleep(.3)
+            command("import", "-window", window, str(picture))
+            text = command("tesseract", str(picture), "stdout", "--psm", "11")
+            if name in text: break
         assert name in text, f"{name} did not render its direct tool screen: {text}"
         assert "unavailable" not in text.lower(), text
         print(f"Installed {name} entry opened the correct screen and window identity", flush=True)
