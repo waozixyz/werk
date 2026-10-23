@@ -27,7 +27,7 @@ def check_apk(path):
         for name in names:
             if name.endswith(".dex"):
                 classes = list(dex_classes(archive.read(name)))
-                assert all(re.fullmatch(r"Lxyz/waozi/pass/R(?:\$[^;]+)?;", item) for item in classes), f"{path}: packaged application bytecode: {classes}"
+                assert all(re.fullmatch(r"Lxyz/waozi/werk/R(?:\$[^;]+)?;", item) for item in classes), f"{path}: packaged application bytecode: {classes}"
         for font in ["ui.ttf", "emoji.ttf"]:
             assert "assets/fonts/" + font in names, f"{path}: missing {font}"
         for app in ["pass", "auth", "calculator", "clock"]:

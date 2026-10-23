@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.3] - 2026-10-23
+
+- Werkzeug uses its own Android application ID, `xyz.waozi.werk`.
+- Werkzeug installs alongside legacy Pass, preserving the older app and its data.
+
 ## [0.4.2] - 2026-10-23
 
 - Linux packages include the libraries needed for sync and importing QR-code pictures.

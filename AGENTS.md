@@ -23,9 +23,9 @@ first.
 - Never commit, print or log a real master password, Auth secret, otpauth
   link, export file or current code. Tests use fixture values only, such as
   the RFC 6238 keys.
-- Keep Pass's on-disk formats and the Android package `xyz.waozi.pass`:
-  existing installations update in place and keep their saved master
-  password. `src/migrate.zi` moves Pass's old files once; keep it.
+- Keep Pass's on-disk formats and `src/migrate.zi`. The owner changed the
+  Android package to `xyz.waozi.werk` on 2026-10-23. Werkzeug installs
+  separately from legacy `xyz.waozi.pass`; never clear the legacy app's data.
 - Every file Werkzeug writes is private (0600 in 0700 folders).
 
 ## Platforms and tests

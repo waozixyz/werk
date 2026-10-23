@@ -16,7 +16,7 @@ for path, expected_abis in [(fdroid, {"armeabi-v7a", "arm64-v8a"}),
     package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
     assert package, f"{path}: no package identity"
     current = package.groups()
-    assert current[0] == "xyz.waozi.pass", "Updating must preserve Pass's Android ID"
+    assert current[0] == "xyz.waozi.werk", "Werkzeug must use xyz.waozi.werk"
     assert current[2] == (root / "VERSION").read_text().strip(), "Channel added a version suffix"
     if identity is None:
         identity = current

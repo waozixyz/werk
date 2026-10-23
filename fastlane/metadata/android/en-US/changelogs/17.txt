@@ -1,0 +1,2 @@
+- Werkzeug uses its own Android application ID, `xyz.waozi.werk`.
+- Werkzeug installs alongside legacy Pass, preserving the older app and its data.

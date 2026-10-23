@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'xyz.waozi.pass'
+    namespace 'xyz.waozi.werk'
     compileSdk 36
     ndkVersion "28.2.13676358"
 
@@ -40,11 +40,11 @@ android {
     }
 
     defaultConfig {
-        applicationId 'xyz.waozi.pass'
+        applicationId 'xyz.waozi.werk'
         minSdk 21
         targetSdk 36
-        versionCode 16
-        versionName "0.4.2"
+        versionCode 17
+        versionName "0.4.3"
         // Default to the two realistic phone targets; override with
         // -Pabi=x86_64 etc. for emulator builds.
         def abis = project.findProperty('abi') ?: 'armeabi-v7a,arm64-v8a'

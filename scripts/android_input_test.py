@@ -18,7 +18,7 @@ if not serial:
     serial = next((line.split()[0] for line in devices if line.startswith("emulator-") and line.split()[-1] == "device"), None)
 if not serial or not serial.startswith("emulator-"):
     raise SystemExit("Android input tests require a private emulator")
-package = "xyz.waozi.pass"
+package = "xyz.waozi.werk"
 
 def adb(*arguments, check=True):
     return subprocess.run(["adb", "-s", serial, *arguments], check=check, capture_output=True)

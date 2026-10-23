@@ -22,7 +22,7 @@ subprocess.run(["java", "-jar", str(tool), "validate", "--bundle=" + str(bundle)
 xml = subprocess.check_output(["java", "-jar", str(tool), "dump", "manifest", "--bundle=" + str(bundle)], text=True)
 manifest = ET.fromstring(xml)
 android = "{http://schemas.android.com/apk/res/android}"
-assert manifest.get("package") == "xyz.waozi.pass", "Preserve the installed app ID"
+assert manifest.get("package") == "xyz.waozi.werk", "Werkzeug must use xyz.waozi.werk"
 assert manifest.get(android + "versionName") == args.version
 assert int(manifest.find("uses-sdk").get(android + "targetSdkVersion")) >= 36
 assert manifest.find("application").get(android + "debuggable", "false") == "false"

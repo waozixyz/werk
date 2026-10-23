@@ -1,5 +1,8 @@
 .DEFAULT_GOAL := all
 ZIRAN ?= ./scripts/ziran.sh
+# Gradle invokes make again for portable bundles. Inherited environment
+# variables otherwise export these shell-derived paths while resolving them.
+unexport ZIRAN_ROOT KRYON_DIR RAYLIB_DIR MINGCUTE_DIR LIBOQS_DIR MONOCYPHER_DIR QRCODE_DIR WORKBOOK_DIR ENTITY_DIR APPS_DIR
 # Local overrides refer to the real root repositories. Published builds
 # require the exact versions recorded in the committed lock.
 LOCK_FLAGS := $(if $(wildcard ziran.local.toml),,--locked)
