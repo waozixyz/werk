@@ -34,7 +34,7 @@ jobs:
       - name: Install CLI test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y openssl xclip xvfb xauth tesseract-ocr
+          sudo apt-get install -y openssl xclip xvfb xauth tesseract-ocr imagemagick
       - name: Install Emscripten
         run: |
           set -euo pipefail

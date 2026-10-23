@@ -51,7 +51,7 @@ jobs:
       - name: Install screenshot OCR
         run: |
           sudo apt-get update
-          sudo apt-get install -y tesseract-ocr
+          sudo apt-get install -y tesseract-ocr imagemagick
       - name: Verify browser input, storage, cache upgrades, and offline launch
         env:
           WERK_WEB_BROWSER: google-chrome
