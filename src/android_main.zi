@@ -42,6 +42,68 @@ NativeThreadAttributes :: (attributes: *void) -> s32 {
     return SetThreadStack(attributes, cast(usize)16777216)
 }
 
+WerkAndroidFrame :: struct { session: Session; ok: bool }
+
+ComposeAndroidFrame :: (argument: *void) {
+    frame := cast(*WerkAndroidFrame)argument
+    session := frame.session
+    ok := true
+    width: s32
+    height: s32
+    SyncAndroidSurfaceSize(*width, *height)
+    // Keeps the app clear of the navigation bar and the keyboard.
+    PollAndroidWindowInsets()
+    zoom := cast(float32)width / 390.0
+    if zoom < 1.0 {
+        zoom = 1.0
+    }
+    Render.RaylibSetZoom(zoom)
+    viewport: AndroidViewport
+    ResolveAndroidViewport(width, height, AndroidViewportPolicyResizeForIme(), *viewport)
+    bounds := Rectangle.{cast(float32)viewport.x / zoom, cast(float32)viewport.y / zoom,
+        cast(float32)viewport.width / zoom, cast(float32)viewport.height / zoom}
+    KeyboardModifiersSend(session, Render.RaylibModifiers())
+    key := Render.RaylibPressedKey()
+    if key != 0 {
+        KeyboardSend(session, key)
+    }
+    codepoint := Render.RaylibTypedCodepoint()
+    while codepoint != 0 {
+        TypedCodepointSend(session, codepoint)
+        codepoint = Render.RaylibTypedCodepoint()
+    }
+    Render.BeginRaylibFrame()
+    ClearAndroidFrame(viewport, ThemePalette().background, zoom)
+    pointer := Render.PollPointer()
+    TreePointerUpdate(session, pointer)
+    TreeSecondaryPointerUpdate(session, Render.PollSecondaryPointer())
+    PointerWheelSend(session, pointer.x, pointer.y, Render.RaylibWheelMove())
+    AndroidFieldsBegin()
+    ok = BeginFrame(session, cast(u64)1, bounds) == FrameStatus.FrameOk
+    if !ok {
+        Report("Could not begin frame")
+    }
+    if ok {
+        ok = WerkFrame(session, bounds) == 0
+        if !ok {
+            Report("Could not compose frame")
+        }
+    }
+    if ok {
+        ok = EndFrame(session) == FrameStatus.FrameOk
+        if !ok {
+            Report("Could not commit frame")
+        }
+    }
+    AndroidFieldsEnd()
+    ShowKeyboard(WerkKeyboard())
+    ok = Render.EndRaylibFrame() && ok
+    if !ok {
+        Report("Could not present frame")
+    }
+    frame.ok = ok
+}
+
 #program_export
 main :: () -> s32 {
     thread_adapter: AttributeInit = NativeThreadAttributes
@@ -73,60 +135,10 @@ main :: () -> s32 {
     WerkStart()
     ok: bool = true
     while ok && Render.PollRaylib() {
-        width: s32
-        height: s32
-        SyncAndroidSurfaceSize(*width, *height)
-        // Keeps the app clear of the navigation bar and the keyboard.
-        PollAndroidWindowInsets()
-        zoom := cast(float32)width / 390.0
-        if zoom < 1.0 {
-            zoom = 1.0
-        }
-        Render.RaylibSetZoom(zoom)
-        viewport: AndroidViewport
-        ResolveAndroidViewport(width, height, AndroidViewportPolicyResizeForIme(), *viewport)
-        bounds := Rectangle.{cast(float32)viewport.x / zoom, cast(float32)viewport.y / zoom,
-            cast(float32)viewport.width / zoom, cast(float32)viewport.height / zoom}
-        KeyboardModifiersSend(session, Render.RaylibModifiers())
-        key := Render.RaylibPressedKey()
-        if key != 0 {
-            KeyboardSend(session, key)
-        }
-        codepoint := Render.RaylibTypedCodepoint()
-        while codepoint != 0 {
-            TypedCodepointSend(session, codepoint)
-            codepoint = Render.RaylibTypedCodepoint()
-        }
-        Render.BeginRaylibFrame()
-        ClearAndroidFrame(viewport, ThemePalette().background, zoom)
-        pointer := Render.PollPointer()
-        TreePointerUpdate(session, pointer)
-        TreeSecondaryPointerUpdate(session, Render.PollSecondaryPointer())
-        PointerWheelSend(session, pointer.x, pointer.y, Render.RaylibWheelMove())
-        AndroidFieldsBegin()
-        ok = BeginFrame(session, cast(u64)1, bounds) == FrameStatus.FrameOk
-        if !ok {
-            Report("Could not begin frame")
-        }
-        if ok {
-            ok = WerkFrame(session, bounds) == 0
-            if !ok {
-                Report("Could not compose frame")
-            }
-        }
-        if ok {
-            ok = EndFrame(session) == FrameStatus.FrameOk
-            if !ok {
-                Report("Could not commit frame")
-            }
-        }
-        AndroidFieldsEnd()
-        ShowKeyboard(WerkKeyboard())
-        ok = Render.EndRaylibFrame() && ok
-        if !ok {
-            Report("Could not present frame")
-        }
+        frame := WerkAndroidFrame.{.session = session}
+        ok = Render.RunRaylibAppFrame(ComposeAndroidFrame, cast(*void)*frame) && frame.ok
     }
+    Render.CloseRaylibAppFrames()
     ok = SaveApps() && ok
     ShowKeyboard(false)
     CloseSession(session)

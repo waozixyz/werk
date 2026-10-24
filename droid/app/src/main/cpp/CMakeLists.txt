@@ -45,7 +45,9 @@ file(GLOB_RECURSE SOURCE_INPUTS CONFIGURE_DEPENDS
 list(APPEND SOURCE_INPUTS "${REPO_ROOT}/ziran.toml" "${REPO_ROOT}/ziran.lock")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SOURCE_INPUTS})
 execute_process(COMMAND "${ZIRAN}" build --project ${LOCK_FLAGS} ${DEFINES}
-    --target=c --entry android_main:main -o "${GENERATED}" src/android_main.zi
+    # Native linker callbacks are reached through raylib, outside Zi's entry
+    # graph. Keep them as the shared Android source generator does.
+    --target=c --no-main -o "${GENERATED}" src/android_main.zi
     WORKING_DIRECTORY "${REPO_ROOT}" COMMAND_ERROR_IS_FATAL ANY)
 file(GLOB GENERATED_SOURCES CONFIGURE_DEPENDS "${GENERATED}/*.c")
 # Kryon's Android glue compiles its thread configurator with the same zi2c.

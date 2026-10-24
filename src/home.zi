@@ -15,7 +15,7 @@ Launcher :: #import "apps/launcher";
 Controller :: #import "apps/controller";
 Rules :: #import "apps/protocol";
 
-AppsControllerSha256 :: "952db2717c6d8500aa9a4c29b78c3028a19821e11bf511f39471bf04cf02c6cd";
+AppsControllerSha256 :: "7107ceb3718dd6fb96f47d1050d7cf6f9fdac0f15108615b852c11823e92b092";
 
 HomePreference :: struct {
     title: [256]u8
