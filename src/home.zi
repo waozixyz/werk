@@ -299,3 +299,51 @@ SharedHome :: (session: Session, bounds: Rectangle, dark: bool, selected: s32,
 
 SharedHomeOpened :: () -> s32 { return home.opened }
 SharedHomeKeyboard :: () -> bool { return home.view.focused || home.controller.app.keyboard }
+
+// Mini mode's Home: only the tools, as large tiles laid out in the columns
+// that keep them closest to square. Returns the tool tapped, or -1.
+MiniHome :: (session: Session, bounds: Rectangle) -> s32 {
+    if !home.loaded { HomeLoad() }
+    count: s32
+    tools: [APP_LIMIT]s32
+    for index: cast(s32)0..AppCount() - 1 {
+        if AppId(index) == "entity" { continue }
+        tools[count] = index
+        count += 1
+    }
+    if count == 0 { return -1 }
+    gap: float32 = 12.0
+    area := Rectangle.{bounds.x + 16.0, bounds.y + 16.0, bounds.width - 32.0, bounds.height - 32.0}
+    columns: s32 = 1
+    best: float32 = 0.0
+    for choice: cast(s32)1..count {
+        rows := (count + choice - 1) / choice
+        width := (area.width - gap * cast(float32)(choice - 1)) / cast(float32)choice
+        height := (area.height - gap * cast(float32)(rows - 1)) / cast(float32)rows
+        shape := ifx width < height then width / height else height / width
+        if shape > best {
+            best = shape
+            columns = choice
+        }
+    }
+    rows := (count + columns - 1) / columns
+    width := (area.width - gap * cast(float32)(columns - 1)) / cast(float32)columns
+    height := (area.height - gap * cast(float32)(rows - 1)) / cast(float32)rows
+    // A large window keeps tiles a comfortable size, centred.
+    if width > 240.0 { width = 240.0 }
+    if height > 240.0 { height = 240.0 }
+    left := area.x + (area.width - width * cast(float32)columns - gap * cast(float32)(columns - 1)) * 0.5
+    top := area.y + (area.height - height * cast(float32)rows - gap * cast(float32)(rows - 1)) * 0.5
+    opened: s32 = -1
+    for at: cast(s32)0..count - 1 {
+        index := tools[at]
+        tile := ButtonProps.{.key = cast(u64)(31000 + at), .id = 31000 + at, .label = HomeTitle(index),
+            .icon_shape = HomeIcon(index), .icon_placement = IconPlacement.IconPlacementAbove,
+            .size = ControlSize.ControlSizeLarge, .fit_content = true,
+            .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft,
+            .bounds = Rectangle.{left + cast(float32)(at % columns) * (width + gap),
+                top + cast(float32)(at / columns) * (height + gap), width, height}}
+        if Button(session, tile) != 0 { opened = index }
+    }
+    return opened
+}

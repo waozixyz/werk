@@ -44,9 +44,10 @@ for the same verified account ID. Account keys and Auth records stay in the
 host's private store. Android retains its existing native Account screen and
 legacy device-link flow; browser account sync is unavailable.
 
-The embedded web app (`/app/?mini`) opens on Home with every tool, and also
-provides Profile. Use `?mini&app=pass`, `auth`, `calculator` or `clock` to
-open a particular tool first. Browser sync is currently unavailable.
+The embedded web app (`/app/?mini`) shows only the tools, as large tiles,
+with no Profile; `werk --mini` does the same on the desktop. Use
+`?mini&app=pass`, `auth`, `calculator` or `clock` to open a particular tool
+first; Back returns to the tiles. Browser sync is currently unavailable.
 
 - Each record is sealed on the device with XChaCha20-Poly1305 under a random
   vault key that is never sent to the node unencrypted. The seal covers the

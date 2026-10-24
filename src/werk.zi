@@ -40,7 +40,8 @@ screen: s32;
 entity_account: bool;
 entity_reload: bool;
 open_app: s32 = -1;
-// Started in a page embedding the toolkit, with navigation still available.
+// Mini mode, from a page's ?mini or the desktop's --mini, keeps only the
+// tools: Home is their tiles alone, and nothing leads to Profile.
 mini: bool;
 name_field: FieldState;
 code_field: FieldState;
@@ -79,9 +80,13 @@ WerkStart :: () {
     }
 }
 
-// Opens an app by id at start, such as from the page address. In mini mode
-// the host keeps navigation so every tool remains available.
-WerkOpen :: (id: string, alone: bool) -> bool {
+WerkMini :: () {
+    mini = true
+}
+
+// Opens an app by id at start, such as from the page address. Back still
+// leads Home, so every tool remains available.
+WerkOpen :: (id: string) -> bool {
     index: s32 = 0
     while index < AppCount() {
         if AppId(index) == id {
@@ -90,7 +95,6 @@ WerkOpen :: (id: string, alone: bool) -> bool {
             }
             open_app = index
             screen = SCREEN_APP
-            mini = alone
             return true
         }
         index += 1
@@ -188,6 +192,14 @@ TopBar :: (session: Session, viewport: Rectangle) {
 }
 
 Home :: (session: Session, area: Rectangle, input: TextFieldInput, key: s32, modifiers: s32) {
+    if mini {
+        opened := MiniHome(session, area)
+        if opened >= 0 {
+            open_app = opened
+            screen = SCREEN_APP
+        }
+        return
+    }
     if SharedHome(session, area, ProfileDark(), open_app, input, key, modifiers) {
         opened := SharedHomeOpened()
         if opened >= 0 {
@@ -715,8 +727,11 @@ WerkFrame :: (session: Session, viewport: Rectangle) -> s32 {
     Box(session, background)
     keyboard_wanted = false
     content := viewport
-    TopBar(session, viewport)
-    content = Rectangle.{viewport.x, viewport.y + BAR_HEIGHT, viewport.width, viewport.height - BAR_HEIGHT}
+    // Mini Home is the tool tiles alone, without the bar.
+    if !mini || screen != SCREEN_HOME {
+        TopBar(session, viewport)
+        content = Rectangle.{viewport.x, viewport.y + BAR_HEIGHT, viewport.width, viewport.height - BAR_HEIGHT}
+    }
     if screen == SCREEN_HOME {
         Home(session, content, input, key, modifiers)
     } else if screen == SCREEN_PROFILE {

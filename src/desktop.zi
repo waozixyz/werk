@@ -6,6 +6,7 @@ Command :: #import "command";
 Desktop :: #import "kryon/Desktop";
 using UI :: #import "kryon/Widgets";
 #import "kryon/Frame"
+#import "kryon/mini_embed"
 
 sdl :: #system_library "SDL2";
 SetEnvironment :: (name: *u8, value: *u8, overwrite: s32) -> s32 #foreign sdl "SDL_setenv";
@@ -89,9 +90,19 @@ main :: (argc: s32, argv: **u8) -> s32 {
         return 1
     }
     WerkStart()
+    // `werk --mini` shows only the tools, as a page's ?mini embed does.
+    arguments: [16]string
+    count: s64 = 0
+    while count < cast(s64)argc && count < arguments.count {
+        arguments[count] = TextFromCString(argv[count])
+        count += 1
+    }
+    if MiniModeArgument(arguments[0:count]) {
+        WerkMini()
+    }
     // `werk --app auth` opens one tool first, as Harmony's Auth entry does.
     if argc >= 3 && TextFromCString(argv[1]) == "--app" {
-        if !WerkOpen(TextFromCString(argv[2]), false) {
+        if !WerkOpen(TextFromCString(argv[2])) {
             Report("Werkzeug: app is unavailable\n")
             SessionClose(session)
             Desktop.CloseDesktop()
@@ -100,7 +111,7 @@ main :: (argc: s32, argv: **u8) -> s32 {
     }
     if argc >= 3 && TextFromCString(argv[1]) == "--bundle" {
         index := LoadExternalApp(TextFromCString(argv[2]))
-        if index < 0 || !WerkOpen(AppId(index), false) {
+        if index < 0 || !WerkOpen(AppId(index)) {
             Report("Werkzeug: incompatible app bundle\n")
             SessionClose(session)
             Desktop.CloseDesktop()

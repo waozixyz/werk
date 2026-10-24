@@ -1,6 +1,7 @@
 // Exercise the built site's Werkzeug app in a private headless browser with a
 // disposable profile: the home screen, a tool opened by clicking Home and by
-// ?app=, Calculator typing, Clock, and every tool in embedded mini mode.
+// ?app=, Calculator typing, Clock, and every tool in embedded mini mode, also
+// inside an iframe the size of the waozi.xyz app card.
 import {spawn, spawnSync} from 'node:child_process';
 import {readFile, writeFile, mkdir, mkdtemp} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -13,8 +14,16 @@ await mkdir(output, {recursive: true});
 const profile = await mkdtemp(join(output, 'profile-'));
 const types = {'.js': 'application/javascript', '.wasm': 'application/wasm', '.html': 'text/html',
   '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png'};
+// The waozi.xyz app card embeds the mini app in a 480 px high frame.
+const embed = `<!doctype html><meta charset="utf-8"><style>body{margin:0}iframe{display:block;margin:16px;border:0}</style>
+<iframe id="mini" src="/app/?mini&theme=waozi" width="388" height="480"></iframe>`;
 const server = createServer(async (request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+  if (pathname === '/embed.html') {
+    response.setHeader('Content-Type', 'text/html');
+    response.end(embed);
+    return;
+  }
   const file = join(root, pathname.endsWith('/') ? pathname + 'index.html' : pathname);
   if (!file.startsWith(root + '/')) {
     response.writeHead(403).end();
@@ -93,22 +102,34 @@ try {
     const shot = await command('Page.captureScreenshot', {format: 'png'});
     await writeFile(join(output, name + '.png'), Buffer.from(shot.data, 'base64'));
   };
-  const expectText = async (name, expected) => {
+  // The screenshot's text, read as captured and again with its labels
+  // enlarged in black and white.
+  const screenText = async name => {
     await screenshot(name);
     let result = spawnSync('tesseract', [join(output, name + '.png'), 'stdout', '--psm', '11'],
       {env: environment, encoding: 'utf8', timeout: 20000});
     if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
-    if (!result.stdout.toLowerCase().includes(expected.toLowerCase())) {
-      const readable = join(output, name + '-labels.png');
-      const prepared = spawnSync('convert', [join(output, name + '.png'), '-colorspace', 'Gray',
-        '-threshold', '55%', '-resize', '300%', readable], {env: environment, encoding: 'utf8'});
-      if (prepared.status !== 0) throw Error('Could not prepare UI text: ' + prepared.stderr);
-      result = spawnSync('tesseract', [readable, 'stdout', '--psm', '11'],
-        {env: environment, encoding: 'utf8', timeout: 20000});
-      if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
-    }
-    if (!result.stdout.toLowerCase().includes(expected.toLowerCase()))
-      throw Error(`${name}: expected ${expected}, saw ${result.stdout}`);
+    let text = result.stdout;
+    const readable = join(output, name + '-labels.png');
+    const prepared = spawnSync('convert', [join(output, name + '.png'), '-colorspace', 'Gray',
+      '-threshold', '55%', '-resize', '300%', readable], {env: environment, encoding: 'utf8'});
+    if (prepared.status !== 0) throw Error('Could not prepare UI text: ' + prepared.stderr);
+    result = spawnSync('tesseract', [readable, 'stdout', '--psm', '11'],
+      {env: environment, encoding: 'utf8', timeout: 20000});
+    if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
+    return (text + '\n' + result.stdout).toLowerCase();
+  };
+  const expectText = async (name, expected) => {
+    const text = await screenText(name);
+    if (!text.includes(expected.toLowerCase())) throw Error(`${name}: expected ${expected}, saw ${text}`);
+  };
+  // Mini Home is the four tool tiles alone: no Profile, search or title bar.
+  const expectMiniHome = async name => {
+    const text = await screenText(name);
+    for (const tool of ['Pass', 'Auth', 'Calculator', 'Clock'])
+      if (!text.includes(tool.toLowerCase())) throw Error(`${name}: missing the ${tool} tile, saw ${text}`);
+    for (const hidden of ['Profile', 'Find an app', 'Werkzeug'])
+      if (text.includes(hidden.toLowerCase())) throw Error(`${name}: mini Home shows ${hidden}: ${text}`);
   };
   const click = async (x, y) => {
     await command('Input.dispatchMouseEvent', {type: 'mousePressed', x, y, button: 'left', clickCount: 1});
@@ -139,12 +160,12 @@ try {
       if (pixels[i] !== pixels[0] || pixels[i + 1] !== pixels[1] || pixels[i + 2] !== pixels[2]) return true;
     return false;
   })()`;
-  const open = async (query, name) => {
-    await command('Page.navigate', {url: base + query});
+  const open = async (query, name, page = base + query, frame = 'document') => {
+    await command('Page.navigate', {url: page});
     const until = Date.now() + 40000;
     while (Date.now() < until) {
       try {
-        if (await evaluate(painted)) {
+        if (await evaluate(`(document => ${painted})(${frame})`)) {
           await delay(500);
           await screenshot(name);
           return;
@@ -183,36 +204,43 @@ try {
   if (timezoneReads > 6) throw Error(`Clock read the time zone ${timezoneReads} times in 1.2 seconds`);
   await click(28, 28);
   await expectText('home-returned', 'Werkzeug');
+  // The full app keeps its Profile button.
+  await expectText('home-returned', 'Profile');
   await open('?app=calculator', 'calculator');
   await type('12+30*2=');
   await delay(400);
   await expectText('calculator-typed', '72');
   // Clock also opens directly, where a broken time binding froze the page.
   await open('?app=clock', 'clock');
-  // The embedded mini version opens on Home with every tool; a tool
-  // would show its own name as the title.
+  // The embedded mini version opens on the tool tiles; a tool shows its own
+  // name as the title, and Back returns to the tiles.
   await open('?mini', 'mini-home');
-  await expectText('mini-home', 'Werkzeug');
+  await expectMiniHome('mini-home');
   for (const app of ['pass', 'auth', 'calculator', 'clock']) {
     await open('?mini&app=' + app, app + '-mini-direct');
     await expectText(app + '-mini-direct', app);
     await click(28, 28);
-    await expectText(app + '-mini-home', 'Werkzeug');
+    await expectMiniHome(app + '-mini-home');
     await clickText(app[0].toUpperCase() + app.slice(1));
     await expectText(app + '-mini-reopened', app);
   }
   await command('Emulation.setDeviceMetricsOverride', {width: 280, height: 480, deviceScaleFactor: 1, mobile: false});
   await open('?mini&app=unknown', 'mini-narrow-home');
-  await expectText('mini-narrow-home', 'Find an app');
-  await click(100, 92);
-  await type('clock');
+  await expectMiniHome('mini-narrow-home');
   await clickText('Clock');
   await expectText('mini-narrow-clock', 'Clock');
   await click(28, 28);
-  await click(250, 28);
-  await expectText('mini-narrow-profile', 'Profile');
+  await expectMiniHome('mini-narrow-returned');
+  // Inside the card's iframe, a tile opens its tool and Back returns.
+  await command('Emulation.setDeviceMetricsOverride', {width: 420, height: 520, deviceScaleFactor: 1, mobile: false});
+  await open('', 'card-home', base.replace(/app\/$/, 'embed.html'), "document.getElementById('mini').contentDocument");
+  await expectMiniHome('card-home');
+  await clickText('Calculator');
+  await expectText('card-calculator', 'Calculator');
+  await click(16 + 28, 16 + 28);
+  await expectMiniHome('card-returned');
   if (exceptions.length) throw Error('Page exceptions: ' + exceptions.join(' '));
-  console.log('Werkzeug web: Calculator result, every mini tool, Home, Profile and narrow navigation verified in private Chromium');
+  console.log('Werkzeug web: Calculator result, Home, Profile, and mini mode with only the four tools (narrow and in the waozi.xyz card frame) verified in private Chromium');
 } finally {
   socket?.close();
   try {

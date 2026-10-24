@@ -1,5 +1,5 @@
-// The browser host. ?app=ID opens a tool at start. Embedded ?mini opens
-// the home screen with every tool unless ?app selects one.
+// The browser host. ?app=ID opens a tool at start. Embedded ?mini shows
+// only the tools, opening on their tiles unless ?app selects one.
 #import "werk"
 #import "apps"
 #import "browser_storage"
@@ -7,6 +7,7 @@
 Browser :: #import "kryon/Canvas";
 using UI :: #import "kryon/Widgets";
 #import "kryon/Frame"
+#import "kryon/mini_embed"
 
 // The value of name=VALUE in a query such as "?app=pass&x=1".
 QueryValue :: (query: string, name: string) -> string {
@@ -43,9 +44,12 @@ main :: () -> s32 {
     }
     WerkStart()
     query := BrowserQuery()
+    if MiniModeQuery(query) {
+        WerkMini()
+    }
     selected := QueryValue(query, "app")
     if selected != "" {
-        unused WerkOpen(selected, QueryValue(query, "mini") != "")
+        unused WerkOpen(selected)
     }
     ok: bool = true
     while ok && Browser.PollCanvas() {
