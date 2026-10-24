@@ -36,7 +36,7 @@ CFLAGS := -std=c99 -O2 -Wno-unused-variable -I$(ZIRAN_ROOT)/include
 PROJECT := --project $(LOCK_FLAGS)
 ANDROID_ABIS ?= armeabi-v7a,arm64-v8a
 
-.PHONY: all apps portable-apps cli gui native run test source-check core-test ziran-core-test cli-test pass-state-test app-logic-test lesspass-compat-test entity-account-test gui-smoke gui-test web web-canvas site web-smoke android-debug android-emulator android-release android-smoke android-input-test e2e check-package-urls install install-cli install-gui uninstall-cli uninstall-gui package-deb package-appimage plan9-c
+.PHONY: all apps portable-apps cli gui native run test source-check core-test ziran-core-test cli-test pass-state-test app-logic-test lesspass-compat-test entity-account-test gui-smoke gui-test web web-canvas site web-smoke android-debug android-emulator android-release android-smoke android-input-test e2e check-package-urls install install-cli install-gui uninstall-cli uninstall-gui package-deb package-appimage
 all: cli gui
 native: all
 
@@ -199,11 +199,6 @@ android-smoke:
 	bash scripts/android_smoke.sh
 android-input-test:
 	python3 scripts/android_input_test.py
-
-# The pass command for Plan 9; transfer the checkout with build/plan9 and run mk.
-plan9-c:
-	mkdir -p build/plan9
-	$(ZIRAN) build $(PROJECT) --define PLAN9_BUILD --target=plan9-c --entry cli:main -o build/plan9/cli apps/pass/cli.zi
 
 check-package-urls:
 	bash scripts/check_package_urls.sh

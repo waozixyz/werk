@@ -4,20 +4,12 @@
 #import "version"
 #import "c_string"
 #import "text_buffer"
-#if !#defined(PLAN9_BUILD) {
-    #import "cli_profiles"
-    #import "cli_native"
-}
+#import "cli_profiles"
+#import "cli_native"
 
 libc :: #system_library "libc";
 Write :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign libc "write";
-Read :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign libc "read";
-#if #defined(PLAN9_BUILD) {
-    GetEnvRaw :: (name: *s8) -> *s8 #foreign libc "getenv";
-    GetEnv :: (name: *u8) -> *u8 { return cast(*u8)GetEnvRaw(cast(*s8)name) }
-} else {
-    GetEnv :: (name: *u8) -> *u8 #foreign libc "getenv";
-}
+GetEnv :: (name: *u8) -> *u8 #foreign libc "getenv";
 
 Usage :: #string END
 Usage: pass [OPTIONS] SITE LOGIN [MASTER_PASSWORD]
@@ -68,23 +60,6 @@ Print :: (fd: s32, value: string) {
 Error :: (message: string) -> s32 {
     Print(2, "pass: "); Print(2, message); Print(2, "\n")
     return 2
-}
-
-ReadMaster :: (buffer: []u8) -> bool {
-    used: s32 = 0
-    while used < cast(s32)buffer.count - 1 {
-        byte: u8
-        if Read(0, *byte, cast(usize)1) != cast(isize)1 { return used > 0 }
-        if byte == cast(u8)10 {
-            if used > 0 && buffer[used - 1] == cast(u8)13 { used -= 1 }
-            buffer[used] = cast(u8)0
-            return true
-        }
-        if byte == cast(u8)0 { return false }
-        buffer[used] = byte
-        used += 1
-    }
-    return false
 }
 
 #program_export
@@ -153,35 +128,27 @@ main :: (argc: s32, argv: **u8) -> s32 {
     }
     if version { Print(1, "pass "); Print(1, Version); Print(1, "\n"); return 0 }
     site: string; login: string; clear_ms: s64
-    #if !#defined(PLAN9_BUILD) {
-        // Keep the decoded profile alive until generation has finished.
-        profile: LegacyProfile
-    }
+    // Keep the decoded profile alive until generation has finished.
+    profile: LegacyProfile
     if profile_name != "" {
         if count != 1 { return Error("expected SITE with --profile") }
     } else if count < 2 { Print(2, Usage); return 2 }
-    #if !#defined(PLAN9_BUILD) {
-        candidate := profile_name
-        if candidate == "" && count == 2 { candidate = positional[0] }
-        profile = LoadLegacyProfile(candidate, profile_name != "", *options, explicit)
-        if !profile.valid { return Error("invalid CLI profiles configuration or unknown profile") }
-        if profile.found {
-            site = ifx profile_name != "" then positional[0] else positional[1]
-            login = TextUntilNul(profile.login[:])
-            if (explicit & cast(u32)64) == cast(u32)0 { options.exclude = TextUntilNul(profile.exclude[:]) }
-        } else { site = positional[0]; login = positional[1] }
-        if !copy { copy = profile.copy }
-        clear_ms = profile.clear_ms
-        if clear_after != "" {
-            clear_ms = DurationMilliseconds(clear_after)
-            if clear_ms < 0 { return Error("invalid --clear-after duration") }
-        }
-        if vault_path == "" && !prompt && count != 3 { vault_path = TextUntilNul(profile.vault[:]) }
-    } else {
-        if profile_name != "" || vault_path != "" || clear_after != "" { return Error("profiles and vaults require the Linux CLI") }
-        if copy && !no_copy { return Error("--copy is not available on Plan 9") }
-        site = positional[0]; login = positional[1]
+    candidate := profile_name
+    if candidate == "" && count == 2 { candidate = positional[0] }
+    profile = LoadLegacyProfile(candidate, profile_name != "", *options, explicit)
+    if !profile.valid { return Error("invalid CLI profiles configuration or unknown profile") }
+    if profile.found {
+        site = ifx profile_name != "" then positional[0] else positional[1]
+        login = TextUntilNul(profile.login[:])
+        if (explicit & cast(u32)64) == cast(u32)0 { options.exclude = TextUntilNul(profile.exclude[:]) }
+    } else { site = positional[0]; login = positional[1] }
+    if !copy { copy = profile.copy }
+    clear_ms = profile.clear_ms
+    if clear_after != "" {
+        clear_ms = DurationMilliseconds(clear_after)
+        if clear_ms < 0 { return Error("invalid --clear-after duration") }
     }
+    if vault_path == "" && !prompt && count != 3 { vault_path = TextUntilNul(profile.vault[:]) }
     if vault_path != "" && (prompt || count == 3) { return Error("--vault cannot be combined with --prompt or MASTER_PASSWORD") }
     if prompt && count == 3 { return Error("MASTER_PASSWORD cannot be supplied together with --prompt") }
     master: [1024]u8
@@ -190,11 +157,9 @@ main :: (argc: s32, argv: **u8) -> s32 {
         if !CopyText(positional[2], master[:]) { return Error("master password is too long") }
     } else {
         unlocked: bool
-        #if !#defined(PLAN9_BUILD) {
-            if vault_path != "" {
-                if !DecryptVault(vault_path, master[:]) { return Error("cannot unlock vault: wrong passphrase, unreadable or corrupted vault") }
-                unlocked = true
-            }
+        if vault_path != "" {
+            if !DecryptVault(vault_path, master[:]) { return Error("cannot unlock vault: wrong passphrase, unreadable or corrupted vault") }
+            unlocked = true
         }
         if !unlocked {
             name: [32]u8
@@ -203,11 +168,7 @@ main :: (argc: s32, argv: **u8) -> s32 {
             if !prompt && environment != null {
                 if !CopyText(TextFromCString(environment), master[:]) { return Error("master password is too long") }
             } else {
-                #if !#defined(PLAN9_BUILD) {
-                    if !ReadSecret(master[:], "Master password: ") { return Error("missing master password") }
-                } else {
-                    if !ReadMaster(master[:]) { return Error("missing master password") }
-                }
+                if !ReadSecret(master[:], "Master password: ") { return Error("missing master password") }
             }
         }
     }
@@ -217,13 +178,11 @@ main :: (argc: s32, argv: **u8) -> s32 {
     if !generated.valid {
         Print(2, "pass: "); Print(2, generated.error); Print(2, "\n"); return 1
     }
-    #if !#defined(PLAN9_BUILD) {
-        if copy && !no_copy {
-            if !CopyPassword(TextView(generated.password[0:generated.length]), clear_ms) {
-                return Error("clipboard unavailable; install xclip or use --no-copy")
-            }
-            Print(2, "Password copied to the clipboard.\n"); return 0
+    if copy && !no_copy {
+        if !CopyPassword(TextView(generated.password[0:generated.length]), clear_ms) {
+            return Error("clipboard unavailable; install xclip or use --no-copy")
         }
+        Print(2, "Password copied to the clipboard.\n"); return 0
     }
     Print(1, TextView(generated.password[0:generated.length])); Print(1, "\n")
     return 0
