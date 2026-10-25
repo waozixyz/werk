@@ -1,5 +1,5 @@
 #import "pass_core"
-#import "sha256"
+#import "crypto/sha256"
 
 #program_export
 DigestMatches :: (left: [32]u8, right: [32]u8) -> bool {
@@ -11,8 +11,8 @@ DigestMatches :: (left: [32]u8, right: [32]u8) -> bool {
 
 #program_export
 Answer :: () -> s32 {
-    empty := Sha256("")
-    abc := Sha256("abc")
+    empty := Sha256Of("")
+    abc := Sha256Of("abc")
     derived := DeriveKey("password", "salt")
     if empty[0] != cast(u8)0xe3 || empty[31] != cast(u8)0x55 { return 1 }
     if abc[0] != cast(u8)0xba || abc[31] != cast(u8)0xad { return 2 }
@@ -117,7 +117,7 @@ Answer :: () -> s32 {
 
 #program_export
 PortableAnswer :: () -> s32 {
-    digest := HmacSha256("password", "salt")
+    digest := HmacSha256Of("password", "salt")
     if digest[0] != cast(u8)0xfc || digest[31] != cast(u8)0xd0 {
         return 1
     }

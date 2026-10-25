@@ -8,8 +8,8 @@
 #import "std/text_buffer"
 #import "std/number_text"
 #import "std/timer_linux"
-#import "totp"
-#import "exports"
+#import "auth/totp"
+#import "auth/exports"
 Platform :: #import "platform";
 Accounts :: #import "account";
 Records :: #import "records";

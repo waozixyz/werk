@@ -142,7 +142,7 @@ jobs:
           path: |
             droid/app/.cxx
             droid/app/build/intermediates/cxx
-          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/*.zi', 'shared/*.zi', 'apps/*/*.zi', 'droid/app/src/main/cpp/CMakeLists.txt', 'droid/app/build.gradle', 'ziran.lock') }}
+          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/*.zi', 'apps/*/*.zi', 'droid/app/src/main/cpp/CMakeLists.txt', 'droid/app/build.gradle', 'ziran.lock') }}
           restore-keys: |
             android-native-${{ runner.os }}-${{ runner.arch }}-
       - name: Install Android SDK components

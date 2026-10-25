@@ -50,7 +50,7 @@ window = None
 FIXTURE_SECRET = base64.b32encode(b"12345678901234567890").decode()
 FIXTURE_LINK = f"otpauth://totp/Fixture:alice@example.com?secret={FIXTURE_SECRET}&issuer=Fixture"
 # A Google Authenticator export of the same key, an RFC 6238 SHA-256 key and
-# a counter-based account (see apps/auth/exports_test.zi).
+# a counter-based account (see tests/exports_test.zi in the auth package).
 MIGRATION_LINK = ("otpauth-migration://offline?data=CjoKFDEyMzQ1Njc4OTAxMjM0NTY3ODkwEhxFeGFtcGxlIENvOmFsaWNl"
                   "QGV4YW1wbGUuY29tIAEoATACCjUKIDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyEgNib2IaBlNlY29uZCAC"
                   "KAIwAgorChQxMjM0NTY3ODkwMTIzNDU2Nzg5MBIHY291bnRlchoESG90cCABKAEwARABGAEgACi5YA%3D%3D")

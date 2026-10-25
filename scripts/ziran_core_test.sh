@@ -4,7 +4,7 @@ ziran=${1:?pass the ziran command}
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo"
 ziran_root=$("$ziran" pkg path ziran)
-paths="--module-path apps/pass --module-path shared"
+paths="--module-path apps/pass --module-path crypto=$("$ziran" pkg path crypto)/src"
 mkdir -p build/core-test
 "$ziran" check --root tests $paths tests/core_main.zi
 "$ziran" build --target=c --root tests $paths -o build/core-test/c tests/core_main.zi

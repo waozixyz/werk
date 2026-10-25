@@ -2,7 +2,7 @@
 tool = "kryon"
 name = "Werkzeug"
 entry = "src/desktop.zi"
-module_roots = ["src", "shared", "apps/pass", "apps/auth"]
+module_roots = ["src", "apps/pass"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
@@ -50,6 +50,14 @@ source = true
 
 [dependencies.entity]
 git = "https://github.com/waozixyz/entity.git"
+ref = "master"
+
+[dependencies.auth]
+git = "https://github.com/waozixyz/auth.git"
+ref = "master"
+
+[dependencies.crypto]
+git = "https://github.com/ziranlang/crypto.git"
 ref = "master"
 
 [dependencies.workbook]

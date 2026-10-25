@@ -2,7 +2,7 @@
 ZIRAN ?= ./scripts/ziran.sh
 # Gradle invokes make again for portable bundles. Inherited environment
 # variables otherwise export these shell-derived paths while resolving them.
-unexport ZIRAN_ROOT KRYON_DIR RAYLIB_DIR MINGCUTE_DIR LIBOQS_DIR MONOCYPHER_DIR QRCODE_DIR WORKBOOK_DIR ENTITY_DIR APPS_DIR
+unexport ZIRAN_ROOT KRYON_DIR RAYLIB_DIR MINGCUTE_DIR LIBOQS_DIR MONOCYPHER_DIR QRCODE_DIR WORKBOOK_DIR ENTITY_DIR APPS_DIR AUTH_DIR CRYPTO_DIR
 # Local overrides refer to the real root repositories. Published builds
 # require the exact versions recorded in the committed lock.
 LOCK_FLAGS := $(if $(wildcard ziran.local.toml),,--locked)
@@ -18,6 +18,9 @@ QRCODE_DIR = $(shell $(ZIRAN) pkg path qrcode $(LOCK_FLAGS))
 WORKBOOK_DIR = $(shell $(ZIRAN) pkg path workbook $(LOCK_FLAGS))
 ENTITY_DIR = $(shell $(ZIRAN) pkg path entity $(LOCK_FLAGS))
 APPS_DIR = $(shell $(ZIRAN) pkg path apps $(LOCK_FLAGS))
+# Auth is its own package; SHA-256 and PBKDF2 come from the crypto package.
+AUTH_DIR = $(shell $(ZIRAN) pkg path auth $(LOCK_FLAGS))
+CRYPTO_DIR = $(shell $(ZIRAN) pkg path crypto $(LOCK_FLAGS))
 LIBOQS_FLAGS := -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=OFF -DOQS_BUILD_ONLY_LIB=ON \
 	-DOQS_USE_OPENSSL=OFF -DOQS_DIST_BUILD=OFF -DOQS_OPT_TARGET=generic -DOQS_MINIMAL_BUILD=SIG_ml_dsa_44
 MONOCYPHER_SOURCES = $(MONOCYPHER_DIR)/src/monocypher.c $(MONOCYPHER_DIR)/src/optional/monocypher-ed25519.c
@@ -28,7 +31,7 @@ DESKTOP_DIR ?= $(shell xdg-user-dir DESKTOP 2>/dev/null)
 # The tool bundles and Werkzeug's other files.
 LIB_DIR ?= $(HOME)/.local/lib/werk
 WEB_CC ?= $(if $(wildcard $(HOME)/emsdk/upstream/emscripten/emcc),$(HOME)/emsdk/upstream/emscripten/emcc,emcc)
-SOURCES := $(wildcard src/*.zi shared/*.zi apps/*/*.zi)
+SOURCES := $(wildcard src/*.zi apps/*/*.zi)
 LIBRARY_SOURCES = $(wildcard $(KRYON_DIR)/src/ui/*.zi $(KRYON_DIR)/src/ui/*/module.zi $(KRYON_DIR)/src/kss/*.zi $(KRYON_DIR)/src/backend/*.zi $(KRYON_DIR)/src/backend/*/module.zi $(ZIRAN_ROOT)/std/*.zi)
 ZIRAN_RUNTIME_SOURCES = $(wildcard $(ZIRAN_ROOT)/cmd/zir/*.[ch] $(ZIRAN_ROOT)/include/*.h)
 ENTITY_SOURCES = $(wildcard $(ENTITY_DIR)/src/*.zi $(ENTITY_DIR)/assets/entity/*)
@@ -52,12 +55,12 @@ cli: build/pass
 
 # Each app is its own bundle; Werkzeug runs them in one window. Workbook runs
 # only in the Linux desktop app, so the web and Android apps leave it out.
-APPS := pass auth calculator clock
-PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zx) build/apps/entity.zx build/apps/apps.zx
+APPS := pass calculator clock
+PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zx) build/apps/auth.zx build/apps/entity.zx build/apps/apps.zx
 APP_BUNDLES := $(PORTABLE_BUNDLES) build/apps/workbook.zx
-SHARED_SOURCES := $(wildcard shared/*.zi)
+CRYPTO_SOURCES = $(wildcard $(CRYPTO_DIR)/src/*.zi)
 APPS_UI_SOURCES = $(wildcard $(APPS_DIR)/src/*.zi $(APPS_DIR)/ui/*.zi $(APPS_DIR)/ui/locales/*.json)
-APP_MODULE_PATHS = --module-path shared --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
+APP_MODULE_PATHS = --module-path crypto=$(CRYPTO_DIR)/src --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
 apps: $(APP_BUNDLES)
 portable-apps: $(PORTABLE_BUNDLES)
 # Compile the shared screen with the host's compiler and UI library. The
@@ -70,10 +73,15 @@ build/apps/apps.zx: $(APPS_UI_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCE
 	sha256sum $@ | cut -d ' ' -f 1 > $(@D)/apps.sha256
 	test "$$(cat $(@D)/apps.sha256)" = "$$(cat apps-controller.sha256)"
 .SECONDEXPANSION:
-build/apps/%.zx: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
+build/apps/%.zx: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
 	mkdir -p $(@D)
 	$(ZIRAN) bundle --root . --module-path apps/$* $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERK_APP \
 		$(if $(wildcard apps/$*/assets),--asset-dir assets=apps/$*/assets) --entry $*:Main -o $@ apps/$*/$*.zi
+
+build/apps/auth.zx: $(wildcard $(AUTH_DIR)/src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
+	mkdir -p $(@D)
+	$(ZIRAN) bundle --root $(AUTH_DIR) --module-path $(AUTH_DIR)/src $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERK_APP \
+		--entry auth:Main -o $@ $(AUTH_DIR)/src/auth.zi
 
 build/apps/workbook.zx: $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile
 	mkdir -p $(@D)
@@ -89,7 +97,7 @@ build/apps/entity.zx: $(ENTITY_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURC
 build/ziran/libziran.a: ziran.lock $(ZIRAN_RUNTIME_SOURCES)
 	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BUILD_DIR=$(abspath build/ziran) $(abspath $@)
 
-build/generated/desktop/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(SHARED_SOURCES) $(LIBRARY_SOURCES) $(ENTITY_SOURCES) ziran.toml ziran.lock
+build/generated/desktop/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) $(ENTITY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_DESKTOP --target=c --entry desktop:main -o $(@D) src/desktop.zi
@@ -139,7 +147,7 @@ WEB_AR ?= $(dir $(WEB_CC))emar
 build/web-runtime/libziran.a: ziran.lock
 	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BOOTSTRAP=1 BUILD_DIR=$(abspath build/web-runtime) \
 		CC=$(WEB_CC) AR=$(WEB_AR) OBJCOPY=true CFLAGS=-O2 $(abspath $@)
-build/generated/browser/.complete: $(wildcard src/*.zi) $(SHARED_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
+build/generated/browser/.complete: $(wildcard src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target=c -o $(@D) src/browser.zi

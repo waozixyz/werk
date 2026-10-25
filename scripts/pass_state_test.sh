@@ -7,7 +7,8 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 ziran_root=$("$ziran" pkg path ziran)
 kryon=$("$ziran" pkg path kryon)
-args="--root tests --module-path apps/pass --module-path shared --module-path kryon=$kryon/src/backend --module-path kryon=$kryon/src/ui --module-path $kryon/src/ui --module-path $ziran_root/std"
+crypto=$("$ziran" pkg path crypto)
+args="--root tests --module-path apps/pass --module-path crypto=$crypto/src --module-path kryon=$kryon/src/backend --module-path kryon=$kryon/src/ui --module-path $kryon/src/ui --module-path $ziran_root/std"
 mkdir -p build/pass-state-test
 "$ziran" build $args --target=c -o build/pass-state-test/c tests/pass_state_test.zi
 ${CC:-cc} -std=c99 -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -I"$ziran_root/include" -Ibuild/pass-state-test/c build/pass-state-test/c/*.c -o build/pass-state-test/native

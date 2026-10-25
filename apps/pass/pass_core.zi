@@ -1,4 +1,4 @@
-#import "sha256"
+#import "crypto/sha256"
 #if #defined(WERK_APP) {
     #import "kryon/app_context"
 }
@@ -57,9 +57,13 @@ DeriveKey :: (password: string, salt: string) -> [32]u8 {
         derive_failed = !AppPbkdf2Sha256(password, salt, 100000, output[:])
         return output
     } else {
-        return Pbkdf2Sha256(password, salt, 100000)
+        return Pbkdf2Sha256(password, ifx salt.count > PASS_SALT_LIMIT then salt[0:PASS_SALT_LIMIT] else salt, 100000)
     }
 }
+
+// Werkzeug's key derivation has always read at most this many salt bytes,
+// and existing vault keys depend on it; the host derives the same way.
+PASS_SALT_LIMIT :: 508
 
 
 PassClassEmptyError :: (class_index: s32) -> string {
@@ -319,7 +323,7 @@ MasterEmoji :: (master: string, output: []u8) -> s32 {
     if output.count <= 0 { return 0 }
     output[0] = cast(u8)0
 
-    digest := Sha256(master)
+    digest := Sha256Of(master)
     used: s32 = 0
     for index: 0..3 {
         codepoint: u32 = cast(u32)master_emoji_codepoints[

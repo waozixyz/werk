@@ -20,7 +20,7 @@ using UI :: #import "kryon/Widgets";
 #import "kryon/key_input"
 #import "platform"
 #import "files"
-#import "sha256"
+#import "crypto/sha256"
 #import "records"
 #import "entity_host"
 #import "entity_management"
@@ -384,7 +384,11 @@ AppCall :: (context: *void, module: *u8, function: *u8,
             ReturnText(result, "")
             return 1
         }
-        derived := Pbkdf2Sha256(ArgumentText(arguments[0]), ArgumentText(arguments[1]), cast(s32)iterations)
+        // Key derivation has always read at most 508 salt bytes; existing
+        // vault keys depend on it.
+        salt := ArgumentText(arguments[1])
+        if salt.count > 508 { salt = salt[0:508] }
+        derived := Pbkdf2Sha256(ArgumentText(arguments[0]), salt, cast(s32)iterations)
         ReturnBytes(result, derived[:])
         for index: 0..31 {
             derived[index] = cast(u8)0

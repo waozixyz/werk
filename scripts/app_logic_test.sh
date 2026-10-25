@@ -8,12 +8,15 @@ cd "$root"
 ziran_root=$("$ziran" pkg path ziran)
 kryon=$("$ziran" pkg path kryon)
 mingcute=$("$ziran" pkg path mingcute)
+# Auth runs its own tests from its package, with the hashes from crypto.
+auth=$("$ziran" pkg path auth)
+crypto=$("$ziran" pkg path crypto)
 mkdir -p build/app-logic-test
-"$ziran" bundle --root . --module-path apps/auth --module-path shared --module-path "$ziran_root/std" \
-    --entry totp_test:Run -o build/app-logic-test/totp.zx apps/auth/totp_test.zi
+"$ziran" bundle --root "$auth" --module-path "$auth/src" --module-path "crypto=$crypto/src" --module-path "$ziran_root/std" \
+    --entry totp_test:Run -o build/app-logic-test/totp.zx "$auth/tests/totp_test.zi"
 test "$("$ziran" run build/app-logic-test/totp.zx)" = 0
-"$ziran" bundle --root . --module-path apps/auth --module-path shared --module-path "$ziran_root/std" \
-    --entry exports_test:Run -o build/app-logic-test/exports.zx apps/auth/exports_test.zi
+"$ziran" bundle --root "$auth" --module-path "$auth/src" --module-path "crypto=$crypto/src" --module-path "$ziran_root/std" \
+    --entry exports_test:Run -o build/app-logic-test/exports.zx "$auth/tests/exports_test.zi"
 test "$("$ziran" run build/app-logic-test/exports.zx)" = 0
 "$ziran" bundle --root . --module-path apps/calculator --module-path "$ziran_root/std" \
     --entry arithmetic_test:Run -o build/app-logic-test/arithmetic.zx apps/calculator/arithmetic_test.zi

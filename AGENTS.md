@@ -5,12 +5,13 @@ first.
 
 ## Tools are separate apps
 
-- Each tool lives in `apps/<tool>/` and builds into its own bundle,
-  `build/apps/<tool>.zx`. A tool reaches the host only through
-  `shared/werk_app.zi`; the host (`src/apps.zi`) checks every call a
-  bundle asks for and keeps each tool's files, assets and secret separate.
-- Tools never import another tool's modules. Code two tools need goes in
-  `shared/`, as SHA-256 and PBKDF2 do.
+- Each tool builds into its own bundle, `build/apps/<tool>.zx`: Pass,
+  Calculator and Clock from `apps/<tool>/`, Auth and Workbook from their own
+  Ziran packages. The host (`src/apps.zi`) checks every call a bundle asks
+  for and keeps each tool's files, assets and secret separate.
+- Tools never import another tool's modules. Code two tools need comes from
+  a Ziran package, as SHA-256 and PBKDF2 come from `crypto`; no git
+  submodules.
 - Keep the host interface small and generic (files, clock, clipboard,
   key derivation, device secret, input). A new host call needs a new host
   build before any bundle can use it.

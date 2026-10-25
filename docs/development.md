@@ -94,12 +94,14 @@ opens the window on one tool, as Harmony's Auth entry does.
 
 ## Tools are separate apps
 
-Each tool lives in `apps/<tool>/` and is built into its own portable bundle,
-`build/apps/<tool>.zx`. All four are preinstalled. A tool reaches the host
-only through the calls in `shared/werk_app.zi` (its private files,
-clipboard, clock, key derivation and device-protected secret), and the host
-checks every call a bundle asks for before it runs. Tools never import each
-other.
+Each tool is built into its own portable bundle, `build/apps/<tool>.zx`:
+Pass, Calculator and Clock from `apps/<tool>/`, Auth from its own Ziran
+package ([waozixyz/auth](https://github.com/waozixyz/auth)). All four are
+preinstalled. A tool reaches the host only through Kryon's app context (its
+private files, clipboard, clock, key derivation and device-protected
+secret), and the host checks every call a bundle asks for before it runs.
+Tools never import each other; what two need, such as SHA-256 and PBKDF2,
+comes from a Ziran package (`crypto`).
 
 ## Build and test
 
@@ -191,10 +193,9 @@ print the generated password instead. Run `pass --help` for all flags.
 
 ```text
 apps/pass/          Pass: LessPass core, settings and profiles, screens, CLI
-apps/auth/          Auth: TOTP, otpauth links, exports, accounts and screens
+auth (package)      Auth: TOTP, otpauth links, exports, accounts and screens (waozixyz/auth)
 apps/calculator/    Calculator
 apps/clock/         Clock and stopwatch
-shared/             the app interface, protocol and SHA-256/PBKDF2
 src/werk.zi     home screen, profile screen and the bar above a tool
 src/apps.zi         loads, checks and runs the app bundles
 src/platform.zi     files, clock, clipboard and secrets per platform
