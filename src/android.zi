@@ -11,6 +11,7 @@
 
 libc :: #system_library "libc";
 ChangeDirectory :: (path: *u8) -> s32 #foreign libc "chdir";
+SetAndroidEnvironment :: (name: *u8, value: *u8, overwrite: s32) -> s32 #foreign libc "setenv";
 android :: #system_library "android";
 ShowKeyboard :: (activity: *NativeActivity, flags: u32) #foreign android "ANativeActivity_showSoftInput";
 HideKeyboard :: (activity: *NativeActivity, flags: u32) #foreign android "ANativeActivity_hideSoftInput";
@@ -38,7 +39,31 @@ secure_master: [1024]u8;
 
 AndroidInitialize :: () -> bool {
     path := ActivityInternalDataPath()
-    return path != null && ChangeDirectory(path) == 0
+    if path == null || ChangeDirectory(path) != 0 {
+        return false
+    }
+    // The native bundle runtime needs writable build and object-cache folders.
+    // NativeActivity has no /tmp or inherited desktop cache environment.
+    temporary: [PATH_LIMIT]u8
+    cache: [PATH_LIMIT]u8
+    folder := PathJoin(temporary[:], TextFromCString(path), "cache")
+    if !EnsureDirectory(folder) {
+        return false
+    }
+    objects := PathJoin(cache[:], folder, "ziran-native")
+    if !EnsureDirectory(objects) {
+        return false
+    }
+    names: [3]string = .["TMPDIR", "ZIRAN_NATIVE_DIR", "ZIRAN_NATIVE_CACHE"]
+    values: [3]*u8 = .[*temporary[0], *temporary[0], *cache[0]]
+    for index: 0..2 {
+        name: [32]u8
+        if !CopyCString(names[index], name[:]) ||
+        SetAndroidEnvironment(*name[0], values[index], 1) != 0 {
+            return false
+        }
+    }
+    return true
 }
 
 AndroidKeyboard :: (visible: bool) {

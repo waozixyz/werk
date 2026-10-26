@@ -1,0 +1,1 @@
+- Fix Android opening to “Apps are unavailable”; Pass, Auth, Calculator and Clock load normally.

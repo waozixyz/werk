@@ -150,6 +150,8 @@ try:
     top, bottom = system_bars(height)
     # The shared Apps screen can change layout; select the visible tool.
     tap_label("Pass"); time.sleep(0.5); alive(); shot("pass")
+    runtime_modes = shell("run-as", package, "stat", "-c", "%a", "files/cache", "files/cache/ziran-native").split()
+    assert runtime_modes == ["700", "700"], f"Native runtime cache is not private: {runtime_modes}"
     find_label("Site")
     bar = 56
     fill_field("Site", "example.com")

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.5] - 2026-10-26
+
+- Fix Android opening to “Apps are unavailable”; Pass, Auth, Calculator and Clock load normally.
+
 ## [0.4.4] - 2026-10-23
 
 - Werkzeug updates the existing Pass Android app using its original application ID and signing certificate, keeping its saved data.
