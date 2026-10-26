@@ -16,6 +16,8 @@ Controller :: #import "apps/controller";
 Rules :: #import "apps/protocol";
 
 #if #defined(ANDROID_BUILD) {
+    #import "crypto/sha256"
+    #import "std/byte_text_linux"
     home_log :: #system_library "log";
     HomeAndroidLog :: (priority: s32, tag: *u8, message: *u8) -> s32 #foreign home_log "__android_log_write";
     HomeReport :: (message: string) {
@@ -283,7 +285,14 @@ SharedHome :: (session: Session, bounds: Rectangle, dark: bool, selected: s32,
         if !Controller.AppControllerOpen(*home.controller, home.bytes, AppsControllerSha256,
             Controller.AppControllerPlatform.{.service = HomeService, .widgets = HomeWidgets}) {
             #if #defined(ANDROID_BUILD) {
-                HomeReport("Apps controller could not be opened")
+                actual: [65]u8
+                descriptor := cast(*TextDescriptor)(*home.bytes)
+                Sha256Hex(descriptor.data, home.bytes.count, *actual[0])
+                if TextUntilNul(actual[:]) == AppsControllerSha256 {
+                    HomeReport("Apps controller passed integrity check but runtime rejected it")
+                } else {
+                    HomeReport("Apps controller failed integrity check")
+                }
             }
             home.unavailable = true
             return false
