@@ -6,3 +6,7 @@
 /downloads/pass-gui-linux-arm64.tar.gz https://github.com/waozixyz/werk/releases/latest/download/werk-linux-arm64.tar.gz 302
 /downloads/werk-android.apk https://github.com/waozixyz/werk/releases/latest/download/werk-android.apk 302
 /downloads/pass-android.apk https://github.com/waozixyz/werk/releases/latest/download/werk-android.apk 302
+
+# The web app moved from /app/ to the site itself.
+/app / 301
+/app/* / 301

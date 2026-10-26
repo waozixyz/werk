@@ -16,7 +16,7 @@ const types = {'.js': 'application/javascript', '.wasm': 'application/wasm', '.h
   '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png'};
 // The waozi.xyz app card embeds the mini app in a 480 px high frame.
 const embed = `<!doctype html><meta charset="utf-8"><style>body{margin:0}iframe{display:block;margin:16px;border:0}</style>
-<iframe id="mini" src="/app/?mini&theme=waozi" width="388" height="480"></iframe>`;
+<iframe id="mini" src="/?mini&theme=waozi" width="388" height="480"></iframe>`;
 const server = createServer(async (request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
   if (pathname === '/embed.html') {
@@ -38,7 +38,7 @@ const server = createServer(async (request, response) => {
   }
 });
 await new Promise(done => server.listen(0, '127.0.0.1', done));
-const base = `http://127.0.0.1:${server.address().port}/app/`;
+const base = `http://127.0.0.1:${server.address().port}/`;
 const environment = {...process.env};
 for (const key of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS']) delete environment[key];
 const browser = spawn(process.env.WERK_WEB_BROWSER || 'chromium', ['--headless=new', '--no-sandbox',

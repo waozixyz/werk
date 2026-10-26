@@ -160,8 +160,8 @@ build/web-app/index.js: build/generated/browser/.complete build/web-runtime/libz
 		-sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=16777216 -sASYNCIFY_STACK_SIZE=1048576 -sENVIRONMENT=web \
 		--embed-file assets/fonts/NotoSans-Regular.ttf@/kryon-font.ttf \
 		$(foreach bundle,$(PORTABLE_BUNDLES),--embed-file $(bundle)@/apps/$(notdir $(bundle))) --embed-file build/pfp.png@/pfp.png --embed-file assets/app/icon.png@/icon.png -o $@
-build/web-app/index.html: build/web-app/index.js web/site/app/index.html
-	cp web/site/app/index.html $@
+build/web-app/index.html: build/web-app/index.js web/site/index.html
+	cp web/site/index.html $@
 build/generated/worker/.complete: src/service_worker.zi ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)

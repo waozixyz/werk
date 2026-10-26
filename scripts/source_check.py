@@ -12,7 +12,7 @@ for name in tracked:
     path = Path(name)
     if path.suffix in {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".kry", ".java", ".kt", ".go", ".rs", ".swift", ".m", ".mm", ".zig"}:
         bad.append(name)
-    if name.startswith("web/site/app/") and path.suffix == ".js":
+    if name.startswith("web/site/") and path.suffix == ".js":
         bad.append(name)
 if bad:
     raise SystemExit("Non-Ziran app implementation:\n" + "\n".join(bad))

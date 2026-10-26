@@ -1,12 +1,12 @@
-/app/
+/
   Cache-Control: no-cache
-/app/index.html
+/index.html
   Cache-Control: no-cache
-/app/index.js
+/index.js
   Cache-Control: no-cache
-/app/index.wasm
+/index.wasm
   Cache-Control: no-cache
-/app/sw.js
+/sw.js
   Cache-Control: no-cache
-/app/assets.json
+/assets.json
   Cache-Control: no-cache

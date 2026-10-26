@@ -7,7 +7,7 @@
 Small, private tools for everyday life. Generate passwords, manage sign-in
 codes, calculate and keep time in one free, open-source app.
 
-[Try it online](https://werk.waozi.xyz/app/)
+[Try it online](https://werk.waozi.xyz/)
 · [Download the latest release](https://github.com/waozixyz/werk/releases/latest)
 · [What's new](CHANGELOG.md)
 
