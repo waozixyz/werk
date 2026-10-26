@@ -233,7 +233,7 @@ try {
   await expectMiniHome('mini-narrow-returned');
   // Inside the card's iframe, a tile opens its tool and Back returns.
   await command('Emulation.setDeviceMetricsOverride', {width: 420, height: 520, deviceScaleFactor: 1, mobile: false});
-  await open('', 'card-home', base.replace(/app\/$/, 'embed.html'), "document.getElementById('mini').contentDocument");
+  await open('', 'card-home', base + 'embed.html', "document.getElementById('mini').contentDocument");
   await expectMiniHome('card-home');
   await clickText('Calculator');
   await expectText('card-calculator', 'Calculator');
