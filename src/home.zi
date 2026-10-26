@@ -15,6 +15,18 @@ Launcher :: #import "apps/launcher";
 Controller :: #import "apps/controller";
 Rules :: #import "apps/protocol";
 
+#if #defined(ANDROID_BUILD) {
+    home_log :: #system_library "log";
+    HomeAndroidLog :: (priority: s32, tag: *u8, message: *u8) -> s32 #foreign home_log "__android_log_write";
+    HomeReport :: (message: string) {
+        tag: [16]u8
+        text: [128]u8
+        if CopyCString("Werkzeug", tag[:]) && CopyCString(message, text[:]) {
+            unused HomeAndroidLog(6, *tag[0], *text[0])
+        }
+    }
+}
+
 AppsControllerSha256 :: "7107ceb3718dd6fb96f47d1050d7cf6f9fdac0f15108615b852c11823e92b092";
 
 HomePreference :: struct {
@@ -42,6 +54,7 @@ HomeState :: struct {
     has_pending: bool
     loaded: bool
     unavailable: bool
+    frame_failure_reported: bool
 }
 home: HomeState;
 
@@ -259,10 +272,19 @@ SharedHome :: (session: Session, bounds: Rectangle, dark: bool, selected: s32,
     if !home.controller.ready {
         path: [PATH_LIMIT]u8
         bytes, found := ReadBundle(PathJoin(path[:], BundledAppsRoot(), "apps.zx"))
-        if !found { home.unavailable = true; return false }
+        if !found {
+            #if #defined(ANDROID_BUILD) {
+                HomeReport("Apps controller asset could not be read")
+            }
+            home.unavailable = true
+            return false
+        }
         home.bytes = bytes
         if !Controller.AppControllerOpen(*home.controller, home.bytes, AppsControllerSha256,
             Controller.AppControllerPlatform.{.service = HomeService, .widgets = HomeWidgets}) {
+            #if #defined(ANDROID_BUILD) {
+                HomeReport("Apps controller could not be opened")
+            }
             home.unavailable = true
             return false
         }
@@ -294,6 +316,12 @@ SharedHome :: (session: Session, bounds: Rectangle, dark: bool, selected: s32,
     HomeDrain()
     AppFileFree(home.response)
     home.response = ""
+    if !result.ran && !home.frame_failure_reported {
+        #if #defined(ANDROID_BUILD) {
+            HomeReport("Apps controller could not render its frame")
+        }
+        home.frame_failure_reported = true
+    }
     return result.ran
 }
 
