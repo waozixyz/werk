@@ -147,11 +147,8 @@ jobs:
           restore-keys: |
             android-native-${{ runner.os }}-${{ runner.arch }}-
       - name: Install Android SDK components
-        run: |
-          set -euo pipefail
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-36" "build-tools;34.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
+        timeout-minutes: 15
+        run: bash scripts/install_android_sdk.sh
       - name: Build debug APK
         run: |
           set -euo pipefail
@@ -171,23 +168,8 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v3
       - name: Install Android SDK components
-        run: |
-          set -euo pipefail
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-36" "build-tools;34.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
-          # The emulator action also needs API 30. Retry transient corrupt
-          # downloads before the action attempts to start the emulator.
-          for attempt in 1 2 3; do
-            if "$SDKMANAGER" "platforms;android-30"; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "::error::Android 30 SDK installation failed after three attempts"
-              exit 1
-            fi
-            sleep 10
-          done
+        timeout-minutes: 15
+        run: bash scripts/install_android_sdk.sh 'platforms;android-30'
       - name: Install screenshot OCR
         run: |
           sudo apt-get update

@@ -131,7 +131,10 @@ lesspass-compat-test: cli
 	python3 scripts/lesspass_compat_test.py --cli ./pass
 entity-account-test: build/liboqs/lib/liboqs.a
 	ZIRAN_BIN=$(ZIRAN) python3 scripts/entity_account_test.py
-test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test entity-account-test
+.PHONY: android-sdk-install-test
+android-sdk-install-test:
+	python3 scripts/install_android_sdk_test.py
+test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test entity-account-test android-sdk-install-test
 gui-smoke: gui
 	sh scripts/gui_smoke.sh
 gui-test: gui
