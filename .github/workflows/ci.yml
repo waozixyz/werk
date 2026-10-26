@@ -55,8 +55,9 @@ jobs:
       - name: Verify generated site
         run: |
           test -s build/site/index.html
-          test -s build/site/app/index.html
-          test -s build/site/app/index.wasm
+          test -s build/site/index.wasm
+          test -s build/site/sw.js
+          test -s build/site/assets.json
       - name: Check fastlane metadata
         run: |
           set -eu
@@ -175,6 +176,18 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;34.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
+          # The emulator action also needs API 30. Retry transient corrupt
+          # downloads before the action attempts to start the emulator.
+          for attempt in 1 2 3; do
+            if "$SDKMANAGER" "platforms;android-30"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Android 30 SDK installation failed after three attempts"
+              exit 1
+            fi
+            sleep 10
+          done
       - name: Install screenshot OCR
         run: |
           sudo apt-get update
