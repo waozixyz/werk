@@ -46,8 +46,8 @@ jobs:
           set -euo pipefail
           make site
           test -s build/site/index.html
-          test -s build/site/app/index.html
-          test -s build/site/app/index.wasm
+          test -s build/site/index.wasm
+          test -s build/site/sw.js
       - name: Install screenshot OCR
         run: |
           sudo apt-get update
