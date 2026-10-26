@@ -230,4 +230,8 @@ try:
     print("Werkzeug Android: input, profiles, custom node and in-place package update preserved private data")
 except BaseException:
     shot("failure")
+    # These tags report asset loading and native startup without recording the
+    # test's typed credentials. The emulator and its profile are disposable.
+    logs = adb("logcat", "-d", "-s", "raylib:I", "Werkzeug:I", check=False)
+    (output / "startup-logcat.txt").write_bytes(logs.stdout)
     raise
