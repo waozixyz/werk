@@ -30,19 +30,19 @@ def shell(*arguments, check=True):
 def shot(name):
     (output / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p").stdout)
 
-def find_label(word, timeout=15, min_y=0):
+def find_label(word, timeout=15):
     deadline = time.monotonic() + timeout
     while True:
         shot("label")
-        position = label_position(output / "label.png", word, min_y=min_y)
+        position = label_position(output / "label.png", word)
         if position is not None:
             return position
         if time.monotonic() >= deadline:
             raise AssertionError(f"Could not find {word!r} in the private emulator")
         time.sleep(0.3)
 
-def tap_label(word, min_y=0):
-    tap(*find_label(word, min_y=min_y))
+def tap_label(word):
+    tap(*find_label(word))
 
 def scroll_to_label(word, direction="down"):
     hide_keyboard()
@@ -207,14 +207,22 @@ try:
     # The shared Profile manages nodes on its own page.
     hide_keyboard()
     tap(*scroll_to_label("Nodes", direction="up"))
-    tap_label("Add", min_y=top + int(56 * zoom))
-    tap_label("address")
+    tap_label("Add")
+    node_input = find_label("address")
+    tap(*node_input)
     type_text("https://sync.example.invalid:8443/")
     hide_keyboard()
-    # Ignore the Add node page title when finding the action below it.
-    tap_label("Add", min_y=top + int(56 * zoom))
-    tap_label("sync.example.invalid:8443")
-    tap_label("Make", min_y=top + int(56 * zoom))
+    # The Add action sits below the visible address field. Its white text
+    # and the page heading are unreliable OCR targets on small displays.
+    tap(width // 2, node_input[1] + int(64 * zoom))
+    settings = shell("run-as", package, "cat", "files/profile/settings.txt")
+    assert "https://sync.example.invalid:8443" in settings, "Custom node was not added"
+    # The new node is the last row above Add node; its detail page puts
+    # Make default below the connection status. Check the saved result.
+    _, add_node_y = scroll_to_label("Add")
+    tap(width // 2, add_node_y - int(64 * zoom))
+    _, status_y = find_label("connected")
+    tap(width // 2, status_y + int(64 * zoom))
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "node=https://sync.example.invalid:8443\n" in settings, "Custom node was not saved"
     assert adb("shell", "run-as", package, "test", "-f", "files/account/keys.txt", check=False).returncode != 0
