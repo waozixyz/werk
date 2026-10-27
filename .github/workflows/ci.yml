@@ -173,7 +173,7 @@ jobs:
       - name: Install screenshot OCR
         run: |
           sudo apt-get update
-          sudo apt-get install -y tesseract-ocr
+          sudo apt-get install -y tesseract-ocr python3-pil
       # Without /dev/kvm access the emulator runs unaccelerated and is too
       # slow to answer input before Android reports it not responding.
       - name: Enable KVM for the emulator

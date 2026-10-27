@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Drive only a private emulator; never choose a connected phone implicitly."""
 from pathlib import Path
-import csv
-import io
 import os
 import re
 import subprocess
 import time
 from android_apk_check import check_apk
+from android_labels import label_position
 
 root = Path(__file__).resolve().parents[1]
 output = root / "build/android-input"
@@ -35,12 +34,9 @@ def find_label(word, timeout=15):
     deadline = time.monotonic() + timeout
     while True:
         shot("label")
-        data = subprocess.check_output(["tesseract", str(output / "label.png"), "stdout", "--psm", "11", "-c", "tessedit_create_tsv=1"],
-                                       stderr=subprocess.DEVNULL, text=True)
-        for item in csv.DictReader(io.StringIO(data), delimiter="\t"):
-            if item["text"].strip().lower() == word.lower():
-                return (int(item["left"]) + int(item["width"]) // 2,
-                        int(item["top"]) + int(item["height"]) // 2)
+        position = label_position(output / "label.png", word)
+        if position is not None:
+            return position
         if time.monotonic() >= deadline:
             raise AssertionError(f"Could not find {word!r} in the private emulator")
         time.sleep(0.3)
