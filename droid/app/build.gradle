@@ -43,8 +43,8 @@ android {
         applicationId 'xyz.waozi.pass'
         minSdk 21
         targetSdk 36
-        versionCode 19
-        versionName "0.4.5"
+        versionCode 20
+        versionName "0.4.6"
         // Default to the two realistic phone targets; override with
         // -Pabi=x86_64 etc. for emulator builds.
         def abis = project.findProperty('abi') ?: 'armeabi-v7a,arm64-v8a'

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.6] - 2026-10-27
+
+- Set an account alias with capitals, an @ or spaces; a taken alias now says so.
+
 ## [0.4.5] - 2026-10-26
 
 - Fix Android opening to “Apps are unavailable”; Pass, Auth, Calculator and Clock load normally.
