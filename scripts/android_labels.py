@@ -6,7 +6,7 @@ import subprocess
 from PIL import Image
 
 
-def label_position(path, word):
+def label_position(path, word, min_y=0):
     for scale in (1, 3):
         screenshot = path
         if scale == 3:
@@ -23,6 +23,8 @@ def label_position(path, word):
             stderr=subprocess.DEVNULL, text=True)
         for item in csv.DictReader(io.StringIO(data), delimiter="\t"):
             if item["text"].strip().lower() == word.lower():
-                return ((int(item["left"]) + int(item["width"]) // 2) // scale,
-                        (int(item["top"]) + int(item["height"]) // 2) // scale)
+                position = ((int(item["left"]) + int(item["width"]) // 2) // scale,
+                            (int(item["top"]) + int(item["height"]) // 2) // scale)
+                if position[1] >= min_y:
+                    return position
     return None

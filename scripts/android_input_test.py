@@ -30,19 +30,19 @@ def shell(*arguments, check=True):
 def shot(name):
     (output / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p").stdout)
 
-def find_label(word, timeout=15):
+def find_label(word, timeout=15, min_y=0):
     deadline = time.monotonic() + timeout
     while True:
         shot("label")
-        position = label_position(output / "label.png", word)
+        position = label_position(output / "label.png", word, min_y=min_y)
         if position is not None:
             return position
         if time.monotonic() >= deadline:
             raise AssertionError(f"Could not find {word!r} in the private emulator")
         time.sleep(0.3)
 
-def tap_label(word):
-    tap(*find_label(word))
+def tap_label(word, min_y=0):
+    tap(*find_label(word, min_y=min_y))
 
 def scroll_to_label(word, direction="down"):
     hide_keyboard()
@@ -204,14 +204,17 @@ try:
     shot("profile-appearance")
     print("Android: retained profile name and appearance verified", flush=True)
     tap(*scroll_to_label("Light"))
-    # Android exposes Nodes directly in Profile.
+    # The shared Profile manages nodes on its own page.
     hide_keyboard()
-    tap(*scroll_to_label("Node", direction="up"))
+    tap(*scroll_to_label("Nodes", direction="up"))
+    tap_label("Add", min_y=top + int(56 * zoom))
+    tap_label("address")
     type_text("https://sync.example.invalid:8443/")
     hide_keyboard()
-    # The accent button's white label is not reliable in screenshot OCR.
-    _, appearance = scroll_to_label("Appearance")
-    tap(width - int(81 * zoom), appearance - int(56 * zoom)); time.sleep(0.8)
+    # Ignore the Add node page title when finding the action below it.
+    tap_label("Add", min_y=top + int(56 * zoom))
+    tap_label("sync.example.invalid:8443")
+    tap_label("Make", min_y=top + int(56 * zoom))
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "node=https://sync.example.invalid:8443\n" in settings, "Custom node was not saved"
     assert adb("shell", "run-as", package, "test", "-f", "files/account/keys.txt", check=False).returncode != 0
