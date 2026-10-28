@@ -41,13 +41,19 @@ def tap(x, y):
     time.sleep(.25)
 
 
-def label(word):
+def label(word, scroll=False):
     until = time.monotonic() + 20
+    swipes = 0
     while time.monotonic() < until:
         point = label_position(shot("label"), word)
         if point:
             tap(*point)
             return
+        if scroll and swipes < 6:
+            shell("input", "swipe", width // 2, height * 3 // 4,
+                  width // 2, height // 3, "450")
+            swipes += 1
+            time.sleep(.4)
         time.sleep(.2)
     raise AssertionError("Missing Workbook control: " + word)
 
@@ -150,7 +156,7 @@ windows = shell("dumpsys", "window")
 status = re.search(r"type=(?:statusBars|ITYPE_STATUS_BAR).*?frame=\[0,0\]\[\d+,(\d+)\]", windows)
 top = int(status.group(1)) if status else round(24 * zoom)
 try:
-    label("Workbook")
+    label("Workbook", scroll=True)
     edit(0, "12")
     edit(1, "=A1*2")
     shot("calculated")
@@ -158,7 +164,7 @@ try:
     shell("am", "force-stop", package)
     shell("am", "start", "-n", package + "/android.app.NativeActivity")
     time.sleep(1)
-    label("Workbook")
+    label("Workbook", scroll=True)
     expect("12"); expect("=A1*2", 1)
     original = document()
     file_menu(); label("As")

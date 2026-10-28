@@ -52,6 +52,13 @@ jobs:
         env:
           WERK_WEB_BROWSER: google-chrome
         run: make web-smoke
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: werk-browser-diagnostics-ci
+          path: build/web-test/*.png
+          if-no-files-found: ignore
       - name: Verify generated site
         run: |
           test -s build/site/index.html

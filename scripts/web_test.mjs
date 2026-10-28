@@ -251,15 +251,23 @@ try {
   await click(184,177); await type('=A1*2'); await enter();
   const workbookDocument = () => evaluate(`Module.FS.readFile('/pass-data/apps/workbook/documents/workbook.gnumeric', {encoding:'utf8'})`);
   const expectWorkbookCell = async (name, expected) => {
-    await screenshot(name);
     const cell = join(output, name + '-cell.png');
-    const crop = spawnSync('convert', [join(output, name + '.png'), '-crop', '92x18+138+168',
-      '+repage', '-resize', '600%', '-bordercolor', 'white', '-border', '24', cell],
-      {env:environment, encoding:'utf8'});
-    if (crop.status !== 0) throw Error('Could not crop the Workbook result cell: ' + crop.stderr);
-    const text = spawnSync('tesseract', [cell, 'stdout', '--psm', '7', '-c', 'tessedit_char_whitelist=0123456789'], {env:environment, encoding:'utf8'});
-    if (text.status !== 0 || !text.stdout.includes(expected))
-      throw Error(`${name}: expected cell B1 to display ${expected}, saw ${text.stdout}`);
+    const until = Date.now() + 10000;
+    let actual = '';
+    do {
+      await screenshot(name);
+      const crop = spawnSync('convert', [join(output, name + '.png'), '-crop', '92x18+138+168',
+        '+repage', '-resize', '600%', '-bordercolor', 'white', '-border', '24', cell],
+        {env:environment, encoding:'utf8'});
+      if (crop.status !== 0) throw Error('Could not crop the Workbook result cell: ' + crop.stderr);
+      const text = spawnSync('tesseract', [cell, 'stdout', '--psm', '7', '-c', 'tessedit_char_whitelist=0123456789'], {env:environment, encoding:'utf8', timeout:20000});
+      if (text.status !== 0) throw Error('Could not read the Workbook result cell: ' + text.stderr);
+      actual = text.stdout.trim();
+      if (actual === expected) return;
+      // Saving an imported document precedes its next painted frame.
+      await delay(100);
+    } while (Date.now() < until);
+    throw Error(`${name}: expected cell B1 to display ${expected}, saw ${actual}`);
   };
   let workbook = await workbookDocument();
   if (!workbook.includes('>12</gnm:Cell>') || !workbook.includes('>=A1*2</gnm:Cell>'))
