@@ -14,6 +14,27 @@ Entity :: #import "entity/model";
 
 entity_document: string;
 
+#if #defined(PLATFORM_WEB) {
+    #import "browser_storage"
+    shared_browser_profile: [65536]u8;
+    WerkSharedBrowserProfile :: () {
+        text := BrowserSharedProfile(shared_browser_profile[:])
+        state: Entity.EntityState
+        if text == "" {
+            if !BrowserSharedReady() { return }
+            state = Entity.EntityDefault()
+        } else if !Entity.EntityDecode(text, *state) || state.owner_id[0] == cast(u8)0 { return }
+        profile.name = state.name
+        profile.picture = state.picture
+        profile.theme_mode = state.theme
+        profile.accent = state.accent
+        profile.material = state.material
+        profile.nodes = state.nodes
+        profile.node_count = state.node_count
+        profile.node = state.nodes[state.preferred]
+    }
+}
+
 WerkEntityRead :: () -> string {
     Entity.EntityFree(entity_document)
     state := Entity.EntityDefault()

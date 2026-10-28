@@ -42,7 +42,10 @@ Werkzeug vault context is included.
 Desktop Self and participating native apps share public profile preferences only
 for the same verified account ID. Account keys and Auth records stay in the
 host's private store. Android retains its existing native Account screen and
-legacy device-link flow; browser account sync is unavailable.
+legacy device-link flow. In the browser, Profile opens the shared manager at
+https://entity.waozi.xyz. Public name, picture and appearance follow the active
+waozi.xyz profile. Werkzeug's browser tool data stays local; account sync for
+those tool records is unavailable.
 
 The embedded web app (`/app/?mini`) shows only the tools, as large tiles,
 with no Profile; `werk --mini` does the same on the desktop. Use

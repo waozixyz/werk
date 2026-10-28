@@ -14,6 +14,10 @@ using UI :: #import "kryon/Widgets";
 #import "platform"
 #import "migrate"
 #import "node_url"
+#if #defined(PLATFORM_WEB) {
+    #import "browser_storage"
+    #import "entity_host"
+}
 #if #defined(ANDROID_BUILD) {
     #import "android_fields"
 }
@@ -73,6 +77,9 @@ keyboard_wanted: bool;
 WerkStart :: () {
     MigratePassData()
     LoadProfile()
+    #if #defined(PLATFORM_WEB) {
+        WerkSharedBrowserProfile()
+    }
     unused CopyCString(ProfileNode(), node_text[:])
     LoadApps()
     #if !#defined(PLATFORM_WEB) {
@@ -184,6 +191,10 @@ TopBar :: (session: Session, viewport: Rectangle) {
             .image = PictureImage(profile.picture, Rectangle.{}),
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, avatar) != 0 {
+            #if #defined(PLATFORM_WEB) {
+                if SaveApps() { BrowserOpenProfile() }
+                return
+            }
             screen = SCREEN_PROFILE
             entity_account = false
             entity_reload = true

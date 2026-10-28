@@ -41,6 +41,7 @@ await new Promise(done => server.listen(0, '127.0.0.1', done));
 const base = `http://127.0.0.1:${server.address().port}/`;
 const environment = {...process.env};
 for (const key of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS']) delete environment[key];
+environment.YUE_DESKTOP_RECOVERY = '0';
 const browser = spawn(process.env.WERK_WEB_BROWSER || 'chromium', ['--headless=new', '--no-sandbox',
   '--disable-gpu', '--disable-dev-shm-usage', '--no-first-run', '--remote-debugging-port=0',
   '--user-data-dir=' + profile, '--window-size=420,760', 'about:blank'],
@@ -76,8 +77,16 @@ try {
   let sequence = 0;
   const pending = new Map();
   const exceptions = [];
+  let sharedProfileUrl = '';
   socket.addEventListener('message', event => {
     const message = JSON.parse(event.data);
+    if (message.method === 'Fetch.requestPaused') {
+      sharedProfileUrl = message.params.request.url;
+      command('Fetch.fulfillRequest', {requestId: message.params.requestId, responseCode: 200,
+        responseHeaders: [{name:'Content-Type',value:'text/html'}],
+        body: Buffer.from('<!doctype html><title>Shared profile fixture</title>').toString('base64')}).catch(() => {});
+      return;
+    }
     if (message.method === 'Runtime.exceptionThrown') exceptions.push(JSON.stringify(message.params.exceptionDetails));
     if (message.method === 'Runtime.consoleAPICalled') diagnostics += JSON.stringify(message.params.args);
     if (pending.has(message.id)) {
@@ -206,6 +215,11 @@ try {
   await expectText('home-returned', 'Werkzeug');
   // The full app keeps its Profile button.
   await expectText('home-returned', 'Profile');
+  await command('Fetch.enable', {patterns:[{urlPattern:'https://entity.waozi.xyz/*'}]});
+  await clickText('Profile');
+  for (let end=Date.now()+10000; !sharedProfileUrl && Date.now()<end;) await delay(100);
+  if (sharedProfileUrl !== 'https://entity.waozi.xyz/') throw Error('Profile did not open the shared profile manager');
+  await command('Fetch.disable');
   await open('?app=calculator', 'calculator');
   await type('12+30*2=');
   await delay(400);
@@ -240,7 +254,7 @@ try {
   await click(16 + 28, 16 + 28);
   await expectMiniHome('card-returned');
   if (exceptions.length) throw Error('Page exceptions: ' + exceptions.join(' '));
-  console.log('Werkzeug web: Calculator result, Home, Profile, and mini mode with only the four tools (narrow and in the waozi.xyz card frame) verified in private Chromium');
+  console.log('Werkzeug web: Calculator, Home, the shared Entity profile route, and mini mode verified in private Chromium');
 } finally {
   socket?.close();
   try {

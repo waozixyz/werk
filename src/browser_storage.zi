@@ -91,3 +91,28 @@ BrowserQuery :: () -> string {
     }
     return TextView(page_text[0:index])
 }
+
+BrowserSharedProfile :: (output: []u8) -> string {
+    scope := WebScope()
+    defer WebEnd(scope)
+    value := WebGet(WebModule, WebName("sharedProfileDocument"))
+    if value.tag != WebStringTag { return "" }
+    length := WebCopyString(WebAsObject(value), output)
+    if length <= 0 || length >= cast(s32)output.count { return "" }
+    return TextView(output[:length])
+}
+
+BrowserSharedReady :: () -> bool {
+    scope := WebScope()
+    defer WebEnd(scope)
+    return WebAsBool(WebGet(WebModule, WebName("sharedAccountReady"))) &&
+        WebAsBool(WebGet(WebModule, WebName("sharedAccountInitialized")))
+}
+
+BrowserOpenProfile :: () {
+    unused BrowserStorageSave()
+    scope := WebScope()
+    location := WebGetObject(WebGlobal, WebName("location"))
+    unused WebCall1(location, WebName("assign"), WebText("https://entity.waozi.xyz/"))
+    WebEnd(scope)
+}
