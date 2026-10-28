@@ -8,7 +8,7 @@ import {createServer} from 'node:http';
 import {resolve, join, extname} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 
-const root = resolve('build/site');
+const root = resolve(process.env.WERK_WEB_SITE || 'build/site');
 const output = resolve('build/web-test');
 await mkdir(output, {recursive: true});
 const profile = await mkdtemp(join(output, 'profile-'));
@@ -81,7 +81,7 @@ try {
   socket.addEventListener('message', event => {
     const message = JSON.parse(event.data);
     if (message.method === 'Fetch.requestPaused') {
-      sharedProfileUrl = message.params.request.url;
+      if (message.params.resourceType === 'Document') sharedProfileUrl = message.params.request.url;
       command('Fetch.fulfillRequest', {requestId: message.params.requestId, responseCode: 200,
         responseHeaders: [{name:'Content-Type',value:'text/html'}],
         body: Buffer.from('<!doctype html><title>Shared profile fixture</title>').toString('base64')}).catch(() => {});
@@ -141,7 +141,10 @@ try {
       if (text.includes(hidden.toLowerCase())) throw Error(`${name}: mini Home shows ${hidden}: ${text}`);
   };
   const click = async (x, y) => {
+    await command('Input.dispatchMouseEvent', {type: 'mouseMoved', x, y});
     await command('Input.dispatchMouseEvent', {type: 'mousePressed', x, y, button: 'left', clickCount: 1});
+    // Let the canvas observe the press before releasing, as a real click does.
+    await delay(80);
     await command('Input.dispatchMouseEvent', {type: 'mouseReleased', x, y, button: 'left', clickCount: 1});
     await delay(350);
   };
@@ -218,7 +221,13 @@ try {
   await command('Fetch.enable', {patterns:[{urlPattern:'https://entity.waozi.xyz/*'}]});
   await clickText('Profile');
   for (let end=Date.now()+10000; !sharedProfileUrl && Date.now()<end;) await delay(100);
-  if (sharedProfileUrl !== 'https://entity.waozi.xyz/') throw Error('Profile did not open the shared profile manager');
+  if (sharedProfileUrl !== 'https://entity.waozi.xyz/' ||
+      await evaluate('location.href') !== 'https://entity.waozi.xyz/') {
+    await screenshot('shared-profile-failure');
+    throw Error('Profile did not open the shared profile manager: ' + JSON.stringify({
+      requested: sharedProfileUrl, url: await evaluate('location.href'), exceptions, diagnostics: diagnostics.slice(-1000)
+    }));
+  }
   await command('Fetch.disable');
   await open('?app=calculator', 'calculator');
   await type('12+30*2=');
