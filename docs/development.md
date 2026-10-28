@@ -131,6 +131,12 @@ make android-fdroid # unsigned F-Droid candidate, same Android ID and version
 make android-emulator # the x86_64 APK for a private emulator
 ```
 
+Android input tests require an explicitly owned private emulator through
+`WERK_ANDROID_EMULATOR`. Use the API 35 Google APIs image for
+`make android-input-test`, including Workbook's system document picker.
+CI also retains API 30 input, profile and in-place update coverage through
+`make android-profile-test`.
+
 Linux installs include separate Pass, Auth, Calculator, Clock and Workbook
 launchers, each with its own icon. They open the selected tool directly and
 share Werkzeug's existing private data. `make install-gui` also adds shortcuts

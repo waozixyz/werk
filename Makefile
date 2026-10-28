@@ -217,7 +217,12 @@ android-fdroid:
 android-smoke:
 	bash scripts/android_smoke.sh
 android-input-test:
+	$(MAKE) android-profile-test
+	$(MAKE) workbook-android-test
+.PHONY: android-profile-test workbook-android-test
+android-profile-test:
 	python3 scripts/android_input_test.py
+workbook-android-test:
 	python3 scripts/workbook_android_test.py
 
 check-package-urls:

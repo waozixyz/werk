@@ -59,6 +59,7 @@ def native_label(word):
         shell("rm", "-f", path, check=False)
         shell("uiautomator", "dump", "--compressed", path, check=False)
         data = shell("cat", path, check=False)
+        (output / "system-window.xml").write_text(data)
         try:
             nodes = ET.fromstring(data).iter("node")
         except ET.ParseError:
@@ -102,6 +103,12 @@ def hide_keyboard():
 
 
 def edit(col, value):
+    try:
+        previous = next((cell.text or "" for cell in ET.fromstring(document()).iter(
+            "{http://www.gnumeric.org/v10.dtd}Cell")
+            if cell.get("Row") == "0" and cell.get("Col") == str(col)), "")
+    except ET.ParseError:
+        previous = ""
     hide_keyboard()
     x, y = (88 + col * 96) * zoom, top + 177 * zoom
     tap(x, y)
@@ -111,7 +118,11 @@ def edit(col, value):
         if time.monotonic() > until:
             raise AssertionError("Workbook did not focus Android's keyboard")
         time.sleep(.2)
-    shell("input", "keycombination", "113", "29")
+    if "keycombination" in input_commands:
+        shell("input", "keycombination", "113", "29")
+    else:
+        # Older input commands lack Ctrl+A; clear the fixture through its IME.
+        shell("input", "keyevent", "123", *["67" for _ in previous])
     shell("input", "text", shlex.quote(value))
     time.sleep(.5)
     hide_keyboard()
@@ -125,6 +136,8 @@ def file_menu():
 
 
 adb("install", "-r", apk)
+input_help = adb("shell", "input", check=False)
+input_commands = (input_help.stdout + input_help.stderr).decode()
 shell("am", "force-stop", package)
 shell("run-as", package, "rm", "-rf", "files/apps/workbook", check=False)
 shell("rm", "-f", "/sdcard/Download/workbook.gnumeric", check=False)
@@ -173,6 +186,7 @@ try:
     print("Workbook Android: IME editing, formulas, private save/restart, system document export/import and cancellation passed")
 except BaseException:
     shot("failure")
+    (output / "document-intents.txt").write_text(shell("dumpsys", "activity", "activities", check=False))
     (output / "crash-log.txt").write_bytes(adb("logcat", "-d", "-b", "crash", check=False).stdout)
     (output / "startup-log.txt").write_bytes(adb("logcat", "-d", "-s", "Werkzeug:I", "art:E", "AndroidRuntime:E", check=False).stdout)
     pid = shell("pidof", package, check=False).strip()

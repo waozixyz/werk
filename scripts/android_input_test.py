@@ -118,13 +118,14 @@ def system_bars(height):
     """The app's first and last rows in pixels: Werkzeug keeps its content
     between the status bar and the navigation bar."""
     dump = shell("dumpsys", "window")
+    (output / "window-insets.txt").write_text(dump)
     # Android 12 and older name inset sources ITYPE_STATUS_BAR and so on.
     status = re.search(r"type=(?:statusBars|ITYPE_STATUS_BAR).*?frame=\[0,0\]\[\d+,(\d+)\]", dump)
     # A display cutout taller than the status bar pushes the app down further.
     cutout = re.search(r"type=(?:displayCutout|ITYPE_[A-Z_]*CUTOUT[A-Z_]*).*?frame=\[0,0\]\[\d+,(\d+)\]", dump)
     navigation = re.search(r"type=(?:navigationBars|ITYPE_NAVIGATION_BAR).*?frame=\[0,(\d+)\]\[\d+,(\d+)\]", dump)
     top = max(int(status.group(1)) if status else round(24 * zoom), int(cutout.group(1)) if cutout else 0)
-    bottom = int(navigation.group(1)) if navigation and int(navigation.group(2)) == height else height - round(24 * zoom)
+    bottom = int(navigation.group(1)) if navigation and int(navigation.group(2)) == height else height
     return top, bottom
 
 apk = Path(os.environ.get("WERK_ANDROID_APK", root / "build/werk-android-emulator.apk"))
