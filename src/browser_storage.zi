@@ -106,7 +106,7 @@ BrowserSharedReady :: () -> bool {
     scope := WebScope()
     defer WebEnd(scope)
     return WebAsBool(WebGet(WebModule, WebName("sharedAccountReady"))) &&
-        WebAsBool(WebGet(WebModule, WebName("sharedAccountInitialized")))
+    WebAsBool(WebGet(WebModule, WebName("sharedAccountInitialized")))
 }
 
 BrowserOpenProfile :: () {
