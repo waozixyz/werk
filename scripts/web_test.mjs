@@ -78,8 +78,10 @@ try {
   const pending = new Map();
   const exceptions = [];
   let sharedProfileUrl = '';
+  let fileChooserNode = 0;
   socket.addEventListener('message', event => {
     const message = JSON.parse(event.data);
+    if (message.method === 'Page.fileChooserOpened') fileChooserNode = message.params.backendNodeId;
     if (message.method === 'Fetch.requestPaused') {
       if (message.params.resourceType === 'Document') sharedProfileUrl = message.params.request.url;
       command('Fetch.fulfillRequest', {requestId: message.params.requestId, responseCode: 200,
@@ -132,10 +134,10 @@ try {
     const text = await screenText(name);
     if (!text.includes(expected.toLowerCase())) throw Error(`${name}: expected ${expected}, saw ${text}`);
   };
-  // Mini Home is the four tool tiles alone: no Profile, search or title bar.
+  // Mini Home shows the tool tiles: no Profile, search or title bar.
   const expectMiniHome = async name => {
     const text = await screenText(name);
-    for (const tool of ['Pass', 'Auth', 'Calculator', 'Clock'])
+    for (const tool of ['Pass', 'Auth', 'Calculator', 'Clock', 'Workbook'])
       if (!text.includes(tool.toLowerCase())) throw Error(`${name}: missing the ${tool} tile, saw ${text}`);
     for (const hidden of ['Profile', 'Find an app', 'Werkzeug'])
       if (text.includes(hidden.toLowerCase())) throw Error(`${name}: mini Home shows ${hidden}: ${text}`);
@@ -158,7 +160,8 @@ try {
       '-c', 'tessedit_create_tsv=1'], {env: environment, encoding: 'utf8', timeout: 20000});
     if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
     const rows = result.stdout.trim().split('\n').slice(1).map(line => line.split('\t'));
-    const row = rows.find(values => values[11]?.trim() === label);
+    const word = value => value.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+    const row = rows.find(values => word(values[11] || '') === word(label));
     if (!row) throw Error('Missing visible app control: ' + label);
     await click((Number(row[6]) + Number(row[8]) / 2) / 3,
       (Number(row[7]) + Number(row[9]) / 2) / 3);
@@ -235,11 +238,73 @@ try {
   await expectText('calculator-typed', '72');
   // Clock also opens directly, where a broken time binding froze the page.
   await open('?app=clock', 'clock');
+  // Workbook calculates in the browser and commits its private document to
+  // IndexedDB. Reloading must retain both the cells and their formulas.
+  await open('?app=workbook', 'workbook');
+  await expectText('workbook-open', 'Workbook');
+  const enter = async () => {
+    await command('Input.dispatchKeyEvent', {type:'keyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13});
+    await command('Input.dispatchKeyEvent', {type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13});
+    await delay(350);
+  };
+  await click(88,177); await type('12'); await enter();
+  await click(184,177); await type('=A1*2'); await enter();
+  const workbookDocument = () => evaluate(`Module.FS.readFile('/pass-data/apps/workbook/documents/workbook.gnumeric', {encoding:'utf8'})`);
+  const expectWorkbookCell = async (name, expected) => {
+    await screenshot(name);
+    const cell = join(output, name + '-cell.png');
+    const crop = spawnSync('convert', [join(output, name + '.png'), '-crop', '92x18+138+168',
+      '+repage', '-resize', '600%', '-bordercolor', 'white', '-border', '24', cell],
+      {env:environment, encoding:'utf8'});
+    if (crop.status !== 0) throw Error('Could not crop the Workbook result cell: ' + crop.stderr);
+    const text = spawnSync('tesseract', [cell, 'stdout', '--psm', '7', '-c', 'tessedit_char_whitelist=0123456789'], {env:environment, encoding:'utf8'});
+    if (text.status !== 0 || !text.stdout.includes(expected))
+      throw Error(`${name}: expected cell B1 to display ${expected}, saw ${text.stdout}`);
+  };
+  let workbook = await workbookDocument();
+  if (!workbook.includes('>12</gnm:Cell>') || !workbook.includes('>=A1*2</gnm:Cell>'))
+    throw Error('Workbook did not save the entered cells: ' + workbook);
+  await expectWorkbookCell('workbook-calculated', '24');
+  await open('?app=workbook', 'workbook-reopened');
+  workbook = await workbookDocument();
+  if (!workbook.includes('>=A1*2</gnm:Cell>')) throw Error('Workbook was not persisted across reload');
+  await expectWorkbookCell('workbook-reopened-value', '24');
+  const downloads = join(output, 'downloads');
+  await mkdir(downloads, {recursive:true});
+  await command('Browser.setDownloadBehavior', {behavior:'allow', downloadPath:downloads});
+  await click(28,68); await clickText('As');
+  let exported = '';
+  for (let end=Date.now()+15000; Date.now()<end;) {
+    try { exported = await readFile(join(downloads, 'workbook.gnumeric'), 'utf8'); break; } catch {}
+    await delay(100);
+  }
+  if (exported !== workbook) {
+    await screenshot('workbook-export-failure');
+    throw Error('Workbook download differs from the saved document: downloaded ' + exported.length + ' bytes, expected ' + workbook.length);
+  }
+  const fixture = join(output, 'incoming.gnumeric');
+  await writeFile(fixture, '<?xml version="1.0"?><gnm:Workbook xmlns:gnm="http://www.gnumeric.org/v10.dtd"><gnm:Sheets><gnm:Sheet><gnm:Name>Imported</gnm:Name><gnm:Cells><gnm:Cell Row="0" Col="0" ValueType="40">11</gnm:Cell><gnm:Cell Row="0" Col="1">=A1*3</gnm:Cell></gnm:Cells></gnm:Sheet></gnm:Sheets></gnm:Workbook>');
+  await command('Page.setInterceptFileChooserDialog', {enabled:true});
+  await click(28,68); await clickText('Open');
+  for (let end=Date.now()+10000; !fileChooserNode;) {
+    if (Date.now()>end) {
+      await screenshot('workbook-import-failure');
+      throw Error('Workbook did not open the browser file chooser');
+    }
+    await delay(100);
+  }
+  await command('DOM.setFileInputFiles', {backendNodeId:fileChooserNode, files:[fixture]});
+  await command('Page.setInterceptFileChooserDialog', {enabled:false});
+  for (let end=Date.now()+15000; !(await workbookDocument()).includes('>=A1*3</gnm:Cell>');) {
+    if (Date.now()>end) throw Error('Workbook did not import and save the selected document');
+    await delay(100);
+  }
+  await expectWorkbookCell('workbook-imported', '33');
   // The embedded mini version opens on the tool tiles; a tool shows its own
   // name as the title, and Back returns to the tiles.
   await open('?mini', 'mini-home');
   await expectMiniHome('mini-home');
-  for (const app of ['pass', 'auth', 'calculator', 'clock']) {
+  for (const app of ['pass', 'auth', 'calculator', 'clock', 'workbook']) {
     await open('?mini&app=' + app, app + '-mini-direct');
     await expectText(app + '-mini-direct', app);
     await click(28, 28);
@@ -263,7 +328,7 @@ try {
   await click(16 + 28, 16 + 28);
   await expectMiniHome('card-returned');
   if (exceptions.length) throw Error('Page exceptions: ' + exceptions.join(' '));
-  console.log('Werkzeug web: Calculator, Home, the shared Entity profile route, and mini mode verified in private Chromium');
+  console.log('Werkzeug web: Workbook editing, calculation, import/export and persistence; Calculator, Home, shared Entity profile and five-tool mini mode verified in private Chromium');
 } finally {
   socket?.close();
   try {

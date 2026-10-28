@@ -44,7 +44,7 @@ def check_apk(path):
                 assert all(re.fullmatch(r"Lxyz/waozi/pass/R(?:\$[^;]+)?;", item) for item in classes), f"{path}: packaged application bytecode: {classes}"
         for font in ["ui.ttf", "emoji.ttf"]:
             assert "assets/fonts/" + font in names, f"{path}: missing {font}"
-        bundles = {f"assets/apps/{app}.zx" for app in ["apps", "entity", "pass", "auth", "calculator", "clock"]}
+        bundles = {f"assets/apps/{app}.zx" for app in ["apps", "entity", "pass", "auth", "calculator", "clock", "workbook"]}
         packaged = {name for name in names if name.startswith("assets/apps/") and not name.endswith("/")}
         assert packaged == bundles, f"{path}: stale or missing app bundles: {packaged ^ bundles}"
         for name in bundles:

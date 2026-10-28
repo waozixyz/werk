@@ -32,20 +32,24 @@ using UI :: #import "kryon/Widgets";
 }
 #if #defined(ANDROID_BUILD) {
     #import "android_fields"
+    #import "android_documents"
 }
 
-#if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
-    Spreadsheet :: #import "workbook/service";
-    Font :: #import "kryon/font_metrics";
+Spreadsheet :: #import "workbook/service";
+Font :: #import "kryon/font_metrics";
+Json :: #import "std/json_scan";
+#if #defined(PLATFORM_WEB) {
+    #import "browser_storage"
+}
+#if !#defined(ANDROID_BUILD) {
     Picker :: #import "kryon/file_picker";
-    Json :: #import "std/json_scan";
 }
 using HostValueKind;
 
 APP_LIMIT :: 8
 APP_STORE_LIMIT :: 262144
 // The preinstalled apps, in their home screen order.
-BUNDLED_APPS :: 4
+BUNDLED_APPS :: 5
 
 App :: struct {
     id: [128]u8
@@ -59,9 +63,7 @@ App :: struct {
     document_root: [PATH_LIMIT]u8
     bundled: bool
     started: bool
-    #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
-        spreadsheet: Spreadsheet.Context
-    }
+    spreadsheet: Spreadsheet.Context
 }
 
 // What the running app sees this frame.
@@ -105,9 +107,10 @@ AppCount :: () -> s32 {
 AppServiceAllowed :: (context: *void, name: string) -> bool {
     app := cast(*App)context
     id := TextUntilNul(app.id[:])
-    #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
-        if name == "spreadsheet.v1" { return app.bundled && id == "workbook" }
-        if name == "input.v1" || name == "document.pick.v1" || name == "app.bundle.export.v1" { return true }
+    if name == "spreadsheet.v1" { return app.bundled && id == "workbook" }
+    if name == "input.v1" || name == "document.pick.v1" { return true }
+    #if !#defined(ANDROID_BUILD) {
+        if name == "app.bundle.export.v1" { return true }
     }
     if name == "entity.assets" || name == "entity.management" { return id == "entity" }
     if name == "media.asset" || name == "media.query" || name == "media.pick" {
@@ -350,19 +353,26 @@ AppCall :: (context: *void, module: *u8, function: *u8,
                 return 0
             }
         }
-        #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
-            if name == "AppServiceHost" && count == 2 {
-                service := ArgumentText(arguments[0])
-                request := ArgumentText(arguments[1])
-                if service == "spreadsheet.v1" {
-                    text := Spreadsheet.Call(*app.spreadsheet, *app.local.files, request)
-                    result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"), .data = HostTextData(text), .length = cast(usize)text.count}
-                    return 1
+        if name == "AppServiceHost" && count == 2 {
+            service := ArgumentText(arguments[0])
+            request := ArgumentText(arguments[1])
+            if service == "spreadsheet.v1" {
+                text := Spreadsheet.Call(*app.spreadsheet, *app.local.files, request)
+                #if #defined(PLATFORM_WEB) {
+                    operation: [32]u8
+                    if ServiceText(request, "op", operation[:]) == "save" &&
+                    Json.FieldAt(text, 0, "ok") >= 0 && text[Json.FieldAt(text, 0, "ok")] == cast(u8)116 {
+                        if !BrowserStorageSave() { text = "{\"ok\":false}" }
+                    }
                 }
-                if service == "app.bundle.export.v1" { ReturnText(result, ExportBundle(app)); return 1 }
-                if service == "input.v1" { InputCall(app, request, result); return 1 }
-                if service == "document.pick.v1" { ReturnText(result, DocumentPick(app, request)); return 1 }
+                result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"), .data = HostTextData(text), .length = cast(usize)text.count}
+                return 1
             }
+            #if !#defined(ANDROID_BUILD) {
+                if service == "app.bundle.export.v1" { ReturnText(result, ExportBundle(app)); return 1 }
+            }
+            if service == "input.v1" { InputCall(app, request, result); return 1 }
+            if service == "document.pick.v1" { ReturnText(result, DocumentPick(app, request)); return 1 }
         }
         return AppLocalCall(cast(*void)(*app.local), module, function, arguments, count, result)
     }
@@ -569,7 +579,7 @@ LoadApp :: (id: string, path: string) -> bool {
 }
 
 LoadApps :: () {
-    ids: [BUNDLED_APPS]string = .["pass", "auth", "calculator", "clock"]
+    ids: [BUNDLED_APPS]string = .["pass", "auth", "calculator", "clock", "workbook"]
     root := BundledAppsRoot()
     if root == "" {
         return
@@ -587,10 +597,6 @@ LoadApps :: () {
         file[used + suffix.count] = cast(u8)0
         path: [PATH_LIMIT]u8
         unused LoadApp(ids[index], PathJoin(path[:], root, TextUntilNul(file[:])))
-    }
-    #if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
-        workbook_path: [PATH_LIMIT]u8
-        unused LoadApp("workbook", PathJoin(workbook_path[:], root, "workbook.zx"))
     }
     entity_path: [PATH_LIMIT]u8
     entity_index = app_count
@@ -693,42 +699,42 @@ AppWidgetCall :: (context: *void, module: *u8, function: *u8,
     }
 }
 
-#if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
-    input_text: [8192]u8;
-    InputCall :: (app: *App, request: string, result: *HostValue) {
-        if request == "clipboard-has-text" { ReturnText(result, ifx SystemClipboardHasText() then "true" else "false"); return }
-        if request == "clipboard" {
-            text := SystemClipboardText(input_text[:])
-            result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"), .data = HostTextData(text), .length = cast(usize)text.count}
-            return
-        }
-        if request.count > 0 && request[0] == cast(u8)123 {
-            operation: [32]u8
-            used := Json.ReadStringText(request, Json.FieldAt(request, 0, "op"), operation[:])
-            if used == 7 && TextUntilNul(operation[:]) == "measure" {
-                content: [8192]u8
-                length := Json.ReadStringText(request, Json.FieldAt(request, 0, "text"), content[:])
-                if length >= 0 {
-                    digits: [24]u8
-                    bytes: Vec(u8)
-                    BuilderPrint(*bytes, "{\"width\":%}", Font.GlyphWidth(TextView(content[:length]), 14, ""))
-                    value := BuilderFinish(bytes)
-                    ReturnText(result, value); AppFileFree(value); return
-                }
+input_text: [8192]u8;
+InputCall :: (app: *App, request: string, result: *HostValue) {
+    if request == "clipboard-has-text" { ReturnText(result, ifx ClipboardText(input_text[:]) != "" then "true" else "false"); return }
+    if request == "clipboard" {
+        text := ClipboardText(input_text[:])
+        result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"), .data = HostTextData(text), .length = cast(usize)text.count}
+        return
+    }
+    if request.count > 0 && request[0] == cast(u8)123 {
+        operation: [32]u8
+        used := Json.ReadStringText(request, Json.FieldAt(request, 0, "op"), operation[:])
+        if used == 7 && TextUntilNul(operation[:]) == "measure" {
+            content: [8192]u8
+            length := Json.ReadStringText(request, Json.FieldAt(request, 0, "text"), content[:])
+            if length >= 0 {
+                digits: [24]u8
+                bytes: Vec(u8)
+                BuilderPrint(*bytes, "{\"width\":%}", Font.GlyphWidth(TextView(content[:length]), 14, ""))
+                value := BuilderFinish(bytes)
+                ReturnText(result, value); AppFileFree(value); return
             }
         }
-        if request != "frame" { ReturnText(result, "{}"); return }
-        session := app.portable.session
-        p := PointerSample(session); q := SecondaryPointerSample(session)
-        wheel := PointerWheelTake(session, app.portable.bounds)
-        text: Vec(u8)
-        BuilderPrint(*text, "{\"x\":%,\"y\":%,\"down\":%,\"pressed\":%,\"released\":%,\"secondary_down\":%,\"secondary_pressed\":%,\"secondary_released\":%,\"wheel\":%}",
-            cast(s32)p.x, cast(s32)p.y, ifx p.down then 1 else 0, ifx p.pressed then 1 else 0, ifx p.released then 1 else 0,
-            ifx q.down then 1 else 0, ifx q.pressed then 1 else 0, ifx q.released then 1 else 0, cast(s32)wheel)
-        value := BuilderFinish(text)
-        ReturnText(result, value)
-        AppFileFree(value)
     }
+    if request != "frame" { ReturnText(result, "{}"); return }
+    session := app.portable.session
+    p := PointerSample(session); q := SecondaryPointerSample(session)
+    wheel := PointerWheelTake(session, app.portable.bounds)
+    text: Vec(u8)
+    BuilderPrint(*text, "{\"x\":%,\"y\":%,\"down\":%,\"pressed\":%,\"released\":%,\"secondary_down\":%,\"secondary_pressed\":%,\"secondary_released\":%,\"wheel\":%}",
+        cast(s32)p.x, cast(s32)p.y, ifx p.down then 1 else 0, ifx p.pressed then 1 else 0, ifx p.released then 1 else 0,
+        ifx q.down then 1 else 0, ifx q.pressed then 1 else 0, ifx q.released then 1 else 0, cast(s32)wheel)
+    value := BuilderFinish(text)
+    ReturnText(result, value)
+    AppFileFree(value)
+}
+#if !#defined(ANDROID_BUILD) {
     // A picker grants just the selected transfer. Bundles never receive an
     // arbitrary filesystem path; their editable copy remains in their folder.
     DocumentPick :: (app: *App, request: string) -> string {
@@ -745,6 +751,13 @@ AppWidgetCall :: (context: *void, module: *u8, function: *u8,
         props.filter = ServiceText(request, "filter", filter_bytes[:])
         props.suggested_name = ServiceText(request, "suggested_name", suggestion_bytes[:])
         props.save = operation == "export"
+        #if #defined(PLATFORM_WEB) {
+            if operation == "export" {
+                value := AppFileRead(*app.local.files, name)
+                defer { AppFileFree(value) }
+                return ifx app.local.files.status == 1 && BrowserDownload(props.suggested_name, value) then "ready" else "error"
+            }
+        }
         path: [4096]u8
         selected := Picker.PickFile(props, path[:])
         if selected == 0 { return "cancelled" }
@@ -758,7 +771,10 @@ AppWidgetCall :: (context: *void, module: *u8, function: *u8,
         if !file.valid { return "error" }
         defer { unused CloseFile(file) }
         count := FileSize(file)
-        if count < 1 || count > 67108864 { return "error" }
+        #if #defined(PLATFORM_WEB) {
+            defer { unused RemoveFile(TextUntilNul(path[:])) }
+        }
+        if count < 1 || count > APP_DOCUMENT_LIMIT { return "error" }
         bytes: Vec(u8)
         chunk: [4096]u8
         offset: s64 = 0
@@ -767,34 +783,43 @@ AppWidgetCall :: (context: *void, module: *u8, function: *u8,
             if used <= 0 { return "error" }
             for index: 0..used - 1 { if !VecPush(bytes, chunk[index]) { return "error" } }
             offset += used
-            if offset > 67108864 { return "error" }
+            if offset > APP_DOCUMENT_LIMIT { return "error" }
         }
         value := BuilderFinish(bytes)
         defer { AppFileFree(value) }
         return ifx AppFileWrite(*app.local.files, name, value) then "ready" else "error"
     }
-}
-
-#if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
-    ExportBundle :: (app: *App) -> string {
+} else {
+    DocumentPick :: (app: *App, request: string) -> string {
+        if request.count > 4096 { return "error" }
+        operation: [32]u8
         name: [256]u8
-        CopyField(name[:], TextUntilNul(app.id[:]))
-        used := TextUntilNul(name[:]).count
-        suffix := ".zx"
-        for index: 0..suffix.count - 1 { name[used + index] = suffix[index] }
-        name[used + suffix.count] = 0
-        path: [4096]u8
-        props := Picker.FilePickerProps.{.title = "Download app bundle", .filter = "App bundle | *.zx", .save = true, .suggested_name = TextUntilNul(name[:])}
-        selected := Picker.PickFile(props, path[:])
-        if selected == 0 { return "cancelled" }
-        if selected != 1 { return "error" }
-        return ifx WritePrivate(TextUntilNul(path[:]), app.bytes) then "ready" else "error"
+        return AndroidDocumentTransfer(*app.local.files, ServiceText(request, "op", operation[:]), ServiceText(request, "name", name[:]))
     }
 }
 
-#if #defined(PLATFORM_DESKTOP) && !#defined(PLATFORM_WEB) && !#defined(ANDROID_BUILD) {
-    ServiceText :: (request: string, field: string, out: []u8) -> string {
-        count := Json.ReadStringText(request, Json.FieldAt(request, 0, field), out)
-        return ifx count >= 0 && count < out.count then TextView(out[:count]) else ""
+#if !#defined(ANDROID_BUILD) {
+    ExportBundle :: (app: *App) -> string {
+        #if #defined(PLATFORM_WEB) {
+            return ifx BrowserDownload("workbook.zx", app.bytes) then "ready" else "error"
+        } else {
+            name: [256]u8
+            CopyField(name[:], TextUntilNul(app.id[:]))
+            used := TextUntilNul(name[:]).count
+            suffix := ".zx"
+            for index: 0..suffix.count - 1 { name[used + index] = suffix[index] }
+            name[used + suffix.count] = 0
+            path: [4096]u8
+            props := Picker.FilePickerProps.{.title = "Download app bundle", .filter = "App bundle | *.zx", .save = true, .suggested_name = TextUntilNul(name[:])}
+            selected := Picker.PickFile(props, path[:])
+            if selected == 0 { return "cancelled" }
+            if selected != 1 { return "error" }
+            return ifx WritePrivate(TextUntilNul(path[:]), app.bytes) then "ready" else "error"
+        }
     }
+}
+
+ServiceText :: (request: string, field: string, out: []u8) -> string {
+    count := Json.ReadStringText(request, Json.FieldAt(request, 0, field), out)
+    return ifx count >= 0 && count < out.count then TextView(out[:count]) else ""
 }

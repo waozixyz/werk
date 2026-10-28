@@ -1,0 +1,180 @@
+// Android document transfers are asynchronous and use the system chooser.
+// The chooser grants one URI; bundles see only their private document name.
+#import "android"
+#import "android_jni"
+#import "android_dispatch"
+#import "android_document_dex"
+#import "files"
+#import "std/c_string"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/vec"
+#import "kryon/app_files"
+
+DocumentCallback :: #type (*JniEnv, *void, s32, s32, *void) -> void #c_call;
+DocumentNative :: struct { name: *u8; signature: *u8; callback: DocumentCallback }
+DOCUMENT_REQUEST :: 6501
+// 0 idle, 1 queued, 2 awaiting Android, 3 selected, 4 cancelled, 5 failed.
+document_state: s32;
+document_files: *AppFiles;
+document_name: [256]u8;
+document_save: bool;
+document_intent: *void;
+
+DocumentSelected :: (env: *JniEnv, fragment: *void, request: s32, result: s32, intent: *void) {
+    if request != DOCUMENT_REQUEST { return }
+    UiLock()
+    if document_state == 2 {
+        if result == -1 && intent != null {
+            document_intent = env.functions.NewGlobalRef(env, intent)
+            document_state = ifx document_intent != null then 3 else 5
+        } else { document_state = 4 }
+    }
+    UiUnlock()
+    // This bridge is transient: don't leave it in the activity's saved state.
+    empty := NoArguments()
+    manager := ObjectCall(env, fragment, "getFragmentManager", "()Landroid/app/FragmentManager;", empty[:])
+    transaction := ObjectCall(env, manager, "beginTransaction", "()Landroid/app/FragmentTransaction;", empty[:])
+    args: [1]JniValue = .[ArgumentObject(fragment)]
+    unused ObjectCall(env, transaction, "remove", "(Landroid/app/Fragment;)Landroid/app/FragmentTransaction;", args[:])
+    method := Method(env, transaction, "commitAllowingStateLoss", "()I", false)
+    if method != null { unused env.functions.CallIntMethodA(env, transaction, method, *empty[0]) }
+    unused JniOk(env)
+}
+
+DocumentFragment :: (env: *JniEnv) -> *void {
+    bytes: [1024]u8
+    length := DocumentPickerDex(env, bytes[:])
+    if length == 0 { return null }
+    klass := DexClass(env, bytes[:], length, "document-picker-v1.dex", "xyz.waozi.pass.DocumentPicker")
+    empty := NoArguments()
+    if klass == null { return null }
+    label: [32]u8; signature: [64]u8
+    unused CopyCString("onActivityResult", label[:]); unused CopyCString("(IILandroid/content/Intent;)V", signature[:])
+    methods: [1]DocumentNative = .[DocumentNative.{*label[0], *signature[0], DocumentSelected}]
+    if env.functions.RegisterNatives(env, klass, cast(*void)*methods[0], 1) != 0 || !JniOk(env) { return null }
+    unused CopyCString("<init>", label[:]); unused CopyCString("()V", signature[:])
+    constructor := env.functions.GetMethodID(env, klass, *label[0], *signature[0])
+    if constructor == null { unused JniOk(env); return null }
+    return env.functions.NewObjectA(env, klass, constructor, *empty[0])
+}
+
+// UiRun holds the dispatcher mutex while this callback executes.
+DocumentOpenUi :: (env: *JniEnv, task: *void) {
+    unused task
+    fragment := DocumentFragment(env)
+    if fragment == null { document_state = 5; unused JniOk(env); return }
+    empty := NoArguments()
+    activity := NativeApp().activity.activity
+    manager := ObjectCall(env, activity, "getFragmentManager", "()Landroid/app/FragmentManager;", empty[:])
+    transaction := ObjectCall(env, manager, "beginTransaction", "()Landroid/app/FragmentTransaction;", empty[:])
+    args: [2]JniValue
+    args[0] = ArgumentObject(fragment); args[1] = ArgumentObject(TextObject(env, "werk-document-picker"))
+    unused ObjectCall(env, transaction, "add", "(Landroid/app/Fragment;Ljava/lang/String;)Landroid/app/FragmentTransaction;", args[:])
+    commit := Method(env, transaction, "commitAllowingStateLoss", "()I", false)
+    if commit == null { document_state = 5; return }
+    unused env.functions.CallIntMethodA(env, transaction, commit, *empty[0])
+    if !BoolCall(env, manager, "executePendingTransactions", "()Z", empty[:]) { document_state = 5; return }
+    args[0] = ArgumentObject(TextObject(env, ifx document_save then "android.intent.action.CREATE_DOCUMENT" else "android.intent.action.OPEN_DOCUMENT"))
+    intent := NewObject(env, "android/content/Intent", "(Ljava/lang/String;)V", args[:])
+    args[0] = ArgumentObject(TextObject(env, "android.intent.category.OPENABLE"))
+    unused ObjectCall(env, intent, "addCategory", "(Ljava/lang/String;)Landroid/content/Intent;", args[:])
+    args[0] = ArgumentObject(TextObject(env, "application/x-gnumeric"))
+    unused ObjectCall(env, intent, "setType", "(Ljava/lang/String;)Landroid/content/Intent;", args[:])
+    if document_save {
+        args[0] = ArgumentObject(TextObject(env, "android.intent.extra.TITLE"))
+        args[1] = ArgumentObject(TextObject(env, "workbook.gnumeric"))
+        unused ObjectCall(env, intent, "putExtra", "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;", args[:])
+    }
+    args[0] = ArgumentObject(intent); args[1] = ArgumentInteger(DOCUMENT_REQUEST)
+    if !VoidCall(env, fragment, "startActivityForResult", "(Landroid/content/Intent;I)V", args[:]) { document_state = 5 }
+}
+
+DocumentCopy :: (files: *AppFiles, name: string, save: bool, intent: *void) -> bool {
+    session: ActivityJniSession
+    if activity_jni_attach(*session) == 0 { return false }
+    defer { activity_jni_detach(*session) }
+    env := session.env
+    defer { env.functions.DeleteGlobalRef(env, intent) }
+    empty := NoArguments()
+    uri := ObjectCall(env, intent, "getData", "()Landroid/net/Uri;", empty[:])
+    resolver := ObjectCall(env, session.activity, "getContentResolver", "()Landroid/content/ContentResolver;", empty[:])
+    if uri == null || resolver == null { return false }
+    args: [3]JniValue
+    args[0] = ArgumentObject(uri)
+    stream: *void
+    if save {
+        args[1] = ArgumentObject(TextObject(env, "wt"))
+        stream = ObjectCall(env, resolver, "openOutputStream", "(Landroid/net/Uri;Ljava/lang/String;)Ljava/io/OutputStream;", args[:])
+    } else { stream = ObjectCall(env, resolver, "openInputStream", "(Landroid/net/Uri;)Ljava/io/InputStream;", args[:]) }
+    if stream == null { return false }
+    closed := false
+    defer { if !closed { unused VoidCall(env, stream, "close", "()V", empty[:]) } }
+    buffer := env.functions.NewByteArray(env, 4096)
+    if buffer == null || !JniOk(env) { return false }
+    args[0] = ArgumentObject(buffer)
+    if save {
+        value := AppFileRead(files, name)
+        defer { AppFileFree(value) }
+        if files.status != 1 { return false }
+        write := Method(env, stream, "write", "([BII)V", false)
+        if write == null { return false }
+        descriptor := cast(*TextDescriptor)(*value)
+        at: s64 = 0
+        while at < value.count {
+            count := cast(s32)(ifx value.count - at > 4096 then 4096 else value.count - at)
+            env.functions.SetByteArrayRegion(env, buffer, 0, count, *descriptor.data[at])
+            args[1] = ArgumentInteger(0); args[2] = ArgumentInteger(count)
+            env.functions.CallVoidMethodA(env, stream, write, *args[0])
+            if !JniOk(env) { return false }
+            at += count
+        }
+        if !VoidCall(env, stream, "flush", "()V", empty[:]) { return false }
+        ok := VoidCall(env, stream, "close", "()V", empty[:])
+        closed = true
+        return ok
+    }
+    read := Method(env, stream, "read", "([B)I", false)
+    if read == null { return false }
+    bytes: Vec(u8)
+    chunk: [4096]u8
+    while true {
+        count := env.functions.CallIntMethodA(env, stream, read, *args[0])
+        if !JniOk(env) { VecFree(bytes); return false }
+        if count < 0 { break }
+        if count == 0 || count > 4096 || bytes.count + count > APP_DOCUMENT_LIMIT { VecFree(bytes); return false }
+        env.functions.GetByteArrayRegion(env, buffer, 0, count, *chunk[0])
+        if !JniOk(env) { VecFree(bytes); return false }
+        for index: 0..count - 1 { if !VecPush(bytes, chunk[index]) { VecFree(bytes); return false } }
+    }
+    value := BuilderFinish(bytes)
+    defer { AppFileFree(value) }
+    closed = true
+    return VoidCall(env, stream, "close", "()V", empty[:]) && value.count > 0 && AppFileWrite(files, name, value)
+}
+
+AndroidDocumentTransfer :: (files: *AppFiles, operation: string, name: string) -> string {
+    UiLock()
+    if operation != "poll" {
+        if document_state != 0 || (operation != "import" && operation != "export") || !AppFileNameValid(name) ||
+        !CopyCString(name, document_name[:]) { UiUnlock(); return "error" }
+        document_save = operation == "export"
+        document_files = files
+        document_state = 1
+    } else if document_files != files { UiUnlock(); return "error" }
+    state := document_state
+    if state == 1 { document_state = 2 }
+    intent := document_intent
+    save := document_save
+    UiUnlock()
+    if state == 1 {
+        if !UiSchedule(DocumentOpenUi) { UiLock(); document_state = 1; UiUnlock() }
+        return "pending"
+    }
+    if state == 2 { return "pending" }
+    ok := state == 3 && intent != null && DocumentCopy(files, TextUntilNul(document_name[:]), save, intent)
+    UiLock()
+    document_state = 0; document_files = null; document_intent = null; document_name[0] = 0
+    UiUnlock()
+    return ifx state == 4 then "cancelled" else ifx ok then "ready" else "error"
+}

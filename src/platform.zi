@@ -27,6 +27,10 @@ using UI :: #import "kryon/Widgets";
 libc :: #system_library "libc";
 Environment :: (name: *u8) -> *u8 #foreign libc "getenv";
 ExecutableLink :: (path: *u8, output: *u8, limit: usize) -> isize #foreign libc "readlink";
+#if #defined(ANDROID_BUILD) {
+    CanonicalDirectory :: (path: *u8, output: *u8) -> *u8 #foreign libc "realpath";
+    FreeDirectory :: (path: *void) #foreign libc "free";
+}
 
 data_root: [PATH_LIMIT]u8;
 cache_root: [PATH_LIMIT]u8;
@@ -68,7 +72,13 @@ DataRoot :: () -> string {
         #if #defined(ANDROID_BUILD) {
             internal := ActivityInternalDataPath()
             if internal != null {
-                unused CopyCString(TextFromCString(internal), data_root[:])
+                // Android aliases /data/user/0 and /data/data. Resolve the
+                // trusted activity root before enforcing private file paths.
+                canonical := CanonicalDirectory(internal, null)
+                if canonical != null {
+                    unused CopyCString(TextFromCString(canonical), data_root[:])
+                    FreeDirectory(cast(*void)canonical)
+                }
             }
         } else #if #defined(PLATFORM_WEB) {
             unused CopyCString(BROWSER_DATA, data_root[:])

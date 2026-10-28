@@ -40,8 +40,9 @@ werk_package(ZIRAN_ROOT ziran "")
 werk_package(RAYLIB_DIR raylib "/src")
 werk_package(LIBOQS_DIR liboqs "")
 werk_package(MONOCYPHER_DIR monocypher "")
+werk_package(WORKBOOK_DIR workbook "")
 file(GLOB_RECURSE SOURCE_INPUTS CONFIGURE_DEPENDS
-    "${REPO_ROOT}/src/*.zi" "${KRYON_DIR}/src/*.zi" "${ZIRAN_ROOT}/std/*.zi")
+    "${REPO_ROOT}/src/*.zi" "${WORKBOOK_DIR}/src/*.zi" "${KRYON_DIR}/src/*.zi" "${ZIRAN_ROOT}/std/*.zi")
 list(APPEND SOURCE_INPUTS "${REPO_ROOT}/ziran.toml" "${REPO_ROOT}/ziran.lock")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SOURCE_INPUTS})
 execute_process(COMMAND "${ZIRAN}" build --project ${LOCK_FLAGS} ${DEFINES}

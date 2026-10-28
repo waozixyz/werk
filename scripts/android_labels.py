@@ -7,6 +7,9 @@ from PIL import Image
 
 
 def label_position(path, word):
+    def normalized(value):
+        return "".join(character for character in value.casefold() if character.isalnum())
+
     for scale in (1, 3):
         screenshot = path
         if scale == 3:
@@ -22,7 +25,7 @@ def label_position(path, word):
             ["tesseract", str(screenshot), "stdout", "--psm", "11", "-c", "tessedit_create_tsv=1"],
             stderr=subprocess.DEVNULL, text=True)
         for item in csv.DictReader(io.StringIO(data), delimiter="\t"):
-            if item["text"].strip().lower() == word.lower():
+            if normalized(item["text"]) == normalized(word):
                 return ((int(item["left"]) + int(item["width"]) // 2) // scale,
                         (int(item["top"]) + int(item["height"]) // 2) // scale)
     return None

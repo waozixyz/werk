@@ -6,6 +6,7 @@
 #import "c_string"
 #import "byte_text_linux"
 #import "text_buffer"
+#import "files"
 
 UiCallback :: #type (*JniEnv, *void) -> void #c_call;
 NativeMethod :: struct { name: *u8; signature: *u8; callback: UiCallback }
@@ -14,9 +15,13 @@ MutexLock :: (mutex: *void) -> s32 #foreign libc "pthread_mutex_lock";
 MutexUnlock :: (mutex: *void) -> s32 #foreign libc "pthread_mutex_unlock";
 DexOpen :: (path: *u8, mode: *u8) -> *void #foreign libc "fopen";
 DexWrite :: (bytes: *u8, size: usize, count: usize, file: *void) -> usize #foreign libc "fwrite";
+DexRead :: (bytes: *u8, size: usize, count: usize, file: *void) -> usize #foreign libc "fread";
 DexClose :: (file: *void) -> s32 #foreign libc "fclose";
 DexDescriptor :: (file: *void) -> s32 #foreign libc "fileno";
 DexPrivate :: (fd: s32, mode: s32) -> s32 #foreign libc "fchmod";
+DexSync :: (fd: s32) -> s32 #foreign libc "fsync";
+DexRename :: (from: *u8, to: *u8) -> s32 #foreign libc "rename";
+DexRemove :: (path: *u8) -> s32 #foreign libc "unlink";
 
 ui_mutex: [8]u64;
 ui_pending: bool;
@@ -89,6 +94,11 @@ DexRunnable :: (env: *JniEnv, bytes: []u8) -> s32 {
     DexMap(bytes, 10, cast(u32)0x1000, cast(u32)1, cast(u32)map, map)
     length := map + 136
     DexWord(bytes, 32, cast(u32)length); DexWord(bytes, 104, cast(u32)(length - 220))
+    return DexSeal(env, bytes, length)
+}
+
+// A generated JNI bridge contains only a constructor and native callbacks.
+DexSeal :: (env: *JniEnv, bytes: []u8, length: s32) -> s32 {
     args: [1]JniValue
     args[0] = ArgumentObject(TextObject(env, "SHA-1"))
     digest := StaticCall(env, "java/security/MessageDigest", "getInstance", "(Ljava/lang/String;)Ljava/security/MessageDigest;", args[:])
@@ -104,6 +114,52 @@ DexRunnable :: (env: *JniEnv, bytes: []u8) -> s32 {
     DexWord(bytes, 8, (second << cast(u32)16) | first)
     return length
 }
+
+// Load a generated bridge from the activity's private, read-only code cache.
+DexClass :: (env: *JniEnv, bytes: []u8, length: s32, filename: string, name: string) -> *void {
+    if length <= 0 || length > bytes.count || length > 4096 || !SafeName(filename) { return null }
+    path: [1024]u8
+    base := TextFromCString(ActivityInternalDataPath())
+    if PathJoin(path[:], base, filename) == "" { return null }
+    mode: [3]u8
+    unused CopyCString("rb", mode[:])
+    file := DexOpen(*path[0], *mode[0])
+    valid := false
+    if file != null {
+        previous: [4096]u8
+        extra: u8
+        valid = DexRead(*previous[0], cast(usize)1, cast(usize)length, file) == cast(usize)length &&
+        DexRead(*extra, cast(usize)1, cast(usize)1, file) == cast(usize)0
+        for index: 0..length - 1 { if previous[index] != bytes[index] { valid = false } }
+        if DexClose(file) != 0 { valid = false }
+    }
+    if !valid {
+        temporary: [1280]u8
+        unused CopyCString(TextUntilNul(path[:]), temporary[:])
+        used := TextUntilNul(temporary[:]).count
+        suffix := ".new"
+        for index: 0..3 { temporary[used + index] = suffix[index] }
+        temporary[used + 4] = 0
+        unused DexRemove(*temporary[0])
+        unused CopyCString("wb", mode[:]); file = DexOpen(*temporary[0], *mode[0])
+        if file == null { return null }
+        ok := DexPrivate(DexDescriptor(file), 256) == 0
+        ok = DexWrite(*bytes[0], cast(usize)1, cast(usize)length, file) == cast(usize)length && ok
+        ok = DexSync(DexDescriptor(file)) == 0 && ok
+        ok = DexClose(file) == 0 && ok
+        if ok { ok = DexRename(*temporary[0], *path[0]) == 0 }
+        if !ok { unused DexRemove(*temporary[0]) }
+        if !ok { return null }
+    }
+    empty := NoArguments()
+    parent := ObjectCall(env, NativeApp().activity.activity, "getClassLoader", "()Ljava/lang/ClassLoader;", empty[:])
+    args: [4]JniValue
+    args[0] = ArgumentObject(TextObject(env, TextUntilNul(path[:])))
+    args[1] = ArgumentObject(TextObject(env, base)); args[2] = ArgumentObject(null); args[3] = ArgumentObject(parent)
+    loader := NewObject(env, "dalvik/system/DexClassLoader", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/ClassLoader;)V", args[:])
+    args[0] = ArgumentObject(TextObject(env, name))
+    return ObjectCall(env, loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", args[:])
+}
 UiRun :: (env: *JniEnv, task: *void) {
     UiLock()
     if ui_pending { ui_callback(env, task); ui_pending = false }
@@ -116,34 +172,8 @@ UiInitialize :: () -> bool {
     env := session.env
     bytes: [512]u8
     length := DexRunnable(env, bytes[:])
-    path: [1024]u8
-    base := TextFromCString(ActivityInternalDataPath())
-    index: s32 = 0
-    while index < cast(s32)base.count && index < 900 { path[index] = base[index]; index += 1 }
-    suffix := "/ui-task.dex"
-    for position: 0..11 { path[index + cast(s32)position] = suffix[position] }
-    mode: [3]u8
-    CopyCString("rb", mode[:])
-    file := DexOpen(*path[0], *mode[0])
-    if file != null { DexClose(file) }
-    else {
-        CopyCString("wb", mode[:]); file = DexOpen(*path[0], *mode[0])
-        if file == null || length == 0 { activity_jni_detach(*session); return false }
-        // Android 14 requires dynamically loaded code to be read-only.
-        // The already-open descriptor remains writable after chmod.
-        ok := DexPrivate(DexDescriptor(file), 256) == 0
-        ok = DexWrite(*bytes[0], cast(usize)1, cast(usize)length, file) == cast(usize)length && ok
-        ok = DexClose(file) == 0 && ok
-        if !ok { activity_jni_detach(*session); return false }
-    }
+    klass := DexClass(env, bytes[:], length, "ui-task.dex", "xyz.waozi.pass.UiTask")
     empty := NoArguments()
-    parent := ObjectCall(env, session.activity, "getClassLoader", "()Ljava/lang/ClassLoader;", empty[:])
-    args: [4]JniValue
-    args[0] = ArgumentObject(TextObject(env, TextUntilNul(path[:])))
-    args[1] = ArgumentObject(TextObject(env, base)); args[2] = ArgumentObject(null); args[3] = ArgumentObject(parent)
-    loader := NewObject(env, "dalvik/system/DexClassLoader", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/ClassLoader;)V", args[:])
-    args[0] = ArgumentObject(TextObject(env, "xyz.waozi.pass.UiTask"))
-    klass := ObjectCall(env, loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", args[:])
     label: [4]u8; descriptor: [4]u8
     CopyCString("run", label[:]); CopyCString("()V", descriptor[:])
     methods: [1]NativeMethod

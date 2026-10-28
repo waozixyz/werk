@@ -53,11 +53,10 @@ build/pass: build/generated/cli/.complete
 cli: build/pass
 	cp build/pass pass
 
-# Each app is its own bundle; Werkzeug runs them in one window. Workbook runs
-# only in the Linux desktop app, so the web and Android apps leave it out.
+# Each app is its own bundle, shared by the desktop, web and Android hosts.
 APPS := pass calculator clock
-PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zx) build/apps/auth.zx build/apps/entity.zx build/apps/apps.zx
-APP_BUNDLES := $(PORTABLE_BUNDLES) build/apps/workbook.zx
+PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zx) build/apps/auth.zx build/apps/entity.zx build/apps/apps.zx build/apps/workbook.zx
+APP_BUNDLES := $(PORTABLE_BUNDLES)
 CRYPTO_SOURCES = $(wildcard $(CRYPTO_DIR)/src/*.zi)
 APPS_UI_SOURCES = $(wildcard $(APPS_DIR)/src/*.zi $(APPS_DIR)/ui/*.zi $(APPS_DIR)/ui/locales/*.json)
 APP_MODULE_PATHS = --module-path crypto=$(CRYPTO_DIR)/src --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
@@ -150,7 +149,7 @@ WEB_AR ?= $(dir $(WEB_CC))emar
 build/web-runtime/libziran.a: ziran.lock
 	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BOOTSTRAP=1 BUILD_DIR=$(abspath build/web-runtime) \
 		CC=$(WEB_CC) AR=$(WEB_AR) OBJCOPY=true CFLAGS=-O2 $(abspath $@)
-build/generated/browser/.complete: $(wildcard src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
+build/generated/browser/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target=c -o $(@D) src/browser.zi
@@ -210,6 +209,7 @@ android-smoke:
 	bash scripts/android_smoke.sh
 android-input-test:
 	python3 scripts/android_input_test.py
+	python3 scripts/workbook_android_test.py
 
 check-package-urls:
 	bash scripts/check_package_urls.sh

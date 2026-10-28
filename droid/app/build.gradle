@@ -43,8 +43,8 @@ android {
         applicationId 'xyz.waozi.pass'
         minSdk 21
         targetSdk 36
-        versionCode 20
-        versionName "0.4.6"
+        versionCode 21
+        versionName "0.4.7"
         // Default to the two realistic phone targets; override with
         // -Pabi=x86_64 etc. for emulator builds.
         def abis = project.findProperty('abi') ?: 'armeabi-v7a,arm64-v8a'
@@ -115,7 +115,7 @@ def prepareImages = tasks.register('prepareImages', Sync) {
     dependsOn makeApps
     from('../../assets/app/icon.png')
     from(kryonSource.map { "${it}/icons/pfp.png" })
-    from('../../build/apps') { include '*.zx'; exclude 'workbook.zx'; into 'apps' }
+    from('../../build/apps') { include '*.zx'; into 'apps' }
     into layout.buildDirectory.dir('generated/appAssets')
 }
 tasks.named('preBuild').configure { dependsOn prepareImages }

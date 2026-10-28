@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.7] - 2026-10-28
+
+- Use Workbook on Android and the web as well as Linux, with formulas, sheet tabs, automatic saving and document import/export.
+- Navigate Workbook cells with touch controls, and keep Android's keyboard focused while editing a cell.
+
 ## [0.4.6] - 2026-10-27
 
 - Set an account alias with capitals, an @ or spaces; a taken alias now says so.

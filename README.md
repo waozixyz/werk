@@ -17,7 +17,7 @@ codes, calculate and keep time in one free, open-source app.
 - **Auth:** keep two-factor sign-in codes together. Import existing accounts, rename them and copy a code when you need it.
 - **Calculator:** everyday arithmetic and scientific functions, with a keypad or keyboard.
 - **Clock:** see the local time and use a stopwatch that keeps running while the app is closed.
-- **Workbook on Linux:** edit spreadsheets with sheet tabs, familiar menus and portable workbook files.
+- **Workbook:** edit spreadsheets on Linux, Android and the web, with formulas, sheet tabs and portable workbook files.
 
 <p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-pass.png" alt="Pass password generation" width="30%">

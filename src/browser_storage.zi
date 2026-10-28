@@ -3,6 +3,7 @@
 // profiles and settings carry over. Without storage (private windows,
 // embedded previews) the tools still work; nothing is kept.
 #import "web"
+#import "std/byte_text_linux"
 
 BROWSER_DATA :: "/pass-data"
 
@@ -102,6 +103,27 @@ BrowserStorageOpen :: () -> bool {
 // Saves written files to IndexedDB; false when the browser keeps nothing.
 BrowserStorageSave :: () -> bool {
     return browser_persistent && BrowserSync(false)
+}
+
+// Download only bytes the host has already read from the app's own folder.
+BrowserDownload :: (name: string, bytes: string) -> bool {
+    scope := WebScope()
+    defer WebEnd(scope)
+    descriptor := cast(*TextDescriptor)(*bytes)
+    data := WebBytes(WebBytesUint8, cast(*void)descriptor.data, cast(s32)bytes.count)
+    parts := WebNewArray()
+    unused WebCall1(parts, WebName("push"), WebObject(data))
+    blob := WebNew1(WebGetObject(WebGlobal, WebName("Blob")), WebObject(parts))
+    urls := WebGetObject(WebGlobal, WebName("URL"))
+    url := WebCall1(urls, WebName("createObjectURL"), WebObject(blob))
+    document := WebGetObject(WebGlobal, WebName("document"))
+    anchor := WebAsObject(WebCall1(document, WebName("createElement"), WebText("a")))
+    WebSet(anchor, WebName("href"), url)
+    WebSet(anchor, WebName("download"), WebText(name))
+    unused WebCall0(anchor, WebName("click"))
+    ok := !WebFailed()
+    unused WebCall1(urls, WebName("revokeObjectURL"), url)
+    return ok
 }
 
 BrowserDark :: () -> bool {

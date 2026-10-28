@@ -196,4 +196,5 @@ jobs:
           name: android-input-test-reports
           path: |
             build/android-input/
+            build/workbook-android-test/
           if-no-files-found: ignore

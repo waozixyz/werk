@@ -78,7 +78,15 @@ AndroidWidgetCall :: (context: *void, module: *u8, function: *u8,
         }
     }
     // The editor delivers the typing; the field only draws and selects.
+    focus := props.input.focus
+    blur := props.input.blur
+    commit := props.input.commit
+    escape := props.input.escape
     props.input = TextFieldInput.{}
+    props.input.focus = focus
+    props.input.blur = blur
+    props.input.commit = commit
+    props.input.escape = escape
     synced: [2]HostValue = .[arguments[0], WidgetEncodeTextFieldProps(props, *synced_codec)]
     if WidgetHostCall(context, module, function, *synced[0], 2, result) == 0 {
         return 0

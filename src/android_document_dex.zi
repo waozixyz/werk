@@ -1,0 +1,79 @@
+// A framework Fragment routes Android's granted document result into Ziran.
+// Like UiTask, its only bytecode is a constructor; all behavior is native.
+// Identifier tables and map entries follow Android's DEX 035 format.
+#import "android"
+#import "android_jni"
+Dex :: #import "android_dispatch";
+
+Uleb :: (bytes: []u8, at: *s32, value: u32) {
+    rest := value
+    while rest >= cast(u32)128 {
+        bytes[at.*] = cast(u8)((rest & cast(u32)127) | cast(u32)128)
+        at.* += 1
+        rest >>= cast(u32)7
+    }
+    bytes[at.*] = cast(u8)rest
+    at.* += 1
+}
+
+DocumentPickerDex :: (env: *JniEnv, bytes: []u8) -> s32 {
+    magic := "dex\n035"
+    for index: 0..6 { bytes[index] = magic[index] }
+    Dex.DexWord(bytes, 36, cast(u32)112)
+    Dex.DexWord(bytes, 40, cast(u32)0x12345678)
+    Dex.DexWord(bytes, 56, cast(u32)8); Dex.DexWord(bytes, 60, cast(u32)112)
+    Dex.DexWord(bytes, 64, cast(u32)5); Dex.DexWord(bytes, 68, cast(u32)144)
+    Dex.DexWord(bytes, 72, cast(u32)2); Dex.DexWord(bytes, 76, cast(u32)164)
+    Dex.DexWord(bytes, 88, cast(u32)3); Dex.DexWord(bytes, 92, cast(u32)188)
+    Dex.DexWord(bytes, 96, cast(u32)1); Dex.DexWord(bytes, 100, cast(u32)212)
+    Dex.DexWord(bytes, 108, cast(u32)244)
+    for index: 0..4 { Dex.DexWord(bytes, 144 + cast(s32)index * 4, cast(u32)(index + 1)) }
+    Dex.DexWord(bytes, 164, cast(u32)5); Dex.DexWord(bytes, 168, cast(u32)4)
+    Dex.DexWord(bytes, 176, cast(u32)6); Dex.DexWord(bytes, 180, cast(u32)4)
+    Dex.DexWord(bytes, 184, cast(u32)244)
+    Dex.DexHalf(bytes, 188, cast(u32)1)
+    Dex.DexHalf(bytes, 196, cast(u32)3)
+    Dex.DexHalf(bytes, 204, cast(u32)3); Dex.DexHalf(bytes, 206, cast(u32)1)
+    Dex.DexWord(bytes, 208, cast(u32)7)
+    Dex.DexWord(bytes, 212, cast(u32)3); Dex.DexWord(bytes, 216, cast(u32)1)
+    Dex.DexWord(bytes, 220, cast(u32)1); Dex.DexWord(bytes, 228, cast(u32)0xffffffff)
+    Dex.DexWord(bytes, 244, cast(u32)3)
+    Dex.DexHalf(bytes, 252, cast(u32)2)
+    strings: [8]string = .["<init>", "I", "Landroid/app/Fragment;", "Landroid/content/Intent;",
+    "Lxyz/waozi/pass/DocumentPicker;", "V", "VIIL", "onActivityResult"]
+    at: s32 = 256
+    for index: 0..7 {
+        Dex.DexWord(bytes, 112 + cast(s32)index * 4, cast(u32)at)
+        Uleb(bytes, *at, cast(u32)strings[index].count)
+        for position: 0..strings[index].count - 1 { bytes[at] = strings[index][position]; at += 1 }
+        at += 1
+    }
+    code := (at + 3) & -4
+    Dex.DexHalf(bytes, code, cast(u32)1); Dex.DexHalf(bytes, code + 2, cast(u32)1)
+    Dex.DexHalf(bytes, code + 4, cast(u32)1); Dex.DexWord(bytes, code + 12, cast(u32)4)
+    Dex.DexHalf(bytes, code + 16, cast(u32)0x1070)
+    Dex.DexHalf(bytes, code + 22, cast(u32)0x000e)
+    data := code + 24
+    Dex.DexWord(bytes, 236, cast(u32)data)
+    at = data
+    Uleb(bytes, *at, cast(u32)0); Uleb(bytes, *at, cast(u32)0)
+    Uleb(bytes, *at, cast(u32)1); Uleb(bytes, *at, cast(u32)1)
+    Uleb(bytes, *at, cast(u32)1); Uleb(bytes, *at, cast(u32)0x10001); Uleb(bytes, *at, cast(u32)code)
+    Uleb(bytes, *at, cast(u32)2); Uleb(bytes, *at, cast(u32)0x101); Uleb(bytes, *at, cast(u32)0)
+    map := (at + 3) & -4
+    Dex.DexWord(bytes, 52, cast(u32)map); Dex.DexWord(bytes, map, cast(u32)11)
+    Dex.DexMap(bytes, 0, cast(u32)0, cast(u32)1, cast(u32)0, map)
+    Dex.DexMap(bytes, 1, cast(u32)1, cast(u32)8, cast(u32)112, map)
+    Dex.DexMap(bytes, 2, cast(u32)2, cast(u32)5, cast(u32)144, map)
+    Dex.DexMap(bytes, 3, cast(u32)3, cast(u32)2, cast(u32)164, map)
+    Dex.DexMap(bytes, 4, cast(u32)5, cast(u32)3, cast(u32)188, map)
+    Dex.DexMap(bytes, 5, cast(u32)6, cast(u32)1, cast(u32)212, map)
+    Dex.DexMap(bytes, 6, cast(u32)0x1001, cast(u32)1, cast(u32)244, map)
+    Dex.DexMap(bytes, 7, cast(u32)0x2002, cast(u32)8, cast(u32)256, map)
+    Dex.DexMap(bytes, 8, cast(u32)0x2001, cast(u32)1, cast(u32)code, map)
+    Dex.DexMap(bytes, 9, cast(u32)0x2000, cast(u32)1, cast(u32)data, map)
+    Dex.DexMap(bytes, 10, cast(u32)0x1000, cast(u32)1, cast(u32)map, map)
+    length := map + 136
+    Dex.DexWord(bytes, 32, cast(u32)length); Dex.DexWord(bytes, 104, cast(u32)(length - 244))
+    return Dex.DexSeal(env, bytes, length)
+}

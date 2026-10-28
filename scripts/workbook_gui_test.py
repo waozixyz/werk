@@ -27,7 +27,7 @@ original = fixture.read_bytes()
 env = dict(os.environ, HOME=str(work/'home'), WERK_DATA=str(work/'data'),
            XDG_CACHE_HOME=str(work/'cache'), XDG_CONFIG_HOME=str(work/'home/.config'),
            XDG_DATA_HOME=str(work/'home/.local/share'), ENTITY_DATA=str(work/'entity'),
-           WERK_ASSETS=str(root/'build'), WORKBOOK_TEST_SELECTION=str(selector),
+           WERK_ASSETS=os.environ.get('WERK_TEST_ASSETS', str(root/'build')), WORKBOOK_TEST_SELECTION=str(selector),
            PATH=str(work/'bin')+':'+os.environ['PATH'])
 app = None
 window = None
@@ -37,7 +37,7 @@ def command(*args):
 
 def start():
     global app, window
-    app = subprocess.Popen([str(root/'build/werk'), '--app', 'workbook'], env=env)
+    app = subprocess.Popen([os.environ.get('WERK_TEST_APP', str(root/'build/werk')), '--app', 'workbook'], env=env)
     for _ in range(100):
         assert app.poll() is None, 'Werkzeug exited'
         found = subprocess.run(['xdotool','search','--onlyvisible','--pid',str(app.pid)], env=env, capture_output=True, text=True)

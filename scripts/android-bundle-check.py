@@ -37,7 +37,7 @@ if not args.unsigned:
     expected = "1ac82db5bc8f742b8161fdd7083cefc16b39524dce7d103a7eb7f1ee19589c2d"
     assert fingerprints and {x.replace(":", "").lower() for x in fingerprints} == {expected}, "Bundle signer differs from the existing release key"
 with zipfile.ZipFile(bundle) as archive:
-    expected_bundles = {f"base/assets/apps/{app}.zx" for app in ("pass", "auth", "calculator", "clock", "entity", "apps")}
+    expected_bundles = {f"base/assets/apps/{app}.zx" for app in ("pass", "auth", "calculator", "clock", "workbook", "entity", "apps")}
     actual_bundles = {name for name in archive.namelist() if name.startswith("base/assets/apps/") and not name.endswith("/")}
     assert actual_bundles == expected_bundles, f"Stale or missing app bundles: {actual_bundles ^ expected_bundles}"
     for name in expected_bundles:

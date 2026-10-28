@@ -99,7 +99,8 @@ opens the window on one tool, as Harmony's Auth entry does.
 
 Each tool is built into its own portable bundle, `build/apps/<tool>.zx`:
 Pass, Calculator and Clock from `apps/<tool>/`, Auth from its own Ziran
-package ([waozixyz/auth](https://github.com/waozixyz/auth)). All four are
+package ([waozixyz/auth](https://github.com/waozixyz/auth)), and Workbook from
+[waozixyz/workbook](https://github.com/waozixyz/workbook). All five are
 preinstalled. A tool reaches the host only through Kryon's app context (its
 private files, clipboard, clock, key derivation and device-protected
 secret), and the host checks every call a bundle asks for before it runs.
@@ -110,7 +111,8 @@ comes from a Ziran package (`crypto`).
 
 Dependencies and the compiler are pinned in `ziran.lock`. Desktop builds need
 SDL2, Cairo, FreeType, Fontconfig, Pango, GTK 3 and X11 development packages.
-Workbook uses the installed Gnumeric library; file choosers need Zenity. Browser
+Workbook uses its built-in spreadsheet engine on Android and the web; Linux
+also uses the installed Gnumeric library for imported documents. Linux file choosers need Zenity. Browser
 builds need Emscripten; Android builds need JDK 21 and the SDK/NDK versions in
 `droid/app/build.gradle`. Desktop tests use Xvfb, xdotool, xclip and
 ImageMagick on private displays.
