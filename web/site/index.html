@@ -57,24 +57,6 @@
       <canvas class="emscripten" id="canvas" width="720" height="740" tabindex="-1"></canvas>
     </div>
   </div>
-  <script id="werk-runtime" data-src="index.js"></script>
-  <script>
-    (function () {
-      window.Module = {};
-      var started = false;
-      function start() {
-        if (started) return;
-        started = true;
-        var script = document.createElement('script');
-        script.src = document.getElementById('werk-runtime').dataset.src;
-        document.body.appendChild(script);
-      }
-      var shared = document.createElement('script');
-      shared.src = 'https://account.waozi.xyz/share.js';
-      shared.onload = function () { WaoziAccount.attach(Module, 5000).then(start, start); };
-      shared.onerror = start;
-      document.head.appendChild(shared);
-    })();
-  </script>
+  <script src="index.js"></script>
 </body>
 </html>

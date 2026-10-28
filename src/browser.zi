@@ -34,6 +34,7 @@ QueryValue :: (query: string, name: string) -> string {
 
 #program_export
 main :: () -> s32 {
+    BrowserShareOpen()
     if !BrowserStorageOpen() || !Browser.OpenCanvas() {
         return 1
     }

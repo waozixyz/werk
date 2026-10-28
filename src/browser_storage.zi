@@ -9,6 +9,44 @@ BROWSER_DATA :: "/pass-data"
 sync_done: bool;
 sync_failed: bool;
 browser_persistent: bool;
+shared_waiting: bool;
+shared_done: bool;
+
+SharedProfileAttached :: (context: s32, value: s32, second: s32, third: s32) {
+    if shared_waiting { shared_done = true }
+}
+
+SharedProfileLoaded :: (context: s32, event: s32, second: s32, third: s32) {
+    if !shared_waiting { return }
+    scope := WebScope()
+    shared := WebGetObject(WebGlobal, WebName("WaoziAccount"))
+    promise := WebAsObject(WebCall2(shared, WebName("attach"), WebObject(WebModule), WebNumber(5000.0)))
+    callback := WebFunction(SharedProfileAttached, 0)
+    unused WebCall2(promise, WebName("then"), WebObject(callback), WebObject(callback))
+    WebEnd(scope)
+}
+
+// Load the common browser identity before local display preferences. The
+// tools remain usable from their offline cache when the hub is unavailable.
+BrowserShareOpen :: () {
+    scope := WebScope()
+    document := WebGetObject(WebGlobal, WebName("document"))
+    script := WebAsObject(WebCall1(document, WebName("createElement"), WebText("script")))
+    loaded := WebFunction(SharedProfileLoaded, 0)
+    failed := WebFunction(SharedProfileAttached, 0)
+    shared_waiting = true
+    shared_done = false
+    WebSet(script, WebName("src"), WebText("https://account.waozi.xyz/share.js"))
+    WebSet(script, WebName("onload"), WebObject(loaded))
+    WebSet(script, WebName("onerror"), WebObject(failed))
+    unused WebCall1(WebGetObject(document, WebName("head")), WebName("appendChild"), WebObject(script))
+    // Performance.now is available before the canvas opens.
+    performance := WebGetObject(WebGlobal, WebName("performance"))
+    started := WebAsNumber(WebCall0(performance, WebName("now")))
+    while !shared_done && WebAsNumber(WebCall0(performance, WebName("now"))) - started < 8000.0 { WebSleep(10) }
+    shared_waiting = false
+    WebEnd(scope)
+}
 
 StorageSynced :: (context: s32, error: s32, second: s32, third: s32) {
     sync_failed = !WebIsUndefined(WebValueOf(error))
@@ -55,6 +93,9 @@ BrowserStorageOpen :: () -> bool {
     }
     WebEnd(scope)
     browser_persistent = mounted && BrowserSync(true)
+    scope = WebScope()
+    WebSet(WebModule, WebName("sharedAccountMounted"), WebBool(browser_persistent))
+    WebEnd(scope)
     return true
 }
 
