@@ -93,7 +93,11 @@ build/apps/entity.zx: $(ENTITY_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURC
 		--module-path qrcode=$(QRCODE_DIR)/src --asset-dir assets=$(ENTITY_DIR)/assets --entry entity:Main -o $@ $(ENTITY_DIR)/src/entity.zi
 
 # The portable bundle runtime the host links, built from the locked Ziran.
-build/ziran/libziran.a: ziran.lock $(ZIRAN_RUNTIME_SOURCES)
+.PHONY: runtime-cache-force
+runtime-cache-force:
+build/ziran/.toolchain: runtime-cache-force scripts/runtime_cache.py
+	python3 scripts/runtime_cache.py "$(ZIRAN_ROOT)" "$(abspath build/ziran)"
+build/ziran/libziran.a: ziran.lock $(ZIRAN_RUNTIME_SOURCES) build/ziran/.toolchain
 	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BUILD_DIR=$(abspath build/ziran) $(abspath $@)
 
 build/generated/desktop/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) $(ENTITY_SOURCES) ziran.toml ziran.lock
@@ -133,7 +137,10 @@ entity-account-test: build/liboqs/lib/liboqs.a
 .PHONY: android-sdk-install-test
 android-sdk-install-test:
 	python3 scripts/install_android_sdk_test.py
-test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test entity-account-test android-sdk-install-test
+test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test entity-account-test android-sdk-install-test runtime-cache-test
+.PHONY: runtime-cache-test
+runtime-cache-test:
+	python3 scripts/runtime_cache_test.py
 gui-smoke: gui
 	sh scripts/gui_smoke.sh
 gui-test: gui
@@ -146,7 +153,9 @@ gui-test: gui
 
 # The bundle runtime for the browser, built from the locked Ziran.
 WEB_AR ?= $(dir $(WEB_CC))emar
-build/web-runtime/libziran.a: ziran.lock
+build/web-runtime/.toolchain: runtime-cache-force scripts/runtime_cache.py
+	python3 scripts/runtime_cache.py "$(ZIRAN_ROOT)" "$(abspath build/web-runtime)"
+build/web-runtime/libziran.a: ziran.lock build/web-runtime/.toolchain
 	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BOOTSTRAP=1 BUILD_DIR=$(abspath build/web-runtime) \
 		CC=$(WEB_CC) AR=$(WEB_AR) OBJCOPY=true CFLAGS=-O2 $(abspath $@)
 build/generated/browser/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock

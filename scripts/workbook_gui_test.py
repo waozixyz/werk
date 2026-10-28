@@ -39,7 +39,7 @@ def start():
     global app, window
     app = subprocess.Popen([os.environ.get('WERK_TEST_APP', str(root/'build/werk')), '--app', 'workbook'], env=env)
     for _ in range(100):
-        assert app.poll() is None, 'Werkzeug exited'
+        assert app.poll() is None, f'Werkzeug exited with status {app.returncode}'
         found = subprocess.run(['xdotool','search','--onlyvisible','--pid',str(app.pid)], env=env, capture_output=True, text=True)
         if found.returncode == 0:
             window = found.stdout.splitlines()[0]

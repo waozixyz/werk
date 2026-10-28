@@ -43,7 +43,7 @@ werk_package(MONOCYPHER_DIR monocypher "")
 werk_package(WORKBOOK_DIR workbook "")
 file(GLOB_RECURSE SOURCE_INPUTS CONFIGURE_DEPENDS
     "${REPO_ROOT}/src/*.zi" "${WORKBOOK_DIR}/src/*.zi" "${KRYON_DIR}/src/*.zi" "${ZIRAN_ROOT}/std/*.zi")
-list(APPEND SOURCE_INPUTS "${REPO_ROOT}/ziran.toml" "${REPO_ROOT}/ziran.lock")
+list(APPEND SOURCE_INPUTS "${REPO_ROOT}/ziran.toml" "${REPO_ROOT}/ziran.lock" "${REPO_ROOT}/scripts/runtime_cache.py")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SOURCE_INPUTS})
 execute_process(COMMAND "${ZIRAN}" build --project ${LOCK_FLAGS} ${DEFINES}
     # Native linker callbacks are reached through raylib, outside Zi's entry
@@ -62,6 +62,8 @@ kryon_android_raylib("${RAYLIB_DIR}")
 # The portable runtime that runs the app bundles, built from the locked Ziran
 # for this ABI.
 set(BUNDLE_RUNTIME_DIR "${CMAKE_BINARY_DIR}/bundle-runtime")
+execute_process(COMMAND python3 "${REPO_ROOT}/scripts/runtime_cache.py" "${ZIRAN_ROOT}" "${BUNDLE_RUNTIME_DIR}"
+    COMMAND_ERROR_IS_FATAL ANY)
 execute_process(COMMAND make -C "${ZIRAN_ROOT}" BOOTSTRAP=1 "BUILD_DIR=${BUNDLE_RUNTIME_DIR}"
     "CC=${CMAKE_C_COMPILER} --target=${CMAKE_C_COMPILER_TARGET} --sysroot=${CMAKE_SYSROOT}"
     "AR=${CMAKE_AR}" "OBJCOPY=${CMAKE_OBJCOPY}" "CFLAGS=-O2 -fPIC"
