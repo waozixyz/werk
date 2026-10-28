@@ -192,7 +192,9 @@ TopBar :: (session: Session, viewport: Rectangle) {
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, avatar) != 0 {
             #if #defined(PLATFORM_WEB) {
-                if SaveApps() { BrowserOpenProfile() }
+                // Home already saved the tool that was closed. The shared
+                // library controller has no tool records to save here.
+                BrowserOpenProfile()
                 return
             }
             screen = SCREEN_PROFILE
