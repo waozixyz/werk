@@ -173,6 +173,12 @@ jobs:
           test -s "build/release/werk-$VERSION.apk"
           test -s "build/release/werk-$VERSION-arm64-v8a.apk"
           test -s "build/release/werk-$VERSION-armeabi-v7a.apk"
+      # Only a Google Play edition may hold a Google library, in its build
+      # files as in its APK.
+      - name: Keep Google libraries out of the APKs and their build files
+        uses: kryonlabs/kryon/.github/actions/google-free@7217475dfa7f462939e47e3f0bc918aef248b179
+        with:
+          packages: build/release/werk-android*.apk
       - uses: actions/upload-artifact@v4
         with:
           name: android
