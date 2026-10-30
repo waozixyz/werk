@@ -21,6 +21,11 @@ ACCENTS :: 16
 Profile :: struct {
     name: [64]u8
     picture: s32
+    // The person chose the picture; only a chosen one goes to their node.
+    picture_chosen: bool
+    // The picture the account's node last accepted, and for which account.
+    picture_published: s32
+    picture_owner: [65]u8
     // 0 follows the system, 1 light, 2 dark.
     theme_mode: s32
     accent: s32
@@ -31,6 +36,7 @@ Profile :: struct {
 }
 
 profile: Profile;
+profile_choice_known: bool;
 theme_signature: s32 = -1;
 palette: Palette;
 
@@ -105,6 +111,10 @@ ApplyProfileSetting :: (key: string, value: string) {
         }
         return
     }
+    if key == "picture_owner" {
+        if value.count == 64 { unused CopyCString(value, profile.picture_owner[:]) }
+        return
+    }
     if key == "name" {
         count := value.count
         if count > PROFILE_NAME_LIMIT {
@@ -119,6 +129,13 @@ ApplyProfileSetting :: (key: string, value: string) {
     }
     if key == "picture" {
         profile.picture = Clamp(number, 0, PROFILE_PICTURES - 1)
+    }
+    if key == "picture_chosen" {
+        profile.picture_chosen = number != 0
+        profile_choice_known = true
+    }
+    if key == "picture_published" {
+        profile.picture_published = number
     }
     if key == "theme_mode" {
         profile.theme_mode = Clamp(number, 0, 2)
@@ -142,6 +159,7 @@ LoadProfile :: () {
         return
     }
     text := TextView(text_bytes[0:count])
+    profile_choice_known = false
     start: s64 = 0
     index: s64 = 0
     while index <= text.count {
@@ -158,6 +176,9 @@ LoadProfile :: () {
         }
         index += 1
     }
+    // Profiles saved before choices were kept: a picture other than the
+    // first was chosen.
+    if !profile_choice_known { profile.picture_chosen = profile.picture != 0 }
 }
 
 AppendLine :: (output: []u8, used: s64, key: string, value: string) -> s64 {
@@ -196,6 +217,15 @@ SaveProfile :: () -> bool {
     }
     if used >= 0 {
         used = AppendLine(text[:], used, "picture", FormatInteger(cast(s64)profile.picture, number[:]))
+    }
+    if used >= 0 {
+        used = AppendLine(text[:], used, "picture_chosen", ifx profile.picture_chosen then "1" else "0")
+    }
+    if used >= 0 {
+        used = AppendLine(text[:], used, "picture_published", FormatInteger(cast(s64)profile.picture_published, number[:]))
+    }
+    if used >= 0 && profile.picture_owner[0] != cast(u8)0 {
+        used = AppendLine(text[:], used, "picture_owner", TextUntilNul(profile.picture_owner[:]))
     }
     if used >= 0 {
         used = AppendLine(text[:], used, "theme_mode", FormatInteger(cast(s64)profile.theme_mode, number[:]))

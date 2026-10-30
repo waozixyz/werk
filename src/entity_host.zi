@@ -72,6 +72,7 @@ WerkEntityWrite :: (document: string) -> bool {
     }
     previous := profile
     profile.name = state.name
+    if state.picture != profile.picture { profile.picture_chosen = true }
     profile.picture = state.picture
     profile.theme_mode = state.theme
     profile.accent = state.accent

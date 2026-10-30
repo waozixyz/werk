@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Send the profile picture you choose to your node, so friends see it in every app.
+
 ## [0.4.7] - 2026-10-28
 
 - Use Workbook on Android and the web as well as Linux, with formulas, sheet tabs, automatic saving and document import/export.

@@ -10,6 +10,8 @@
     #import "entity/native_management"
     #import "entity/recovery"
     Pairing :: #import "entity/pairing_client";
+    #import "entity/picture_publish"
+    #import "std/date_time_linux"
     #import "entity/pairing"
     #import "daochi_client/client"
     #import "account"
@@ -30,6 +32,19 @@
     werk_management_generation: s32 = -1;
     werk_management_pair_delivered: bool;
     werk_management_link_owner: [65]u8;
+    // The chosen picture reaches the node through Entity's publisher, as it
+    // does from every other app.
+    werk_picture: EntityPicturePublisher;
+
+    WerkPicturePump :: () {
+        chosen := ifx profile.picture_chosen then Entity.EntityPictureIcon(0, profile.picture, 0) else 0
+        published := ifx TextUntilNul(profile.picture_owner[:]) == AccountId() then profile.picture_published else 0
+        accepted := EntityPicturePublishPump(*werk_picture, *werk_management, chosen, published, UnixNow())
+        if accepted == 0 { return }
+        profile.picture_published = accepted
+        profile.picture_owner = werk_picture.owner
+        unused SaveProfile()
+    }
 
     WerkAliasPath :: (output: []u8) -> string {
         folder: [PATH_LIMIT]u8
@@ -170,8 +185,11 @@ WerkManagementEnqueue :: (request: string) -> bool {
 }
 WerkManagementPump :: () {
     #if !#defined(PLATFORM_WEB) {
+        // A chosen picture is sent even when Profile is not open.
+        if !werk_management_started && profile.picture_chosen && AccountReady() { WerkManagementStart() }
         if !werk_management_started { return }
         ProviderPump(*werk_management)
+        WerkPicturePump()
         if cast(s32)Pairing.device_link.stage != 0 && TextUntilNul(werk_management_link_owner[:]) != AccountId() {
             Pairing.DeviceLinkCancel()
         }
