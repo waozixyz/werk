@@ -10,6 +10,10 @@ using UI :: #import "kryon/Widgets";
 #import "platform"
 #import "files"
 #import "node_url"
+#if !#defined(PLATFORM_WEB) {
+    #import "std/file"
+}
+ProfileEntity :: #import "entity/model";
 
 DEFAULT_NODE :: "https://api.waozi.xyz"
 
@@ -21,6 +25,9 @@ ACCENTS :: 16
 Profile :: struct {
     name: [64]u8
     picture: s32
+    // 0 a Kryon picture, 1 one of Entity's abstract pictures.
+    picture_kind: s32
+    abstract_picture: s32
     // The person chose the picture; only a chosen one goes to their node.
     picture_chosen: bool
     // The picture the account's node last accepted, and for which account.
@@ -130,6 +137,12 @@ ApplyProfileSetting :: (key: string, value: string) {
     if key == "picture" {
         profile.picture = Clamp(number, 0, PROFILE_PICTURES - 1)
     }
+    if key == "picture_kind" {
+        profile.picture_kind = Clamp(number, 0, 1)
+    }
+    if key == "abstract_picture" {
+        profile.abstract_picture = Clamp(number, 0, 2)
+    }
     if key == "picture_chosen" {
         profile.picture_chosen = number != 0
         profile_choice_known = true
@@ -219,6 +232,12 @@ SaveProfile :: () -> bool {
         used = AppendLine(text[:], used, "picture", FormatInteger(cast(s64)profile.picture, number[:]))
     }
     if used >= 0 {
+        used = AppendLine(text[:], used, "picture_kind", FormatInteger(cast(s64)profile.picture_kind, number[:]))
+    }
+    if used >= 0 {
+        used = AppendLine(text[:], used, "abstract_picture", FormatInteger(cast(s64)profile.abstract_picture, number[:]))
+    }
+    if used >= 0 {
         used = AppendLine(text[:], used, "picture_chosen", ifx profile.picture_chosen then "1" else "0")
     }
     if used >= 0 {
@@ -247,6 +266,37 @@ PictureImage :: (picture: s32, bounds: Rectangle) -> ImageProps {
     image.bounds = bounds
     image.source = Rectangle.{cast(float32)((picture % 5) * 64), cast(float32)((picture / 5) * 64), 64.0, 64.0}
     return image
+}
+
+// The profile's picture in the numbers every app publishes.
+ProfileIcon :: () -> s32 {
+    return ProfileEntity.EntityPictureIcon(profile.picture_kind, profile.picture, profile.abstract_picture)
+}
+
+abstract_picture_path: [PATH_LIMIT]u8;
+
+// The profile's picture as the home screen shows it. An abstract picture
+// comes from Entity's unpacked pictures; until those exist, the Kryon one.
+ProfileImage :: (bounds: Rectangle) -> ImageProps {
+    #if !#defined(PLATFORM_WEB) {
+        if profile.picture_kind == 1 {
+            apps: [PATH_LIMIT]u8
+            entity: [PATH_LIMIT]u8
+            folder := PathJoin(entity[:], PathJoin(apps[:], CacheRoot(), "apps"), "entity")
+            asset := ProfileEntity.EntityAbstractPictureAsset(Clamp(profile.abstract_picture, 0, 2))
+            path := PathJoin(abstract_picture_path[:], folder, asset)
+            if path != "" && PathExists(path) {
+                image: ImageProps
+                image.asset_path = path
+                image.alt_text = "Profile picture"
+                image.bounds = bounds
+                image.fit = ImageFit.ImageFitContain
+                image.radius = bounds.width * 0.5
+                return image
+            }
+        }
+    }
+    return PictureImage(profile.picture, bounds)
 }
 
 ProfileDark :: () -> bool {

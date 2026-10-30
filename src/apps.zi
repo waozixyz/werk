@@ -508,8 +508,7 @@ UnpackAssets :: (app: *App) {
     while index < count {
         name := TextFromCString(BundleAssetPath(bundle, index))
         prefix := "assets/"
-        entity_picture := TextUntilNul(app.id[:]) == "entity" &&
-        (name == "assets/entity/pfp.png" || name == "assets/entity/flowers.png")
+        entity_picture := EntityPictureAsset(TextUntilNul(app.id[:]), name)
         flat_asset := name.count > prefix.count && name[0:prefix.count] == prefix && SafeName(name[prefix.count:name.count])
         if entity_picture || flat_asset {
             data := TextFromBytes(BytesFromPointer(BundleAssetBytes(bundle, index), BundleAssetLength(bundle, index)))

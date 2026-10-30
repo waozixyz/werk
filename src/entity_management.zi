@@ -37,7 +37,7 @@
     werk_picture: EntityPicturePublisher;
 
     WerkPicturePump :: () {
-        chosen := ifx profile.picture_chosen then Entity.EntityPictureIcon(0, profile.picture, 0) else 0
+        chosen := ifx profile.picture_chosen then ProfileIcon() else 0
         published := ifx TextUntilNul(profile.picture_owner[:]) == AccountId() then profile.picture_published else 0
         accepted := EntityPicturePublishPump(*werk_picture, *werk_management, chosen, published, UnixNow())
         if accepted == 0 { return }

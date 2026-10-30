@@ -62,6 +62,24 @@ Check :: () -> s32 {
     if !AccountReady() || AccountId() != TextUntilNul(original.keys.public_id[:]) || !RecordsOpen("auth") ||
     record_table.count != 1 || TextUntilNul(record_table.records[0].value[:]) != "fixture-recovered" || record_table.records[0].updated != 222 { return 18 }
     if !ForgetAccount() || AccountReady() || record_table.count != 1 { return 19 }
+    return CheckPictures()
+}
+
+// Werkzeug keeps an abstract picture chosen in Entity's page, publishes it
+// in the same numbers as every app, and unpacks all of Entity's pictures.
+CheckPictures :: () -> s32 {
+    profile.picture = 4
+    profile.picture_kind = 1
+    profile.abstract_picture = 2
+    if ProfileIcon() != 129 || !SaveProfile() { return 20 }
+    LoadProfile()
+    if profile.picture_kind != 1 || profile.abstract_picture != 2 || profile.picture != 4 || ProfileIcon() != 129 { return 21 }
+    profile.picture_kind = 0
+    if ProfileIcon() != 45 { return 22 }
+    if !EntityPictureAsset("entity", "assets/entity/abstract-jade.png") ||
+    !EntityPictureAsset("entity", "assets/entity/pfp.png") { return 23 }
+    if EntityPictureAsset("pass", "assets/entity/pfp.png") || EntityPictureAsset("entity", "assets/entity/") ||
+    EntityPictureAsset("entity", "assets/entity/../key") || EntityPictureAsset("entity", "assets/pfp.png") { return 24 }
     return 0
 }
 

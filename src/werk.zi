@@ -188,7 +188,7 @@ TopBar :: (session: Session, viewport: Rectangle) {
         avatar := ButtonProps.{.key = cast(u64)12, .id = 12,
             .label = ifx ProfileName() == "" then "Profile" else ProfileName(),
             .bounds = Rectangle.{bar.x + bar.width - profile_width - 8.0, bar.y + 8.0, profile_width, 40.0},
-            .image = PictureImage(profile.picture, Rectangle.{}),
+            .image = ProfileImage(Rectangle.{}),
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
         if Button(session, avatar) != 0 {
             #if #defined(PLATFORM_WEB) {

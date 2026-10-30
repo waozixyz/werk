@@ -32,6 +32,14 @@ PathJoin :: (output: []u8, base: string, name: string) -> string {
     return TextView(output[0:used])
 }
 
+// Entity's own pictures, which its profile page draws from the files Werkzeug
+// unpacks: the Kryon pictures and the abstract ones alike.
+EntityPictureAsset :: (app: string, name: string) -> bool {
+    prefix := "assets/entity/"
+    return app == "entity" && name.count > prefix.count && name[0:prefix.count] == prefix &&
+    SafeName(name[prefix.count:name.count])
+}
+
 // A file or folder name an app may use: no separators, no "." or "..".
 SafeName :: (name: string) -> bool {
     if name.count == 0 || name.count > 128 || name == "." || name == ".." {

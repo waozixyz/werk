@@ -26,6 +26,8 @@ entity_document: string;
         } else if !Entity.EntityDecode(text, *state) || state.owner_id[0] == cast(u8)0 { return }
         profile.name = state.name
         profile.picture = state.picture
+        profile.picture_kind = state.picture_kind
+        profile.abstract_picture = state.abstract_picture
         profile.theme_mode = state.theme
         profile.accent = state.accent
         profile.material = state.material
@@ -41,6 +43,8 @@ WerkEntityRead :: () -> string {
     state.controls |= Entity.ENTITY_APPEARANCE | Entity.ENTITY_ACCENT | Entity.ENTITY_WIDGETS
     state.name = profile.name
     state.picture = profile.picture
+    state.picture_kind = profile.picture_kind
+    state.abstract_picture = profile.abstract_picture
     state.theme = profile.theme_mode
     state.accent = profile.accent
     state.material = profile.material
@@ -72,8 +76,10 @@ WerkEntityWrite :: (document: string) -> bool {
     }
     previous := profile
     profile.name = state.name
-    if state.picture != profile.picture { profile.picture_chosen = true }
+    if Entity.EntityPublicIcon(state) != ProfileIcon() { profile.picture_chosen = true }
     profile.picture = state.picture
+    profile.picture_kind = state.picture_kind
+    profile.abstract_picture = state.abstract_picture
     profile.theme_mode = state.theme
     profile.accent = state.accent
     profile.material = state.material
