@@ -72,7 +72,7 @@ execute_process(COMMAND make -C "${ZIRAN_ROOT}" BOOTSTRAP=1 "BUILD_DIR=${BUNDLE_
 # Account sync: liboqs for ML-DSA-44 account keys, Monocypher for the rest.
 set(OQS_BUILD_ONLY_LIB ON CACHE BOOL "" FORCE)
 set(OQS_USE_OPENSSL OFF CACHE BOOL "" FORCE)
-set(OQS_MINIMAL_BUILD "SIG_ml_dsa_44" CACHE STRING "" FORCE)
+set(OQS_MINIMAL_BUILD "SIG_ml_dsa_44;KEM_ml_kem_768" CACHE STRING "" FORCE)
 set(OQS_DIST_BUILD OFF CACHE BOOL "" FORCE)
 set(OQS_OPT_TARGET generic CACHE STRING "" FORCE)
 foreach(oqs_x86_feature

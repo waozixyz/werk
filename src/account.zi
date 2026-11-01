@@ -18,6 +18,7 @@
 #import "sync_keys"
 #import "profile"
 #import "node_url"
+#import "entity/recovery"
 #import "account_journal"
 
 ACCOUNT_SERVER :: "https://api.waozi.xyz"
@@ -338,13 +339,18 @@ UseAccountKey :: (text: string, passphrase: string) -> string {
     while start < text.count && (text[start] <= cast(u8)32 || text[start] >= cast(u8)0xbb) {
         start += 1
     }
-    encrypted := text.count - start >= 20 && text[start:start + 20] == "ksync-account-key-v2"
+    encrypted := RecoveryNeedsPassword(text[start:text.count])
     if encrypted && passphrase == "" {
         return "This key has a passphrase; enter it too"
     }
     parsed: s32 = 0
     if encrypted {
-        parsed = ParseEncryptedAccountKeys(text[start:text.count], passphrase, *used.keys)
+        recovered: Recovery
+        if RecoveryDecode(text[start:text.count], passphrase, *recovered) {
+            used.keys = recovered.keys
+            parsed = 1
+        }
+        RecoveryClear(*recovered)
     } else {
         parsed = ParseAccountKeys(text[start:text.count], *used.keys)
     }
