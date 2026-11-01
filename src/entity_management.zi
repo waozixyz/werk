@@ -6,6 +6,7 @@
 #import "profile"
 #if !#defined(PLATFORM_WEB) {
     Entity :: #import "entity/model";
+    Shared :: #import "entity/shared_account";
     #import "entity/management"
     #import "entity/native_management"
     #import "entity/recovery"
@@ -130,6 +131,10 @@
             if !SetAccountSyncEnabled(request.choice == 1) { return 0 }
             if request.choice == 1 { SyncSoon() } else { CancelSyncNow() }
             return 1
+        }
+        if operation == "backup_marked" { return ifx Shared.AccountBackedUpRead(DataRoot(), TextUntilNul(request.owner_id[:])) then 1 else 0 }
+        if operation == "backup_mark" || operation == "backup_unmark" {
+            return ifx Shared.AccountBackedUpWrite(DataRoot(), TextUntilNul(request.owner_id[:]), operation == "backup_mark") then 1 else 0
         }
         if operation == "logout" || operation == "remote_cleared" {
             CancelSyncNow()

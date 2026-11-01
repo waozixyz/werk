@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Signing out skips the backup warning once this account's key is backed up.
 - Open the newer account backups other waozi apps save.
 - Send the profile picture you choose to your node, so friends see it in every app.
 - Offer Entity's abstract profile pictures, like every other app, and keep the one you choose.
