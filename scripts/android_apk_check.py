@@ -59,27 +59,33 @@ def elf_exports(data):
                 yield strings[name:strings.index(0, name)].decode("ascii")
 
 
+HANDOFF = {
+    "Lorg/kryonlabs/platform/" + name
+    for name in ("AccountHandoff", "AccountHandoffConsentActivity",
+                 "AccountHandoffNameProvider", "AccountHandoffRequestActivity")
+}
+
+
+def allowed_class(item: str) -> bool:
+    return bool(re.fullmatch(r"Lxyz/waozi/pass/R(?:\$[^;]+)?;", item)) or any(
+        item == base + ";" or bool(re.fullmatch(
+            re.escape(base) + r"\$\$ExternalSynthetic(?:Lambda|ApiModelOutline)[0-9]+;", item))
+        for base in HANDOFF)
+
+
 def check_apk(path):
     with ZipFile(path) as archive:
         names = archive.namelist()
         # Account policy stays in Ziran. Kryon's consent flow is the only
         # platform Java allowed alongside Android's resource constants.
-        handoff = {
-            "Lorg/kryonlabs/platform/" + name
-            for name in ("AccountHandoff", "AccountHandoffConsentActivity",
-                         "AccountHandoffNameProvider", "AccountHandoffRequestActivity")
-        }
         packaged_classes = set()
         for name in names:
             if name.endswith(".dex"):
                 classes = list(dex_classes(archive.read(name)))
                 packaged_classes.update(classes)
-                allowed = lambda item: bool(re.fullmatch(r"Lxyz/waozi/pass/R(?:\$[^;]+)?;", item)) or any(
-                    item == base + ";" or re.fullmatch(re.escape(base) + r"\$\$ExternalSyntheticLambda[0-9]+;", item)
-                    for base in handoff)
-                unexpected = [item for item in classes if not allowed(item)]
+                unexpected = [item for item in classes if not allowed_class(item)]
                 assert not unexpected, f"{path}: packaged application bytecode: {unexpected}"
-        assert {base + ";" for base in handoff} <= packaged_classes, f"{path}: missing shared account consent classes"
+        assert {base + ";" for base in HANDOFF} <= packaged_classes, f"{path}: missing shared account consent classes"
         for font in ["ui.ttf", "emoji.ttf"]:
             assert "assets/fonts/" + font in names, f"{path}: missing {font}"
         bundles = {f"assets/apps/{app}.zx" for app in ["apps", "entity", "pass", "auth", "calculator", "clock", "workbook"]}
