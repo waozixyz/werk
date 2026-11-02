@@ -38,6 +38,7 @@ endfunction()
 werk_package(KRYON_DIR kryon "")
 werk_package(ZIRAN_ROOT ziran "")
 werk_package(RAYLIB_DIR raylib "/src")
+werk_package(WEBP_DIR libwebp "")
 werk_package(LIBOQS_DIR liboqs "")
 werk_package(MONOCYPHER_DIR monocypher "")
 werk_package(WORKBOOK_DIR workbook "")
@@ -58,7 +59,7 @@ foreach(candidate "${ZIRAN_ROOT}/build/bin/zi2c" "${REPO_ROOT}/build/ziran-boots
     endif()
 endforeach()
 include("${KRYON_DIR}/cmake/KryonAndroid.cmake")
-kryon_android_raylib("${RAYLIB_DIR}")
+kryon_android_raylib("${RAYLIB_DIR}" "${WEBP_DIR}")
 # The portable runtime that runs the app bundles, built from the locked Ziran
 # for this ABI.
 set(BUNDLE_RUNTIME_DIR "${CMAKE_BINARY_DIR}/bundle-runtime")
