@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Continue with an account already signed in to another Waozi app on Android, after approving the transfer there.
 - Signing out skips the backup warning once this account's key is backed up.
 - Open the newer account backups other waozi apps save.
 - Send the profile picture you choose to your node, so friends see it in every app.

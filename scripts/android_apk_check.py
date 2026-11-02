@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject packaged legacy app classes; Android generates resource constants."""
+"""Reject app-owned bytecode; permit shared Kryon account consent and resource constants."""
 import re
 import struct
 import sys
@@ -35,13 +35,51 @@ def elf_section_names(data):
         yield strings[name:strings.index(0, name)].decode("ascii")
 
 
+def elf_exports(data):
+    wide = data[4] == 2
+    table = struct.unpack_from("<Q" if wide else "<I", data, 40 if wide else 32)[0]
+    size, count = struct.unpack_from("<HH", data, 58 if wide else 46)
+    sections = []
+    for index in range(count):
+        entry = table + index * size
+        kind = struct.unpack_from("<I", data, entry + 4)[0]
+        offset, length = struct.unpack_from("<QQ" if wide else "<II", data, entry + (24 if wide else 16))
+        link = struct.unpack_from("<I", data, entry + (40 if wide else 24))[0]
+        stride = struct.unpack_from("<Q" if wide else "<I", data, entry + (56 if wide else 36))[0]
+        sections.append((kind, offset, length, link, stride))
+    for kind, offset, length, link, stride in sections:
+        if kind != 11:  # SHT_DYNSYM: symbols visible to Android's loader.
+            continue
+        _, strings_offset, strings_length, _, _ = sections[link]
+        strings = data[strings_offset:strings_offset + strings_length]
+        for entry in range(offset, offset + length, stride):
+            name = struct.unpack_from("<I", data, entry)[0]
+            info, other, defined = struct.unpack_from("<BBH", data, entry + (4 if wide else 12))
+            if info >> 4 in (1, 2) and other & 3 == 0 and defined != 0:
+                yield strings[name:strings.index(0, name)].decode("ascii")
+
+
 def check_apk(path):
     with ZipFile(path) as archive:
         names = archive.namelist()
+        # Account policy stays in Ziran. Kryon's consent flow is the only
+        # platform Java allowed alongside Android's resource constants.
+        handoff = {
+            "Lorg/kryonlabs/platform/" + name
+            for name in ("AccountHandoff", "AccountHandoffConsentActivity",
+                         "AccountHandoffNameProvider", "AccountHandoffRequestActivity")
+        }
+        packaged_classes = set()
         for name in names:
             if name.endswith(".dex"):
                 classes = list(dex_classes(archive.read(name)))
-                assert all(re.fullmatch(r"Lxyz/waozi/pass/R(?:\$[^;]+)?;", item) for item in classes), f"{path}: packaged application bytecode: {classes}"
+                packaged_classes.update(classes)
+                allowed = lambda item: bool(re.fullmatch(r"Lxyz/waozi/pass/R(?:\$[^;]+)?;", item)) or any(
+                    item == base + ";" or re.fullmatch(re.escape(base) + r"\$\$ExternalSyntheticLambda[0-9]+;", item)
+                    for base in handoff)
+                unexpected = [item for item in classes if not allowed(item)]
+                assert not unexpected, f"{path}: packaged application bytecode: {unexpected}"
+        assert {base + ";" for base in handoff} <= packaged_classes, f"{path}: missing shared account consent classes"
         for font in ["ui.ttf", "emoji.ttf"]:
             assert "assets/fonts/" + font in names, f"{path}: missing {font}"
         bundles = {f"assets/apps/{app}.zx" for app in ["apps", "entity", "pass", "auth", "calculator", "clock", "workbook"]}
@@ -53,9 +91,10 @@ def check_apk(path):
         native = [name for name in names if name.endswith("/libmain.so")]
         assert native, f"{path}: no NativeActivity payload"
         for name in native:
+            assert "JNI_OnLoad" in set(elf_exports(archive.read(name))), f"{path}: {name} hides account JNI registration"
             assert ".note.gnu.build-id" not in set(elf_section_names(archive.read(name))), \
                 f"{path}: {name} contains a build-path-dependent build ID"
-    print(f"{path}: native Ziran app; only generated resource classes")
+    print(f"{path}: native Ziran app with shared Kryon account consent")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ module_roots = ["src", "apps/pass"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "master"
+ref = "972dc244c4ae67e87b6089869dff5abc9d36c1f8"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
@@ -32,7 +32,7 @@ ref = "master"
 
 [dependencies.daochi_client]
 git = "https://github.com/ziranlang/daochi-client.git"
-ref = "master"
+ref = "970d5e44b1702158cb16469892da6ff50f142427"
 
 [dependencies.oqs]
 git = "https://github.com/ziranlang/oqs.git"

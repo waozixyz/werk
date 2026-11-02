@@ -11,6 +11,7 @@
 Render :: #import "Raylib";
 using UI :: #import "Widgets";
 #import "Frame"
+#import "android_glue";
 
 raylib :: #system_library "raylib";
 InitWindow :: (width: s32, height: s32, title: *u8) #foreign raylib "InitWindow";

@@ -104,12 +104,17 @@ tasks.named('preBuild').configure { dependsOn prepareFonts }
 // The tool apps are portable bundles, built once for every ABI.
 def makeApps = tasks.register('makeApps', Exec) {
     workingDir '../..'
+    if (System.getenv('WERK_ZIRAN_COMMAND')) {
+        environment 'ZIRAN', System.getenv('WERK_ZIRAN_COMMAND')
+    }
     commandLine 'make', 'portable-apps'
 }
-def kryonSource = providers.exec {
+def kryonSource = providers.environmentVariable('KRYON_DIR').orElse(providers.exec {
     workingDir '../..'
-    commandLine rootProject.file('../scripts/ziran.sh').absolutePath, 'pkg', 'path', 'kryon'
-}.standardOutput.asText.map { it.trim() }
+    commandLine (System.getenv('WERK_ZIRAN_COMMAND') ?: rootProject.file('../scripts/ziran.sh').absolutePath), 'pkg', 'path', 'kryon'
+}.standardOutput.asText.map { it.trim() })
+// Entity owns the account policy; Kryon supplies the shared Android consent UI.
+apply from: new File(kryonSource.get(), 'templates/android-account-handoff.gradle')
 android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/appAssets'))
 def prepareImages = tasks.register('prepareImages', Sync) {
     dependsOn makeApps

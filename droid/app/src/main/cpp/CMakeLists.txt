@@ -81,6 +81,9 @@ foreach(oqs_x86_feature
     set(OQS_USE_${oqs_x86_feature}_INSTRUCTIONS OFF CACHE BOOL "" FORCE)
 endforeach()
 add_subdirectory("${LIBOQS_DIR}" "${CMAKE_BINARY_DIR}/liboqs")
+# JNI_OnLoad is discovered by Android's loader, outside the native entry graph.
+set_source_files_properties("${GENERATED}/android_glue.c"
+    PROPERTIES COMPILE_OPTIONS "-fvisibility=default")
 add_library(main SHARED ${GENERATED_SOURCES}
     "${MONOCYPHER_DIR}/src/monocypher.c" "${MONOCYPHER_DIR}/src/optional/monocypher-ed25519.c")
 target_include_directories(main PRIVATE "${GENERATED}" "${ZIRAN_ROOT}/include"

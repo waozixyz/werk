@@ -17,8 +17,13 @@ for name in tracked:
 if bad:
     raise SystemExit("Non-Ziran app implementation:\n" + "\n".join(bad))
 manifest = (root / "droid/app/src/main/AndroidManifest.xml").read_text()
-assert 'android:hasCode="false"' in manifest
+assert 'android:hasCode="true"' in manifest
 assert 'android:name="android.app.NativeActivity"' in manifest
+# The only Java comes from Kryon's shared account consent components.
+gradle = (root / "droid/app/build.gradle").read_text()
+assert "templates/android-account-handoff.gradle" in gradle
+android = (root / "src/android_glue.zi").read_text()
+assert "Handoff.AccountHandoffJniOnLoad(vm)" in android
 # Fingerprint unlock for the saved master password, and the network only for
 # sync, which stays off until the owner sets up an account.
 import re

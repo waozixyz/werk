@@ -1,0 +1,10 @@
+// Android loads this entry before Entity registers the shared consent natives.
+Handoff :: #import "entity/account_handoff";
+HandoffJni :: #import "kryon/android_jni";
+
+#program_export
+JNI_OnLoad :: (vm: *HandoffJni.JniVm, reserved: *void) -> s32 {
+    unused reserved
+    Handoff.AccountHandoffJniOnLoad(vm)
+    return HandoffJni.JniVersion
+}
