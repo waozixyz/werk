@@ -27,6 +27,10 @@ assert "Handoff.AccountHandoffJniOnLoad(vm)" in android
 # Fingerprint unlock for the saved master password, and the network only for
 # sync, which stays off until the owner sets up an account.
 import re
+# The launcher uses the same reviewed bytes at build time and at runtime.
+home = (root / "src/home.zi").read_text()
+controller = re.search(r'AppsControllerSha256 :: "([a-f0-9]{64})"', home)
+assert controller and controller[1] == (root / "apps-controller.sha256").read_text().strip()
 permissions = set(re.findall(r'uses-permission android:name="([^"]+)"', manifest))
 assert permissions <= {"android.permission.USE_BIOMETRIC", "android.permission.USE_FINGERPRINT",
                        "android.permission.INTERNET"}, permissions

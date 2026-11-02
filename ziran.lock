@@ -100,6 +100,15 @@
       "url": "https://github.com/curl/curl.git"
     },
     {
+      "commit": "908884c669ec05421373f3077d4bf5517af21bcd",
+      "dependencies": {"curl": "p8da229d15597ab5c", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pcd450c600194cee7", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "qrcode": "p0dfa70137405b096", "zlib": "p82dbc05081cd4d96"},
+      "dependency_refs": {"curl": "19b299005fbe2d895f4ad525cfdae62a2220c3ea", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "e373b8a7f8821256b86de12dd5ee05a32d373e87", "monocypher": "master", "oqs": "master", "qrcode": "master", "zlib": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"},
+      "id": "p9711cd0a40465e97",
+      "name": "Entity",
+      "ref": "908884c669ec05421373f3077d4bf5517af21bcd",
+      "url": "https://github.com/waozixyz/entity.git"
+    },
+    {
       "commit": "944826f70779a6b6cd53f6b06a75b36f4d8a2558",
       "dependencies": {},
       "id": "pc23fbf455e97614d",
@@ -132,25 +141,16 @@
       "name": "mingcute",
       "ref": "master",
       "url": "https://github.com/kryonlabs/mingcute.git"
-    },
-    {
-      "commit": "298a5413faf4d8bbcf0af38de1c0e3755876b18c",
-      "dependencies": {"curl": "p8da229d15597ab5c", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pcd450c600194cee7", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "qrcode": "p0dfa70137405b096", "zlib": "p82dbc05081cd4d96"},
-      "dependency_refs": {"curl": "19b299005fbe2d895f4ad525cfdae62a2220c3ea", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "e373b8a7f8821256b86de12dd5ee05a32d373e87", "monocypher": "master", "oqs": "master", "qrcode": "master", "zlib": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"},
-      "id": "pf0f64f5c4fcaaeec",
-      "name": "Entity",
-      "ref": "master",
-      "url": "https://github.com/waozixyz/entity.git"
     }
   ],
   "root": {
-    "dependencies": {"apps": "p7c0e095f496911cc", "auth": "p83f5089a79a17294", "crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "entity": "pf0f64f5c4fcaaeec", "kryon": "pcd450c600194cee7", "liboqs": "p60ff905f3a963886", "mingcute": "pe1027b9d16704793", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "workbook": "p57714297ae483e74"},
-    "dependency_refs": {"apps": "master", "auth": "master", "crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "entity": "master", "kryon": "master", "liboqs": "main", "mingcute": "master", "monocypher": "master", "oqs": "master", "workbook": "master"},
+    "dependencies": {"apps": "p7c0e095f496911cc", "auth": "p83f5089a79a17294", "crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "entity": "p9711cd0a40465e97", "kryon": "pcd450c600194cee7", "liboqs": "p60ff905f3a963886", "mingcute": "pe1027b9d16704793", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "workbook": "p57714297ae483e74"},
+    "dependency_refs": {"apps": "master", "auth": "master", "crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "entity": "908884c669ec05421373f3077d4bf5517af21bcd", "kryon": "master", "liboqs": "main", "mingcute": "master", "monocypher": "master", "oqs": "master", "workbook": "master"},
     "name": "Werkzeug"
   },
   "toolchain": {
-    "commit": "972dc244c4ae67e87b6089869dff5abc9d36c1f8",
-    "ref": "972dc244c4ae67e87b6089869dff5abc9d36c1f8",
+    "commit": "c47f927ca316a0494dff4f2389de3333bc8e08b4",
+    "ref": "c47f927ca316a0494dff4f2389de3333bc8e08b4",
     "url": "https://github.com/ziranlang/ziran.git"
   }
 }

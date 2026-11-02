@@ -6,7 +6,7 @@ module_roots = ["src", "apps/pass"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "972dc244c4ae67e87b6089869dff5abc9d36c1f8"
+ref = "c47f927ca316a0494dff4f2389de3333bc8e08b4"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
@@ -50,7 +50,7 @@ source = true
 
 [dependencies.entity]
 git = "https://github.com/waozixyz/entity.git"
-ref = "master"
+ref = "908884c669ec05421373f3077d4bf5517af21bcd"
 
 [dependencies.auth]
 git = "https://github.com/waozixyz/auth.git"

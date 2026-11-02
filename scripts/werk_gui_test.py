@@ -116,7 +116,10 @@ def capture(name):
 
 def click_word(word, toggle=False, last=False, exact_case=False):
     capture("control")
-    for factor, labels in ((1, False), (3, False), (3, True)):
+    # At native size OCR misses the switch label beside its icon and matches
+    # the separate "Sync now" row. Enlarge switch labels before selecting one.
+    readings = ((3, False), (3, True)) if toggle else ((1, False), (3, False), (3, True))
+    for factor, labels in readings:
         target = output / "control.png"
         if factor > 1:
             target = output / "control-enlarged.png"
@@ -126,11 +129,13 @@ def click_word(word, toggle=False, last=False, exact_case=False):
         text = command("tesseract", str(target), "stdout", "--psm", "11",
                        "-c", "tessedit_create_tsv=1")
         matches = [item for item in csv.DictReader(io.StringIO(text), delimiter="\t") if (item["text"].strip() == word if exact_case else item["text"].strip().lower() == word.lower())]
+        if toggle: matches.sort(key=lambda item: int(item["top"]))
         if last: matches.reverse()
         for item in matches:
             if item["text"].strip().lower() == word.lower():
-                click(350 if toggle else (int(item["left"]) + int(item["width"]) // 2) // factor,
-                      (int(item["top"]) + int(item["height"]) // 2) // factor)
+                center_x = int(item["left"]) + int(item["width"]) // 2
+                center_y = int(item["top"]) + int(item["height"]) // 2
+                click(374 if toggle else center_x // factor, center_y // factor)
                 return ((int(item["left"]) + int(item["width"]) // 2) // factor,
                         (int(item["top"]) + int(item["height"]) // 2) // factor)
     raise AssertionError(f"Could not find {word!r} in the private test window")
@@ -184,9 +189,22 @@ def scroll_up():
 
 
 def add_node(field):
-    # The private fixture window is 420 units wide; the Add button shares
-    # the node field row and remains visible with either appearance/accent.
-    click(344, field[1])
+    click_filled()
+
+
+def node_form():
+    click_scrolled("Nodes", exact_case=True)
+    click_word("Add", exact_case=True, last=True)
+    field = (210, 204)  # Add node page: the full-width field below its heading.
+    click(*field)
+    return field
+
+
+def use_node(host):
+    click_word(host, exact_case=True)
+    click_filled()  # Make default: the node page's single filled action.
+    click_word("Back", exact_case=True)  # Nodes
+    click_word("Back", exact_case=True)  # Profile
 
 
 def scroll_down():
@@ -220,8 +238,8 @@ def import_invalid_key():
     # Select an invalid fixture through the real native key chooser.
     # Both the dialog and the main window belong to this test process.
     scroll_up()
-    click_word("Import")
-    click_filled()
+    click_word("Sign", exact_case=True)
+    click_scrolled("Choose", exact_case=True)
     dialog = None
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
@@ -260,7 +278,7 @@ def import_invalid_key():
     command("xdotool", "windowfocus", "--sync", window)
     time.sleep(1)
     assert not (data / "account/keys.txt").exists(), "An invalid key created an account"
-    assert "notvalid" in "".join(screen_text().split()), "Invalid key error was not shown"
+    assert "notanaccountbackup" in "".join(screen_text().lower().split()), "Invalid key error was not shown"
     capture("invalid-account-refused")
 
 
@@ -268,7 +286,6 @@ try:
     start()
     if os.environ.get("WERK_GUI_CHOOSER_ONLY") == "1":
         click(390, 28)
-        click_word("Connect", exact_case=True)
         import_invalid_key()
         print("Native key chooser selected the invalid fixture and returned its validation error")
         raise SystemExit(0)
@@ -389,8 +406,7 @@ try:
     # Nodes belong to the common Entity bundle; choosing one creates no account.
     click_word("Light")
     scroll_up()
-    click_word("Connect", exact_case=True)
-    node_field = field_below("Nodes", 120)
+    node_field = node_form()
     click(*node_field)
     type_text("https://example.invalid/path")
     add_node(node_field)
@@ -400,25 +416,25 @@ try:
     key("ctrl+a")
     type_text("https://sync.example.invalid:8443/")
     add_node(node_field)
+    use_node("sync.example.invalid:8443")
     assert "node=https://sync.example.invalid:8443\n" in (data / "profile/settings.txt").read_text()
     assert not (data / "account/keys.txt").exists(), "Choosing a node created an account"
     capture("node-saved")
     stop()
     start()
     click(390, 28)
-    click_word("Connect", exact_case=True)
     capture("node-restarted")
     assert "node=https://sync.example.invalid:8443\n" in (data / "profile/settings.txt").read_text()
     assert not (data / "account/keys.txt").exists()
     scroll_up()
-    # The filled action's painted bounds are stable even when OCR misses
-    # white labels. Creating an account explicitly asks to merge Auth data.
-    click_filled()
+    # Creating an account explicitly asks to merge Auth data.
+    click_word("Create", exact_case=True)
     time.sleep(.8)
     click_word("merge", last=True)
     time.sleep(.8)
     account_file = data / "account/keys.txt"
     assert account_file.exists() and "paused=0\n" in account_file.read_text()
+    click_word("Back", exact_case=True)  # Dismiss the new-account backup reminder.
     click_scrolled("Sync", toggle=True)
     assert "paused=1\n" in account_file.read_text(), "Entity's sync switch did not pause"
     capture("sync-paused")
@@ -426,14 +442,14 @@ try:
     start()
     assert "paused=1\n" in account_file.read_text()
     click(390, 28)
-    # Use the visible account-management action after a restart.
-    click_scrolled("Manage", exact_case=True)
+    assert "Sync" in screen_text(), "Signed-in Profile lost its account controls"
     capture("sync-paused-restarted")
     previous_account = account_file.read_text()
-    scroll_down()
-    node_field = click_scrolled("address")
+    scroll_up()
+    node_field = node_form()
     type_text("https://second.example.invalid")
     add_node(node_field)
+    use_node("second.example.invalid")
     account = account_file.read_text()
     assert "server=https://second.example.invalid\n" in account, "The account kept its old node"
     assert "paused=1\n" in account, "Changing node resumed a paused account"
@@ -441,7 +457,7 @@ try:
             == [line for line in account.splitlines() if not line.startswith("server=")]), "Changing node altered account credentials"
     scroll_up()
     click_scrolled("out")
-    click_filled()
+    click_word("out", exact_case=True, last=True)
     time.sleep(.8)
     assert not account_file.exists()
     assert records.read_text() == saved, "Logging out changed local Auth records"
