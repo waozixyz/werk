@@ -8,6 +8,7 @@
 - Open the newer account backups other waozi apps save.
 - Send the profile picture you choose to your node, so friends see it in every app.
 - Offer Entity's abstract profile pictures, like every other app, and keep the one you choose.
+- Continue as no longer crashes the other app when it was closed.
 
 ## [0.4.7] - 2026-10-28
 

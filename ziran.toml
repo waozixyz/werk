@@ -10,11 +10,11 @@ ref = "fb73f66ab2df578f53cb03a48d3005675ecdd0f0"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "7dc62902389544bf8d1fb3a159152cbd3b889c78"
+ref = "ead3eb7aa63535447a1116ecae7bb4d712d72034"
 
 [dependencies.apps]
 git = "https://github.com/waozixyz/apps.git"
-ref = "7659f5dbbd26b4d3d9f3ed80e35b1f45a11810f4"
+ref = "fec5af055eda9bcc2a2d5a0002a7857bd5cc6a26"
 
 [install]
 bin = "werk"
@@ -50,11 +50,11 @@ source = true
 
 [dependencies.entity]
 git = "https://github.com/waozixyz/entity.git"
-ref = "a1f0893e89bd3b31bff436a0b8a61c234cb5f717"
+ref = "2d12bfca10e09e83ac540cc5fd85299b8438150a"
 
 [dependencies.auth]
 git = "https://github.com/waozixyz/auth.git"
-ref = "d721b8859bdb836cd8b09df1b8b55cbc5f72cbf9"
+ref = "44e8b0f2a42d39c699c0f5431dd30689f3b44f3c"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
@@ -62,4 +62,4 @@ ref = "master"
 
 [dependencies.workbook]
 git = "https://github.com/waozixyz/workbook.git"
-ref = "6da9ab84e9b975f993ab4925f8b7dd4e232586a2"
+ref = "63aa0bf9c26aa684a07d6af65fbe97ca994a4d75"
