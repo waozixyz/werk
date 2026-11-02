@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Password fields in Profile start empty and show one mask character for each character you type.
 - Continue with an account already signed in to another Waozi app on Android, after approving the transfer there.
 - Signing out skips the backup warning once this account's key is backed up.
 - Open the newer account backups other waozi apps save.

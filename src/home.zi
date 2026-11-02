@@ -27,7 +27,7 @@ Rules :: #import "apps/protocol";
     }
 }
 
-AppsControllerSha256 :: "bd65e2b06624037ea2a7b3920cfc35ee289aadb4c7b3f2fa12fba5d094716cbc";
+AppsControllerSha256 :: "19f978139cce86b65f1f084e75ad4d066491b7cdb350e52dac5be48589ee3880";
 
 HomePreference :: struct {
     title: [256]u8

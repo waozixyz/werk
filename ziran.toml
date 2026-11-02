@@ -6,15 +6,15 @@ module_roots = ["src", "apps/pass"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "c47f927ca316a0494dff4f2389de3333bc8e08b4"
+ref = "fb73f66ab2df578f53cb03a48d3005675ecdd0f0"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "master"
+ref = "7dc62902389544bf8d1fb3a159152cbd3b889c78"
 
 [dependencies.apps]
 git = "https://github.com/waozixyz/apps.git"
-ref = "master"
+ref = "7659f5dbbd26b4d3d9f3ed80e35b1f45a11810f4"
 
 [install]
 bin = "werk"
@@ -50,11 +50,11 @@ source = true
 
 [dependencies.entity]
 git = "https://github.com/waozixyz/entity.git"
-ref = "908884c669ec05421373f3077d4bf5517af21bcd"
+ref = "a1f0893e89bd3b31bff436a0b8a61c234cb5f717"
 
 [dependencies.auth]
 git = "https://github.com/waozixyz/auth.git"
-ref = "master"
+ref = "d721b8859bdb836cd8b09df1b8b55cbc5f72cbf9"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
@@ -62,4 +62,4 @@ ref = "master"
 
 [dependencies.workbook]
 git = "https://github.com/waozixyz/workbook.git"
-ref = "master"
+ref = "6da9ab84e9b975f993ab4925f8b7dd4e232586a2"
