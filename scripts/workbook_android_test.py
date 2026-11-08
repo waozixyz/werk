@@ -23,7 +23,16 @@ check_apk(apk)
 
 
 def adb(*args, check=True):
-    return subprocess.run(["adb", "-s", serial, *map(str, args)], check=check, capture_output=True, timeout=90)
+    command = ["adb", "-s", serial, *map(str, args)]
+    result = subprocess.run(command, capture_output=True, timeout=90)
+    if check and result.returncode:
+        # CalledProcessError's default traceback omits captured output, which
+        # is essential to distinguish a failed shell command from lost ADB.
+        raise RuntimeError(
+            f"{shlex.join(command)} exited {result.returncode}\n"
+            f"stdout: {result.stdout[-4000:].decode(errors='replace')}\n"
+            f"stderr: {result.stderr[-4000:].decode(errors='replace')}")
+    return result
 
 
 def shell(*args, check=True):
@@ -141,6 +150,44 @@ def file_menu():
     tap(28 * zoom, top + 68 * zoom)
 
 
+def failure_diagnostics():
+    # Collect each item independently: screencap can fail for the same reason
+    # as the test. Neither that failure nor a timeout should hide the original
+    # exception or prevent the remaining diagnostics from being attempted.
+    commands = {
+        "adb-state.txt": ("get-state",),
+        "failure.png": ("exec-out", "screencap", "-p"),
+        "input-method.txt": ("shell", "dumpsys", "input_method"),
+        "document-intents.txt": ("shell", "dumpsys", "activity", "activities"),
+        "crash-log.txt": ("logcat", "-d", "-b", "crash"),
+        "startup-log.txt": ("logcat", "-d", "-s", "Werkzeug:I", "art:E", "AndroidRuntime:E"),
+        "ui-task.dex": ("exec-out", "run-as", package, "cat", "files/ui-task.dex"),
+        "runtime-trace.txt": ("exec-out", "run-as", package, "cat", "files/runtime-trace.txt"),
+    }
+    errors = []
+    try:
+        pid = shell("pidof", package, check=False).strip()
+        if pid.isdigit():
+            commands["application-log.txt"] = ("logcat", "-d", "--pid=" + pid)
+    except Exception as error:
+        errors.append(f"pidof: {error!r}")
+    for name, command in commands.items():
+        try:
+            result = adb(*command, check=False)
+            if result.returncode:
+                errors.append(f"{name}: exit {result.returncode}\n"
+                              f"stdout: {result.stdout[-4000:]!r}\n"
+                              f"stderr: {result.stderr[-4000:]!r}")
+            else:
+                (output / name).write_bytes(result.stdout)
+        except Exception as error:
+            errors.append(f"{name}: {error!r}")
+    try:
+        (output / "diagnostic-errors.txt").write_text("\n".join(errors))
+    except OSError as error:
+        print(f"Could not save diagnostic errors: {error}", flush=True)
+
+
 adb("install", "-r", apk)
 input_help = adb("shell", "input", check=False)
 input_commands = (input_help.stdout + input_help.stderr).decode()
@@ -191,13 +238,5 @@ try:
     shot("transferred")
     print("Workbook Android: IME editing, formulas, private save/restart, system document export/import and cancellation passed")
 except BaseException:
-    shot("failure")
-    (output / "document-intents.txt").write_text(shell("dumpsys", "activity", "activities", check=False))
-    (output / "crash-log.txt").write_bytes(adb("logcat", "-d", "-b", "crash", check=False).stdout)
-    (output / "startup-log.txt").write_bytes(adb("logcat", "-d", "-s", "Werkzeug:I", "art:E", "AndroidRuntime:E", check=False).stdout)
-    pid = shell("pidof", package, check=False).strip()
-    if pid:
-        (output / "application-log.txt").write_bytes(adb("logcat", "-d", "--pid=" + pid, check=False).stdout)
-    (output / "ui-task.dex").write_bytes(adb("exec-out", "run-as", package, "cat", "files/ui-task.dex", check=False).stdout)
-    (output / "runtime-trace.txt").write_bytes(adb("exec-out", "run-as", package, "cat", "files/runtime-trace.txt", check=False).stdout)
+    failure_diagnostics()
     raise
