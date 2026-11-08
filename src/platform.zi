@@ -168,7 +168,7 @@ BundledAppsRoot :: () -> string {
 }
 
 ProfilePicturesPath :: () -> string {
-    return AssetPath(pictures_path[:], "pfp.png")
+    return AssetPath(pictures_path[:], "pfp.webp")
 }
 
 // A preinstalled app bundle's bytes, which stay loaded while it runs.

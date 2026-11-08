@@ -119,7 +119,8 @@ android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/appAs
 def prepareImages = tasks.register('prepareImages', Sync) {
     dependsOn makeApps
     from('../../assets/app/icon.png')
-    from(kryonSource.map { "${it}/icons/pfp.png" })
+    from(kryonSource.map { "${it}/icons/pfp.webp" })
+    from('../../assets/tools') { include '*.webp'; into 'tools' }
     from('../../build/apps') { include '*.zx'; into 'apps' }
     into layout.buildDirectory.dir('generated/appAssets')
 }

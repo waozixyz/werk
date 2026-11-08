@@ -118,7 +118,8 @@ jobs:
           path: |
             build/werk
             build/apps
-            build/pfp.png
+            build/pfp.webp
+            build/tools
           if-no-files-found: error
 
   build-android:

@@ -6,11 +6,11 @@ module_roots = ["src", "apps/pass"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "fb73f66ab2df578f53cb03a48d3005675ecdd0f0"
+ref = "03e01d08d9f12a68693294a3bd12f6c758290e45"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "ead3eb7aa63535447a1116ecae7bb4d712d72034"
+ref = "addec5e14fa446e8b66a9480c4d4b277a0d76a9f"
 
 [dependencies.apps]
 git = "https://github.com/waozixyz/apps.git"
@@ -61,5 +61,5 @@ git = "https://github.com/ziranlang/crypto.git"
 ref = "master"
 
 [dependencies.workbook]
-git = "https://github.com/waozixyz/workbook.git"
-ref = "63aa0bf9c26aa684a07d6af65fbe97ca994a4d75"
+git = "https://github.com/kryonlabs/workbook.git"
+ref = "ff3e9f7d1baf3a907304ed3c87ea9fdb37e3e814"

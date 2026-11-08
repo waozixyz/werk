@@ -100,7 +100,7 @@ opens the window on one tool, as Harmony's Auth entry does.
 Each tool is built into its own portable bundle, `build/apps/<tool>.zx`:
 Pass, Calculator and Clock from `apps/<tool>/`, Auth from its own Ziran
 package ([waozixyz/auth](https://github.com/waozixyz/auth)), and Workbook from
-[waozixyz/workbook](https://github.com/waozixyz/workbook). All five are
+[kryonlabs/workbook](https://github.com/kryonlabs/workbook). All five are
 preinstalled. A tool reaches the host only through Kryon's app context (its
 private files, clipboard, clock, key derivation and device-protected
 secret), and the host checks every call a bundle asks for before it runs.

@@ -160,12 +160,22 @@ def click_filled():
         for y in range(56, pixels.height):
             span = [x for x in range(pixels.width)
                     if min(pixels.getpixel((x, y))) < 120
-                    and max(pixels.getpixel((x, y))) < 220
+                    and max(pixels.getpixel((x, y))) < 240
                     and max(pixels.getpixel((x, y))) - min(pixels.getpixel((x, y))) > 40]
             if len(span) > 200:
                 rows.append((min(span), y, max(span)))
-        assert rows, "Missing filled account action"
-    click((rows[0][0] + rows[0][2]) // 2, (rows[0][1] + rows[-1][1]) // 2)
+        # A focused field's accent outline is a thin line in the same colour;
+        # the filled action is the first solid band of accent rows.
+        bands = []
+        for row in rows:
+            if bands and row[1] == bands[-1][-1][1] + 1:
+                bands[-1].append(row)
+            else:
+                bands.append([row])
+        bands = [band for band in bands if len(band) >= 16]
+        assert bands, "Missing filled account action"
+        band = bands[0]
+    click((band[0][0] + band[0][2]) // 2, (band[0][1] + band[-1][1]) // 2)
 
 
 def screen_text():

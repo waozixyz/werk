@@ -93,7 +93,8 @@ def check_apk(path):
         assert packaged == bundles, f"{path}: stale or missing app bundles: {packaged ^ bundles}"
         for name in bundles:
             assert archive.read(name)[:4] == b"ZX\0\0", f"{path}: {name} has an obsolete bundle format"
-        assert "assets/pfp.png" in names, f"{path}: missing profile pictures"
+        assert "assets/pfp.webp" in names, f"{path}: missing profile pictures"
+        assert "assets/tools/pass.webp" in names, f"{path}: missing tool artwork"
         native = [name for name in names if name.endswith("/libmain.so")]
         assert native, f"{path}: no NativeActivity payload"
         for name in native:

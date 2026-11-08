@@ -113,9 +113,14 @@ build/werk: build/generated/desktop/.complete build/ziran/libziran.a build/liboq
 		build/generated/desktop/*.c $(MONOCYPHER_SOURCES) build/ziran/libziran.a build/liboqs/lib/liboqs.a \
 		$(shell pkg-config --libs sdl2 cairo freetype2 fontconfig pangocairo gtk+-3.0) -lX11 -l:libcurl.so.4 -lm -lpthread -o $@.new
 	mv -f $@.new $@
-build/pfp.png: $(KRYON_DIR)/icons/pfp.png
+build/pfp.webp: $(KRYON_DIR)/icons/pfp.webp
 	cp $< $@
-gui: build/werk build/pfp.png apps
+# Launcher artwork for the bundled tools, beside the host like pfp.webp.
+TOOL_ICONS := $(wildcard assets/tools/*.webp)
+build/tools/%.webp: assets/tools/%.webp
+	mkdir -p $(@D)
+	cp $< $@
+gui: build/werk build/pfp.webp $(TOOL_ICONS:assets/%=build/%) apps
 run: gui
 	./build/werk
 
@@ -166,14 +171,14 @@ build/generated/browser/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DI
 	mkdir -p $(@D)
 	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target=c -o $(@D) src/browser.zi
 	touch $@
-build/web-app/index.js: build/generated/browser/.complete build/web-runtime/libziran.a $(PORTABLE_BUNDLES) build/pfp.png assets/app/icon.png assets/fonts/NotoSans-Regular.ttf
+build/web-app/index.js: build/generated/browser/.complete build/web-runtime/libziran.a $(PORTABLE_BUNDLES) build/pfp.webp $(TOOL_ICONS) assets/app/icon.png assets/fonts/NotoSans-Regular.ttf
 	mkdir -p $(@D)
 	$(WEB_CC) -O2 -Wno-parentheses-equality -I$(ZIRAN_ROOT)/include -iquote build/generated/browser build/generated/browser/*.c \
 		build/web-runtime/libziran.a \
 		--js-library $(ZIRAN_ROOT)/web/ziran_web.js -sEXPORTED_RUNTIME_METHODS=FS,IDBFS -lidbfs.js \
 		-sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=16777216 -sASYNCIFY_STACK_SIZE=1048576 -sENVIRONMENT=web \
 		--embed-file assets/fonts/NotoSans-Regular.ttf@/kryon-font.ttf \
-		$(foreach bundle,$(PORTABLE_BUNDLES),--embed-file $(bundle)@/apps/$(notdir $(bundle))) --embed-file build/pfp.png@/pfp.png --embed-file assets/app/icon.png@/icon.png -o $@
+		$(foreach bundle,$(PORTABLE_BUNDLES),--embed-file $(bundle)@/apps/$(notdir $(bundle))) --embed-file build/pfp.webp@/pfp.webp --embed-file assets/tools@/tools --embed-file assets/app/icon.png@/icon.png -o $@
 build/web-app/index.html: build/web-app/index.js web/site/index.html
 	cp web/site/index.html $@
 build/generated/worker/.complete: src/service_worker.zi ziran.toml ziran.lock
@@ -242,7 +247,9 @@ install-gui: gui
 	install -m 0755 build/werk "$(BIN_DIR)/werk.new"
 	mv -f "$(BIN_DIR)/werk.new" "$(BIN_DIR)/werk"
 	install -m 0600 $(APP_BUNDLES) "$(LIB_DIR)/apps/"
-	install -m 0644 build/pfp.png "$(LIB_DIR)/pfp.png"
+	install -m 0644 build/pfp.webp "$(LIB_DIR)/pfp.webp"
+	install -d -m 0755 "$(LIB_DIR)/tools"
+	install -m 0644 $(TOOL_ICONS) "$(LIB_DIR)/tools/"
 	python3 scripts/install-launchers.py --data-dir "$(DATA_DIR)" --bin-dir "$(BIN_DIR)" $(if $(filter-out $(HOME),$(DESKTOP_DIR)),--desktop-dir "$(DESKTOP_DIR)")
 	install -m 0644 packaging/linux/werk-bundle.xml "$(DATA_DIR)/mime/packages/werk-bundle.xml"
 	@if command -v update-mime-database >/dev/null; then update-mime-database "$(DATA_DIR)/mime"; fi

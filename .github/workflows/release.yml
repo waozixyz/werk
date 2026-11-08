@@ -73,7 +73,7 @@ jobs:
         run: |
           name="werk-linux-${{ matrix.arch }}"
           mkdir -p "build/release/$name"
-          cp -R build/werk build/apps build/pfp.png LICENSE README.md assets/app/icon.png "build/release/$name/"
+          cp -R build/werk build/apps build/pfp.webp build/tools LICENSE README.md assets/app/icon.png "build/release/$name/"
           tar -C build/release -czf "build/release/$name.tar.gz" "$name"
           make package-deb
       - name: Package AppImage

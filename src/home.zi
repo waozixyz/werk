@@ -27,7 +27,7 @@ Rules :: #import "apps/protocol";
     }
 }
 
-AppsControllerSha256 :: "19f978139cce86b65f1f084e75ad4d066491b7cdb350e52dac5be48589ee3880";
+AppsControllerSha256 :: "7b31208950432e837c9278eab0d3ee430b1dbaabdde1a70a588b2b35afe1941f";
 
 HomePreference :: struct {
     title: [256]u8
@@ -58,6 +58,33 @@ HomeState :: struct {
 }
 home: HomeState;
 
+// Each tool's launcher artwork ships beside the host as tools/<id>.webp. The
+// shared Apps screen names it by its portable asset path.
+home_artwork_files: [APP_LIMIT][PATH_LIMIT]u8;
+
+HomeHasArtwork :: (id: string) -> bool {
+    return id == "pass" || id == "auth" || id == "calculator" || id == "clock" || id == "workbook"
+}
+
+HomeArtwork :: (index: s32, output: []u8) -> string {
+    if index < 0 || !HomeHasArtwork(AppId(index)) { return "" }
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "assets/tools/%.webp", AppId(index))
+    copied := CopyCString(TextView(VecSlice(bytes, 0, bytes.count)), output)
+    VecFree(bytes)
+    return ifx copied then TextUntilNul(output) else ""
+}
+
+// The tool whose artwork a portable path names, or -1.
+HomeArtworkTool :: (path: string) -> s32 {
+    if path == "" { return -1 }
+    for index: cast(s32)0..AppCount() - 1 {
+        name: [96]u8
+        if HomeArtwork(index, name[:]) == path { return index }
+    }
+    return -1
+}
+
 HomeIndex :: (id: string) -> s32 {
     for index: cast(s32)0..AppCount() - 1 {
         if AppId(index) == id && id != "entity" { return index }
@@ -70,9 +97,14 @@ HomeTitle :: (index: s32) -> string {
     return ifx title == "" then AppName(index) else title
 }
 
-HomeIcon :: (index: s32) -> string {
+// The tool whose icon this tool shows: its own, or the one chosen for it.
+HomeIconTool :: (index: s32) -> s32 {
     choice := HomeIndex(TextUntilNul(home.preferences[index].icon[:]))
-    return AppIcon(ifx choice >= 0 then choice else index)
+    return ifx choice >= 0 then choice else index
+}
+
+HomeIcon :: (index: s32) -> string {
+    return AppIcon(HomeIconTool(index))
 }
 
 HomePreferencesPath :: (output: []u8) -> string {
@@ -146,17 +178,28 @@ HomeReply :: (status: string) -> string {
     return home.response
 }
 
+// A tool's picture when it has artwork, otherwise its symbol. The shared
+// screen draws a symbol in preference to a picture, so only one is named.
+HomeWriteIcon :: (bytes: *Vec(u8), tool: s32, shape_field: string, image_field: string) {
+    artwork: [96]u8
+    image := HomeArtwork(tool, artwork[:])
+    BuilderPrint(bytes, "\"%\":", shape_field)
+    Rules.AppsWriteQuoted(bytes, ifx image == "" then AppIcon(tool) else "")
+    BuilderPrint(bytes, ",\"%\":", image_field)
+    Rules.AppsWriteQuoted(bytes, image)
+}
+
 HomeIcons :: (tool: s32) -> string {
     bytes: Vec(u8)
-    BuilderPrint(*bytes, "{\"v\":1,\"icons\":[{\"id\":\"\",\"shape\":")
-    Rules.AppsWriteQuoted(*bytes, AppIcon(tool))
+    BuilderPrint(*bytes, "{\"v\":1,\"icons\":[{\"id\":\"\",")
+    HomeWriteIcon(*bytes, tool, "shape", "image")
     BuilderPrint(*bytes, "}")
     for index: cast(s32)0..AppCount() - 1 {
         if AppId(index) == "entity" { continue }
         BuilderPrint(*bytes, ",{\"id\":")
         Rules.AppsWriteQuoted(*bytes, AppId(index))
-        BuilderPrint(*bytes, ",\"shape\":")
-        Rules.AppsWriteQuoted(*bytes, AppIcon(index))
+        BuilderPrint(*bytes, ",")
+        HomeWriteIcon(*bytes, index, "shape", "image")
         BuilderPrint(*bytes, "}")
     }
     BuilderPrint(*bytes, "]}")
@@ -217,7 +260,16 @@ HomeWidgets :: (context: *void, module: *u8, function: *u8,
     return AppWidgetCall(context, module, function, arguments, count, result)
 }
 
-HomeAssetAllowed :: (path: string) -> bool { return path == "" }
+HomeAssetAllowed :: (path: string) -> bool { return path == "" || HomeArtworkTool(path) >= 0 }
+
+HomeAssetResolve :: (path: string) -> string {
+    tool := HomeArtworkTool(path)
+    if tool < 0 { return "" }
+    name: [96]u8
+    file := HomeArtwork(tool, name[:])
+    // The host's own file, without the portable assets/ prefix.
+    return AssetPath(home_artwork_files[tool][:], file[7:file.count])
+}
 
 HomeCards :: (context: *void, indices: []s32, bounds: Rectangle,
     input: TextFieldInput, section_break: s32, columns: s32) -> bool {
@@ -237,8 +289,8 @@ HomeCards :: (context: *void, indices: []s32, bounds: Rectangle,
         Rules.AppsWriteQuoted(*bytes, AppName(index))
         BuilderPrint(*bytes, ",\"icon_choice\":")
         Rules.AppsWriteQuoted(*bytes, TextUntilNul(home.preferences[index].icon[:]))
-        BuilderPrint(*bytes, ",\"icon_shape\":")
-        Rules.AppsWriteQuoted(*bytes, HomeIcon(index))
+        BuilderPrint(*bytes, ",")
+        HomeWriteIcon(*bytes, HomeIconTool(index), "icon_shape", "icon")
         BuilderPrint(*bytes, ",\"installed\":true,\"on_device\":true,\"favorite\":%,\"selected\":%,\"bytes\":%,\"actions\":[\"open\",\"%\",\"properties\"]}",
             ifx home.preferences[index].favorite then "true" else "false", ifx index == home.selected then "true" else "false",
             apps[index].bytes.count, ifx home.preferences[index].favorite then "unpin" else "pin")
@@ -258,7 +310,7 @@ HomeCards :: (context: *void, indices: []s32, bounds: Rectangle,
     home.controller.app.session = home.session
     home.controller.app.bounds = bounds
     home.controller.app.input = input
-    WidgetHostBegin(home.controller.app.session, HomeAssetAllowed)
+    WidgetHostBegin(home.controller.app.session, HomeAssetAllowed, HomeAssetResolve)
     ran := Controller.AppControllerRun(*home.controller, APP_FRAME)
     WidgetHostEnd()
     return ran
@@ -365,8 +417,12 @@ MiniHome :: (session: Session, bounds: Rectangle) -> s32 {
     opened: s32 = -1
     for at: cast(s32)0..count - 1 {
         index := tools[at]
+        artwork: [96]u8
+        picture := HomeAssetResolve(HomeArtwork(HomeIconTool(index), artwork[:]))
         tile := ButtonProps.{.key = cast(u64)(31000 + at), .id = 31000 + at, .label = HomeTitle(index),
-            .icon_shape = HomeIcon(index), .icon_placement = IconPlacement.IconPlacementAbove,
+            .icon_shape = ifx picture == "" then HomeIcon(index) else "",
+            .image = ImageProps.{.asset_path = picture, .alt_text = HomeTitle(index)},
+            .icon_placement = IconPlacement.IconPlacementAbove,
             .size = ControlSize.ControlSizeLarge, .fit_content = true,
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft,
             .bounds = Rectangle.{left + cast(float32)(at % columns) * (width + gap),

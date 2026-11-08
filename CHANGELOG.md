@@ -9,6 +9,7 @@
 - Send the profile picture you choose to your node, so friends see it in every app.
 - Offer Entity's abstract profile pictures, like every other app, and keep the one you choose.
 - Continue as no longer crashes the other app when it was closed.
+- A fresh look: colorful artwork for each tool on Home, rounded tiles and softly tinted buttons that follow your accent color.
 
 ## [0.4.7] - 2026-10-28
 
