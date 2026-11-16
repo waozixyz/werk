@@ -12,7 +12,7 @@
     },
     {
       "commit": "ff3e9f7d1baf3a907304ed3c87ea9fdb37e3e814",
-      "dependencies": {"kryon": "pd6da488c9ad9496d", "kss": "p5a7a7f36bbe80b6d", "mingcute": "pe1027b9d16704793"},
+      "dependencies": {"kryon": "p79167729f20b4a95", "kss": "p5a7a7f36bbe80b6d", "mingcute": "pe1027b9d16704793"},
       "dependency_refs": {"kryon": "ead3eb7aa63535447a1116ecae7bb4d712d72034", "kss": "62a22c28d1209d8eed2ab5734146faca2ae35b92", "mingcute": "master"},
       "id": "p032ec7d54987ed70",
       "name": "workbook",
@@ -21,7 +21,7 @@
     },
     {
       "commit": "2d12bfca10e09e83ac540cc5fd85299b8438150a",
-      "dependencies": {"curl": "p8da229d15597ab5c", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pd6da488c9ad9496d", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "qrcode": "p0dfa70137405b096", "zlib": "p82dbc05081cd4d96"},
+      "dependencies": {"curl": "p8da229d15597ab5c", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "p79167729f20b4a95", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "qrcode": "p0dfa70137405b096", "zlib": "p82dbc05081cd4d96"},
       "dependency_refs": {"curl": "19b299005fbe2d895f4ad525cfdae62a2220c3ea", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "ead3eb7aa63535447a1116ecae7bb4d712d72034", "monocypher": "master", "oqs": "master", "qrcode": "master", "zlib": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"},
       "id": "p0db98890a496208a",
       "name": "Entity",
@@ -64,6 +64,15 @@
       "url": "https://github.com/webmproject/libwebp.git"
     },
     {
+      "commit": "52a9105fa3b57b25cf304bfdeeb7c3f064e6a918",
+      "dependencies": {"crypto": "pc23fbf455e97614d", "kryon": "p79167729f20b4a95", "mingcute": "pe1027b9d16704793"},
+      "dependency_refs": {"crypto": "master", "kryon": "ead3eb7aa63535447a1116ecae7bb4d712d72034", "mingcute": "master"},
+      "id": "p51a1ca5c8fa1775f",
+      "name": "auth",
+      "ref": "52a9105fa3b57b25cf304bfdeeb7c3f064e6a918",
+      "url": "https://github.com/waozixyz/auth.git"
+    },
+    {
       "commit": "1aadfad932c98c069a1204261b1856f81f3bc199",
       "dependencies": {},
       "id": "p57c0272208aae8db",
@@ -74,7 +83,7 @@
     },
     {
       "commit": "62a22c28d1209d8eed2ab5734146faca2ae35b92",
-      "dependencies": {"kryon": "pd6da488c9ad9496d"},
+      "dependencies": {"kryon": "p79167729f20b4a95"},
       "dependency_refs": {"kryon": "ead3eb7aa63535447a1116ecae7bb4d712d72034"},
       "id": "p5a7a7f36bbe80b6d",
       "name": "Kss",
@@ -107,6 +116,15 @@
       "name": "Oqs",
       "ref": "master",
       "url": "https://github.com/ziranlang/oqs.git"
+    },
+    {
+      "commit": "ead3eb7aa63535447a1116ecae7bb4d712d72034",
+      "dependencies": {"libwebp": "p3b3c785a0e17e605", "raylib": "pcc7aa76725f2fb2f"},
+      "dependency_refs": {"libwebp": "1844042d1ca751e62e61df7617dba19c98588339", "raylib": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e"},
+      "id": "p79167729f20b4a95",
+      "name": "kryon",
+      "ref": "ead3eb7aa63535447a1116ecae7bb4d712d72034",
+      "url": "https://github.com/kryonlabs/kryon.git"
     },
     {
       "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
@@ -154,7 +172,7 @@
     },
     {
       "commit": "fec5af055eda9bcc2a2d5a0002a7857bd5cc6a26",
-      "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pd6da488c9ad9496d"},
+      "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "p79167729f20b4a95"},
       "dependency_refs": {"crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "ead3eb7aa63535447a1116ecae7bb4d712d72034"},
       "id": "pc2ff70f981560fae",
       "name": "Apps",
@@ -196,15 +214,6 @@
       "url": "https://github.com/ziranlang/image-codec.git"
     },
     {
-      "commit": "44e8b0f2a42d39c699c0f5431dd30689f3b44f3c",
-      "dependencies": {"crypto": "pc23fbf455e97614d", "kryon": "pd6da488c9ad9496d", "mingcute": "pe1027b9d16704793"},
-      "dependency_refs": {"crypto": "master", "kryon": "ead3eb7aa63535447a1116ecae7bb4d712d72034", "mingcute": "master"},
-      "id": "pfb840cb767e289ab",
-      "name": "auth",
-      "ref": "44e8b0f2a42d39c699c0f5431dd30689f3b44f3c",
-      "url": "https://github.com/waozixyz/auth.git"
-    },
-    {
       "commit": "d772e334cc724105040382a977ebb10dfd393293",
       "dependencies": {},
       "id": "pfba2650e0a73c0ea",
@@ -215,8 +224,8 @@
     }
   ],
   "root": {
-    "dependencies": {"apps": "pc2ff70f981560fae", "auth": "pfb840cb767e289ab", "crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "entity": "p0db98890a496208a", "kryon": "pd6da488c9ad9496d", "liboqs": "p60ff905f3a963886", "mingcute": "pe1027b9d16704793", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "workbook": "p032ec7d54987ed70"},
-    "dependency_refs": {"apps": "fec5af055eda9bcc2a2d5a0002a7857bd5cc6a26", "auth": "44e8b0f2a42d39c699c0f5431dd30689f3b44f3c", "crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "entity": "2d12bfca10e09e83ac540cc5fd85299b8438150a", "kryon": "addec5e14fa446e8b66a9480c4d4b277a0d76a9f", "liboqs": "main", "mingcute": "master", "monocypher": "master", "oqs": "master", "workbook": "ff3e9f7d1baf3a907304ed3c87ea9fdb37e3e814"},
+    "dependencies": {"apps": "pc2ff70f981560fae", "auth": "p51a1ca5c8fa1775f", "crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "entity": "p0db98890a496208a", "kryon": "pd6da488c9ad9496d", "liboqs": "p60ff905f3a963886", "mingcute": "pe1027b9d16704793", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "workbook": "p032ec7d54987ed70"},
+    "dependency_refs": {"apps": "fec5af055eda9bcc2a2d5a0002a7857bd5cc6a26", "auth": "52a9105fa3b57b25cf304bfdeeb7c3f064e6a918", "crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "entity": "2d12bfca10e09e83ac540cc5fd85299b8438150a", "kryon": "addec5e14fa446e8b66a9480c4d4b277a0d76a9f", "liboqs": "main", "mingcute": "master", "monocypher": "master", "oqs": "master", "workbook": "ff3e9f7d1baf3a907304ed3c87ea9fdb37e3e814"},
     "name": "Werkzeug"
   },
   "toolchain": {

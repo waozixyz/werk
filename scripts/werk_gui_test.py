@@ -351,7 +351,7 @@ try:
     click(16 + 95, 56 + 12 + 76 + 20)
     capture("auth-list")
     before = time.time()
-    click(420 - 16 - 10 - 196 + 70 + 16, 56 + 64 + 12 + 22)
+    click(100, 56 + 64 + 70 + 19)
     copied = clipboard().strip()
     after = time.time()
     expected = {totp(FIXTURE_SECRET, before), totp(FIXTURE_SECRET, after)}
@@ -372,7 +372,7 @@ try:
     assert saved.count("\tV\t") == 2 and "Second:bob" in saved, saved.count("\tV\t")
     # Edit renames the account and keeps the websites where it signs in, in
     # the same record.
-    edit = (420 - 16 - 10 - 40 + 18, 56 + 64 + 16 + 18)
+    edit = (420 - 16 - 10 - 40 + 16, 56 + 64 + 10 + 16)
     click(*edit)
     capture("auth-edit")
     click(210, 56 + 12 + 48 + 20)

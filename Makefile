@@ -158,6 +158,7 @@ gui-test: gui
 	python3 scripts/private-display.py python3 scripts/launcher_gui_test.py
 	sh scripts/migration_test.sh
 	python3 -I scripts/auth_command_test.py
+	python3 scripts/private-display.py python3 scripts/auth_gui_test.py
 
 # The bundle runtime for the browser, built from the locked Ziran.
 WEB_AR ?= $(dir $(WEB_CC))emar

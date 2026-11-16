@@ -54,7 +54,7 @@ ref = "2d12bfca10e09e83ac540cc5fd85299b8438150a"
 
 [dependencies.auth]
 git = "https://github.com/waozixyz/auth.git"
-ref = "44e8b0f2a42d39c699c0f5431dd30689f3b44f3c"
+ref = "52a9105fa3b57b25cf304bfdeeb7c3f064e6a918"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"

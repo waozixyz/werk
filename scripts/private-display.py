@@ -11,6 +11,7 @@ environment = dict(os.environ)
 for key in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SESSION_MANAGER"):
     environment.pop(key, None)
 environment["YUE_DESKTOP_RECOVERY"] = "0"
+environment["HARMONY_DESKTOP_RECOVERY"] = "0"
 environment["WERK_TEST_PRIVATE_DISPLAY"] = "1"
 environment["SDL_RENDER_DRIVER"] = "software"
 read_fd, write_fd = os.pipe()
