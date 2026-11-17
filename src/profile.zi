@@ -51,6 +51,8 @@ profile: Profile;
 profile_choice_known: bool;
 theme_signature: s32 = -1;
 palette: Palette;
+theme_host: SystemPalette;
+theme_hosted: bool;
 
 ProfileName :: () -> string {
     return TextUntilNul(profile.name[:])
@@ -353,8 +355,52 @@ ProfileDark :: () -> bool {
     return ResolveDark(cast(ThemePolicy)profile.theme_mode, SystemDark())
 }
 
+// The full palette from the host's colours, as Kryon's
+// SystemTheme.SystemPaletteColors builds it from Kryon 13ff9478 on. Use that
+// once Apps, Entity, Workbook, Css and Auth move to that Kryon with Werkzeug.
+HostColors :: (host: SystemPalette) -> Palette {
+    colors := DefaultPalette(host.dark)
+    bg := host.background; fg := host.text; accent := host.selected
+    colors.background = bg; colors.surface = host.base
+    colors.surface_raised = CssMix(host.base, fg, 0.05); colors.surface_muted = CssMix(bg, fg, 0.05)
+    colors.surface_sunken = CssMix(bg, cast(u32)0x000000ff, 0.15)
+    colors.foreground = fg; colors.text_secondary = CssMix(fg, bg, 0.25)
+    colors.text_muted = CssMix(fg, bg, 0.4); colors.text_disabled = CssMix(fg, bg, 0.6)
+    colors.icon = fg; colors.icon_muted = colors.text_muted
+    colors.border = host.border; colors.subtle_border = CssMix(host.border, bg, 0.5)
+    colors.strong_border = CssMix(host.border, fg, 0.35)
+    colors.focus = accent; colors.selection = CssMix(bg, accent, 0.3); colors.selection_text = fg
+    colors.accent = accent; colors.accent_strong = CssMix(accent, fg, 0.2)
+    colors.accent_subtle = CssMix(bg, accent, 0.18); colors.on_accent = OnColor(accent)
+    colors.link = accent; colors.control_on = accent
+    colors.control_track = CssMix(bg, fg, 0.18); colors.control_track_hover = CssMix(bg, fg, 0.24)
+    return colors
+}
+
+// Embedded in a host such as Harmony, Werkzeug draws every colour from the
+// host's theme and follows its changes.
+ApplyHostTheme :: (host: SystemPalette) {
+    if theme_hosted && host.background == theme_host.background && host.base == theme_host.base &&
+        host.text == theme_host.text && host.selected == theme_host.selected &&
+        host.border == theme_host.border && host.dark == theme_host.dark {
+        return
+    }
+    theme_hosted = true; theme_host = host; theme_signature = -1
+    palette = HostColors(host)
+    system := host
+    system.selected_text = palette.on_accent
+    system.danger = palette.danger; system.success = palette.success; system.warning = palette.warning
+    unused SystemPaletteInstall(system)
+}
+
 // Installs the profile's appearance when it changes.
 ApplyTheme :: () {
+    host: SystemPalette
+    if HostPalette(*host) {
+        ApplyHostTheme(host)
+        return
+    }
+    theme_hosted = false
     dark := ProfileDark()
     signature := cast(s32)dark + profile.theme_mode * 2 + profile.accent * 8 + (ifx profile.material then 256 else 0)
     if signature == theme_signature {

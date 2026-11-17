@@ -28,6 +28,7 @@
     #import "browser_storage"
 } else {
     LinuxTheme :: #import "kryon/SystemThemeLinux";
+    ParentTheme :: #import "kryon/ParentThemeLinux";
 }
 
 libc :: #system_library "libc";
@@ -219,6 +220,25 @@ SystemDark :: () -> bool {
         system_dark_read_at = now
     }
     return system_dark
+}
+
+host_palette: SystemPalette;
+host_palette_found: bool;
+host_palette_read_at: float64 = -10.0;
+
+// The theme of the host that embeds Werkzeug, such as Harmony's Sessions
+// window, read at most every quarter second. False when Werkzeug runs on its
+// own, and on Android and the web.
+HostPalette :: (palette: *SystemPalette) -> bool {
+    #if !#defined(ANDROID_BUILD) && !#defined(PLATFORM_WEB) {
+        now := SteadyClock()
+        if now - host_palette_read_at > 0.25 {
+            host_palette_found = ParentTheme.ParentPaletteRead(*host_palette)
+            host_palette_read_at = now
+        }
+    }
+    palette.* = host_palette
+    return host_palette_found
 }
 
 // Seconds since the Unix epoch.
