@@ -1,25 +1,22 @@
+Box :: #import "kryon/box";
+Text :: #import "kryon/text";
+Button :: #import "kryon/button";
 // Calculator: a keypad and keyboard calculator. Basic covers ordinary
 // arithmetic with brackets; Scientific adds trigonometry in degrees or
 // radians, hyperbolic functions, powers, roots, logarithms, factorials and
 // constants. It keeps the expression in memory; the mode and angle unit are
 // saved.
-#import "session"
-#import "geometry"
-#import "text_props"
-#import "text_align"
-#import "text_widget"
-#import "button_props"
-#import "button_widget"
-#import "control_props"
-#import "box_props"
-#import "box_widget"
-#import "text_buffer"
-#import "number_text"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/text_align"
+#import "kryon/control_props"
+#import "std/text_buffer"
+#import "std/number_text"
 #import "kryon/app_context"
 #import "kryon/app_protocol"
 #import "arithmetic"
-Icon :: #import "mingcute_regular_counter";
-DeleteBack :: #import "mingcute_regular_delete_back";
+Icon :: #import "mingcute/mingcute_regular_counter";
+DeleteBack :: #import "mingcute/mingcute_regular_delete_back";
 
 using ButtonTone;
 using ButtonEmphasis;
@@ -339,17 +336,17 @@ Press :: (key: Key) {
 }
 
 Tab :: (session: Session, id: s32, label: string, bounds: Rectangle, active: bool) -> bool {
-    props := ButtonProps.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
+    props := Button.Props.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
         .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
     if active {
         props.tone = ButtonTone.ButtonToneAccent
         props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
     }
-    return Button(session, props) != 0
+    return Button.Draw(session, props) != 0
 }
 
 DrawKey :: (session: Session, index: s32, key: Key, bounds: Rectangle) {
-    props := ButtonProps.{.key = cast(u64)(100 + index), .id = 100 + index, .bounds = bounds,
+    props := Button.Props.{.key = cast(u64)(100 + index), .id = 100 + index, .bounds = bounds,
         .label = key.label,
         .tone = cast(ButtonTone)(ifx key.accent then ButtonToneAccent else ButtonToneNeutral),
         .emphasis = cast(ButtonEmphasis)(ifx key.accent then ButtonEmphasisFilled else ButtonEmphasisSoft)}
@@ -358,7 +355,7 @@ DrawKey :: (session: Session, index: s32, key: Key, bounds: Rectangle) {
         props.icon_shape = DeleteBack.Shape
         props.label = ""
     }
-    if Button(session, props) != 0 {
+    if Button.Draw(session, props) != 0 {
         Press(key)
     }
 }
@@ -385,7 +382,7 @@ Draw :: () {
     top += 36.0 + gap
     display_height: float32 = ifx scientific then 104.0 else 112.0
     display := Rectangle.{left, top, width, display_height}
-    Box(session, BoxProps.{.key = cast(u64)3, .bounds = display, .radius = 12.0})
+    Box.Draw(session, Box.Props.{.key = cast(u64)3, .bounds = display, .radius = 12.0})
     shown := ExpressionText()
     if shown == "" {
         shown = "0"
@@ -397,18 +394,18 @@ Draw :: () {
     if shown.count > 28 {
         font = 18
     }
-    Text(session, TextProps.{.key = cast(u64)4,
+    Text.Draw(session, Text.Props.{.key = cast(u64)4,
             .bounds = Rectangle.{left + 16.0, top + 14.0, width - 32.0, 48.0},
-            .text = shown, .font = font, .align = TextAlign.TextAlignEnd, .wrap = TextWrap.TextWrapEllipsis})
-    Text(session, TextProps.{.key = cast(u64)5,
+            .text = shown, .size = font, .align = TextAlign.TextAlignEnd, .wrap = Text.Wrap.TextWrapEllipsis})
+    Text.Draw(session, Text.Props.{.key = cast(u64)5,
             .bounds = Rectangle.{left + 16.0, top + display_height - 36.0, width - 32.0, 24.0},
-            .text = TextUntilNul(result_text[:]), .font = 16, .align = TextAlign.TextAlignEnd})
+            .text = TextUntilNul(result_text[:]), .size = 16, .align = TextAlign.TextAlignEnd})
     if scientific {
         // The angle unit, switched by tapping it.
-        unit := ButtonProps.{.key = cast(u64)6, .id = 6, .bounds = Rectangle.{left + 10.0, top + display_height - 38.0, 64.0, 28.0},
+        unit := Button.Props.{.key = cast(u64)6, .id = 6, .bounds = Rectangle.{left + 10.0, top + display_height - 38.0, 64.0, 28.0},
             .label = ifx degrees then "DEG" else "RAD", .size = ControlSize.ControlSizeSmall,
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
-        if Button(session, unit) != 0 {
+        if Button.Draw(session, unit) != 0 {
             degrees = !degrees
             SaveSettings()
         }

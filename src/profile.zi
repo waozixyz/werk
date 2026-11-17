@@ -1,10 +1,11 @@
+Image :: #import "kryon/image";
+#import "kryon/geometry"
 // The Werkzeug profile: a name and picture, and the appearance every app
 // shares. It lives in the private profile/settings.txt file.
 #import "std/byte_text_linux"
 #import "std/c_string"
 #import "std/number_text"
 #import "std/text_buffer"
-using UI :: #import "kryon/Widgets";
 #import "kryon/Theme"
 #import "kryon/SystemTheme"
 #import "platform"
@@ -259,8 +260,8 @@ SaveProfile :: () -> bool {
 }
 
 // The picture's square in Kryon's profile picture atlas.
-PictureImage :: (picture: s32, bounds: Rectangle) -> ImageProps {
-    image: ImageProps
+PictureImage :: (picture: s32, bounds: Rectangle) -> Image.Props {
+    image: Image.Props
     image.asset_path = ProfilePicturesPath()
     image.alt_text = "Profile picture"
     image.bounds = bounds
@@ -277,7 +278,7 @@ abstract_picture_path: [PATH_LIMIT]u8;
 
 // The profile's picture as the home screen shows it. An abstract picture
 // comes from Entity's unpacked pictures; until those exist, the Kryon one.
-ProfileImage :: (bounds: Rectangle) -> ImageProps {
+ProfileImage :: (bounds: Rectangle) -> Image.Props {
     #if !#defined(PLATFORM_WEB) {
         if profile.picture_kind == 1 {
             apps: [PATH_LIMIT]u8
@@ -286,11 +287,11 @@ ProfileImage :: (bounds: Rectangle) -> ImageProps {
             asset := ProfileEntity.EntityAbstractPictureAsset(Clamp(profile.abstract_picture, 0, 2))
             path := PathJoin(abstract_picture_path[:], folder, asset)
             if path != "" && PathExists(path) {
-                image: ImageProps
+                image: Image.Props
                 image.asset_path = path
                 image.alt_text = "Profile picture"
                 image.bounds = bounds
-                image.fit = ImageFit.ImageFitContain
+                image.fit = Image.ImageFit.ImageFitContain
                 image.radius = bounds.width * 0.5
                 return image
             }
@@ -315,7 +316,7 @@ ApplyTheme :: () {
     system: SystemPalette
     system.dark = dark
     system.background = palette.background
-    system.text = palette.text
+    system.text = palette.foreground
     system.base = palette.surface
     system.selected = Accent(profile.accent)
     system.border = palette.border
@@ -323,7 +324,7 @@ ApplyTheme :: () {
     system.danger = palette.danger
     system.success = palette.success
     system.warning = palette.warning
-    unused SystemPaletteInstall(system, profile.material)
+    unused SystemPaletteInstall(system)
 }
 
 ThemePalette :: () -> Palette {

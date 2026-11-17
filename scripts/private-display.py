@@ -6,8 +6,23 @@ import select
 import shutil
 import subprocess
 import sys
+import tempfile
 
+evidence = Path(__file__).resolve().parents[1] / "build/desktop-task"
+evidence.mkdir(parents=True, exist_ok=True)
+private_root = Path(tempfile.mkdtemp(prefix="session-", dir=evidence))
 environment = dict(os.environ)
+# A fixture's nested build uses the selected toolchain's existing package
+# cache; only the applications and desktop services use the private cache.
+environment["WERK_TEST_BUILD_CACHE"] = os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+# D-Bus activated pickers and portals inherit this environment, before each
+# fixture sets up its own application data. Keep their settings private too.
+for key, folder in (("HOME", "home"), ("XDG_RUNTIME_DIR", "runtime"),
+                    ("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "share"),
+                    ("XDG_CACHE_HOME", "cache")):
+    path = private_root / folder
+    path.mkdir(mode=0o700)
+    environment[key] = str(path)
 for key in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SESSION_MANAGER"):
     environment.pop(key, None)
 environment["YUE_DESKTOP_RECOVERY"] = "0"
@@ -28,8 +43,6 @@ try:
     assert process.stat().st_uid == os.getuid(), "Private server has another owner"
     command = process.joinpath("cmdline").read_bytes().replace(b"\0", b" ").decode()
     assert f"-displayfd {write_fd} " in command, "Unexpected display allocation source"
-    evidence = Path(__file__).resolve().parents[1] / "build/desktop-task"
-    evidence.mkdir(parents=True, exist_ok=True)
     with (evidence / "private-displays.log").open("a") as receipt:
         receipt.write(f"pid={server.pid} executable={executable} display=:{display} command={command}\n")
     environment["DISPLAY"] = ":" + display
@@ -41,3 +54,4 @@ finally:
     if server.poll() is None:
         server.terminate()
     server.wait(timeout=10)
+    shutil.rmtree(private_root)

@@ -1,3 +1,6 @@
+#import "kryon/tree_input"
+#import "kryon/tree"
+#import "kryon/session"
 // The browser host. ?app=ID opens a tool at start. Embedded ?mini shows
 // only the tools, opening on their tiles unless ?app selects one.
 #import "werk"
@@ -5,7 +8,6 @@
 #import "browser_storage"
 #import "std/text_buffer"
 Browser :: #import "kryon/Canvas";
-using UI :: #import "kryon/Widgets";
 #import "kryon/Frame"
 #import "kryon/mini_embed"
 
@@ -54,16 +56,9 @@ main :: () -> s32 {
     }
     ok: bool = true
     while ok && Browser.PollCanvas() {
-        KeyboardModifiersSend(session, Browser.CanvasModifiers())
-        key := Browser.CanvasPressedKey()
-        if key != 0 {
-            KeyboardSend(session, key)
-        }
-        codepoint := Browser.CanvasTypedCodepoint()
-        while codepoint != 0 {
-            TypedCodepointSend(session, codepoint)
-            codepoint = Browser.CanvasTypedCodepoint()
-        }
+        key, modifiers := Browser.CanvasInputTake(session)
+        KeyboardModifiersSend(session, modifiers)
+        if key != 0 { KeyboardSend(session, key) }
         Browser.BeginCanvasFrame()
         pointer := Browser.PollPointer()
         TreePointerUpdate(session, pointer)

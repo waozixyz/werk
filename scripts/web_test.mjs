@@ -77,6 +77,7 @@ try {
   let sequence = 0;
   const pending = new Map();
   const exceptions = [];
+  const consoleMessages = new Set();
   let sharedProfileUrl = '';
   let fileChooserNode = 0;
   socket.addEventListener('message', event => {
@@ -90,7 +91,10 @@ try {
       return;
     }
     if (message.method === 'Runtime.exceptionThrown') exceptions.push(JSON.stringify(message.params.exceptionDetails));
-    if (message.method === 'Runtime.consoleAPICalled') diagnostics += JSON.stringify(message.params.args);
+    if (message.method === 'Runtime.consoleAPICalled') {
+      consoleMessages.add(JSON.stringify(message.params.args));
+      if (consoleMessages.size > 64) consoleMessages.delete(consoleMessages.values().next().value);
+    }
     if (pending.has(message.id)) {
       pending.get(message.id)(message);
       pending.delete(message.id);
@@ -122,16 +126,24 @@ try {
     if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
     let text = result.stdout;
     const readable = join(output, name + '-labels.png');
-    const prepared = spawnSync('convert', [join(output, name + '.png'), '-colorspace', 'Gray',
-      '-threshold', '55%', '-resize', '300%', readable], {env: environment, encoding: 'utf8'});
-    if (prepared.status !== 0) throw Error('Could not prepare UI text: ' + prepared.stderr);
-    result = spawnSync('tesseract', [readable, 'stdout', '--psm', '11'],
-      {env: environment, encoding: 'utf8', timeout: 20000});
-    if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
-    return (text + '\n' + result.stdout).toLowerCase();
+    // Enlarge antialiased labels before thresholding, just as clickText does.
+    // Thresholding at their original size can erase Clock's lowercase l.
+    for (const transform of [['-resize', '300%'],
+        ['-resize', '300%', '-colorspace', 'Gray', '-threshold', '55%']]) {
+      const prepared = spawnSync('convert', [join(output, name + '.png'), ...transform, readable],
+        {env: environment, encoding: 'utf8'});
+      if (prepared.status !== 0) throw Error('Could not prepare UI text: ' + prepared.stderr);
+      result = spawnSync('tesseract', [readable, 'stdout', '--psm', '11'],
+        {env: environment, encoding: 'utf8', timeout: 20000});
+      if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
+      text += '\n' + result.stdout;
+    }
+    return text.toLowerCase();
   };
   const expectText = async (name, expected) => {
     const text = await screenText(name);
+    if (text.includes('this app stopped'))
+      throw Error(`${name}: app stopped: ${exceptions.slice(-3).join(' ')} ${[...consoleMessages].join(' ').slice(-8000)}`);
     if (!text.includes(expected.toLowerCase())) throw Error(`${name}: expected ${expected}, saw ${text}`);
   };
   // Mini Home shows the tool tiles: no Profile, search or title bar.
@@ -153,16 +165,35 @@ try {
   const clickText = async label => {
     await screenshot('control');
     const readable = join(output, 'control-labels.png');
-    const prepared = spawnSync('convert', [join(output, 'control.png'), '-colorspace', 'Gray',
-      '-threshold', '55%', '-resize', '300%', readable], {env: environment, encoding: 'utf8'});
-    if (prepared.status !== 0) throw Error('Could not prepare UI text: ' + prepared.stderr);
-    const result = spawnSync('tesseract', [readable, 'stdout', '--psm', '11',
-      '-c', 'tessedit_create_tsv=1'], {env: environment, encoding: 'utf8', timeout: 20000});
-    if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
-    const rows = result.stdout.trim().split('\n').slice(1).map(line => line.split('\t'));
     const word = value => value.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
-    const row = rows.find(values => word(values[11] || '') === word(label));
-    if (!row) throw Error('Missing visible app control: ' + label);
+    let row;
+    let recognized = '';
+    // Preserve antialiasing before enlargement; thresholding the original
+    // small labels can erase strokes such as Clock's lowercase l.
+    for (const transform of [['-resize', '300%'],
+        ['-resize', '300%', '-colorspace', 'Gray', '-threshold', '55%']]) {
+      const prepared = spawnSync('convert', [join(output, 'control.png'), ...transform, readable],
+        {env: environment, encoding: 'utf8'});
+      if (prepared.status !== 0) throw Error('Could not prepare UI text: ' + prepared.stderr);
+      const result = spawnSync('tesseract', [readable, 'stdout', '--psm', '11',
+        '-c', 'tessedit_create_tsv=1'], {env: environment, encoding: 'utf8', timeout: 20000});
+      if (result.status !== 0) throw Error('Screenshot OCR failed: ' + result.stderr);
+      const rows = result.stdout.trim().split('\n').slice(1).map(line => line.split('\t'));
+      recognized = rows.map(values => values[11] || '').filter(Boolean).join(' ');
+      row = rows.find(values => word(values[11] || '') === word(label));
+      if (row) break;
+    }
+    if (!row) {
+      const assets = await evaluate(`(async () => {
+        const fs = Module.FS;
+        const entries = fs.readdir('/apps');
+        const bytes = fs.readFile('/apps/apps.zx');
+        const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+          .map(value => value.toString(16).padStart(2, '0')).join('');
+        return {entries, controllerBytes: bytes.length, digest};
+      })()`);
+      throw Error('Missing visible app control: ' + label + ' ' + JSON.stringify({assets, recognized, exceptions, diagnostics}));
+    }
     await click((Number(row[6]) + Number(row[8]) / 2) / 3,
       (Number(row[7]) + Number(row[9]) / 2) / 3);
   };

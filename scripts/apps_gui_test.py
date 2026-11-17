@@ -45,12 +45,18 @@ def capture(name):
         labels = source.convert("L").point(lambda value: 0 if value < 140 else 255)
         labels.resize((source.width * 3, source.height * 3)).save(work / "labels.png")
         source.resize((source.width * 3, source.height * 3)).save(work / "full-text.png")
-    return command("tesseract", str(work / "labels.png"), "stdout", "--psm", "11")
+    # Keep both views: thresholding can erase thin strokes at narrow sizes.
+    return "\n".join(command("tesseract", str(work / target), "stdout", "--psm", "11")
+                     for target in ("labels.png", "full-text.png"))
 
 
 def click(x, y):
     command("xdotool", "mousemove", "--window", window, str(x), str(y))
-    command("xdotool", "click", "--window", window, "1")
+    # XTEST updates the private display's physical button state. XSendEvent
+    # (--window) cannot represent a held press to the native SDL sampler.
+    command("xdotool", "mousedown", "1")
+    time.sleep(.12)  # Keep the press visible to the native frame sampler.
+    command("xdotool", "mouseup", "1")
     time.sleep(.2)
 
 
@@ -71,12 +77,12 @@ def click_word(word):
 
 
 def key(value):
-    command("xdotool", "key", "--window", window, value)
+    command("xdotool", "key", "--clearmodifiers", value)
     time.sleep(.2)
 
 
 def type_text(value):
-    command("xdotool", "type", "--window", window, "--delay", "30", value)
+    command("xdotool", "type", "--clearmodifiers", "--delay", "30", value)
     time.sleep(.3)
 
 

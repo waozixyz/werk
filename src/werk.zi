@@ -1,9 +1,22 @@
+Layout :: #import "kryon/layout";
+Toggle :: #import "kryon/toggle";
+TextField :: #import "kryon/text_field";
+Scroll :: #import "kryon/scroll";
+Box :: #import "kryon/box";
+Text :: #import "kryon/text";
+Button :: #import "kryon/button";
+#import "kryon/text_align"
+#import "kryon/control_props"
+#import "kryon/tree_input"
+#import "kryon/tree"
+#import "kryon/session"
+#import "kryon/drawing_props"
+#import "kryon/geometry"
 // Werkzeug's own screens: the home screen of apps, the profile, and the bar
 // above the app that is open.
 #import "std/byte_text_linux"
 #import "std/text_buffer"
 #import "std/c_string"
-using UI :: #import "kryon/Widgets";
 #import "kryon/key_input"
 #import "kryon/ScrollDevice"
 #import "kryon/Theme"
@@ -121,18 +134,18 @@ WerkKeyboard :: () -> bool {
 }
 
 Label :: (session: Session, key: u64, text: string, bounds: Rectangle, font: s32) {
-    Text(session, TextProps.{.key = key, .bounds = bounds, .text = text, .font = font,
-            .wrap = TextWrap.TextWrapEllipsis})
+    Text.Draw(session, Text.Props.{.key = key, .bounds = bounds, .text = text, .size = font,
+            .wrap = Text.Wrap.TextWrapEllipsis})
 }
 
 Action :: (session: Session, id: s32, label: string, bounds: Rectangle, selected: bool) -> bool {
-    props := ButtonProps.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
+    props := Button.Props.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
         .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
     if selected {
         props.tone = ButtonTone.ButtonToneAccent
         props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
     }
-    return Button(session, props) != 0
+    return Button.Draw(session, props) != 0
 }
 
 OpenHome :: () {
@@ -159,11 +172,11 @@ TopBar :: (session: Session, viewport: Rectangle) {
     title := "Werkzeug"
     left := bar.x + 16.0
     if screen != SCREEN_HOME {
-        back := ButtonProps.{.key = cast(u64)10, .id = 10, .label = "Home",
+        back := Button.Props.{.key = cast(u64)10, .id = 10, .label = "Home",
             .bounds = Rectangle.{bar.x + 8.0, bar.y + 8.0, 40.0, 40.0},
             .icon_shape = Back.Shape, .icon_only = true,
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
-        if Button(session, back) != 0 {
+        if Button.Draw(session, back) != 0 {
             if screen == SCREEN_PROFILE && !entity_account && EntityAppBack() { return }
             if screen == SCREEN_PROFILE && entity_account {
                 entity_account = false
@@ -185,12 +198,12 @@ TopBar :: (session: Session, viewport: Rectangle) {
     Label(session, cast(u64)11, title, Rectangle.{left, bar.y + 16.0,
             bar.width - left - profile_width - 24.0, 26.0}, 20)
     if screen == SCREEN_HOME {
-        avatar := ButtonProps.{.key = cast(u64)12, .id = 12,
+        avatar := Button.Props.{.key = cast(u64)12, .id = 12,
             .label = ifx ProfileName() == "" then "Profile" else ProfileName(),
             .bounds = Rectangle.{bar.x + bar.width - profile_width - 8.0, bar.y + 8.0, profile_width, 40.0},
             .image = ProfileImage(Rectangle.{}),
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
-        if Button(session, avatar) != 0 {
+        if Button.Draw(session, avatar) != 0 {
             #if #defined(PLATFORM_WEB) {
                 // Home already saved the tool that was closed. The shared
                 // library controller has no tool records to save here.
@@ -204,7 +217,7 @@ TopBar :: (session: Session, viewport: Rectangle) {
     }
 }
 
-Home :: (session: Session, area: Rectangle, input: TextFieldInput, key: s32, modifiers: s32) {
+Home :: (session: Session, area: Rectangle, input: TextField.Input, key: s32, modifiers: s32) {
     if mini {
         opened := MiniHome(session, area)
         if opened >= 0 {
@@ -227,7 +240,7 @@ Home :: (session: Session, area: Rectangle, input: TextFieldInput, key: s32, mod
 }
 
 // Applies a text field's edit to a terminated buffer.
-ApplyEdit :: (buffer: []u8, edit: TextFieldEdit) {
+ApplyEdit :: (buffer: []u8, edit: TextField.Edit) {
     if !edit.changed {
         return
     }
@@ -273,13 +286,13 @@ ApplyEdit :: (buffer: []u8, edit: TextFieldEdit) {
     }
 }
 
-NameField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
+NameField :: (session: Session, bounds: Rectangle, input: TextField.Input) {
     #if #defined(ANDROID_BUILD) {
         if name_field.focused {
             AndroidFieldRead(30, profile.name[:], *name_field.cursor, *name_field.anchor)
         }
     }
-    props := TextFieldProps.{.key = cast(u64)30, .focus_id = 30, .bounds = bounds,
+    props := TextField.Props.{.key = cast(u64)30, .focus_id = 30, .bounds = bounds,
         .label = "Name", .placeholder = "Your name", .value = ProfileName(),
         .cursor = name_field.cursor, .anchor = name_field.anchor, .scroll_x = name_field.scroll_x,
         .focused = name_field.focused, .max_bytes = 160, .max_codepoints = PROFILE_NAME_LIMIT}
@@ -289,10 +302,10 @@ NameField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
     #if #defined(ANDROID_BUILD) {
         // The input method edits the name through Android's EditText.
         if name_field.focused {
-            props.input = TextFieldInput.{}
+            props.input = TextField.Input.{}
         }
     }
-    result := TextField(session, props)
+    result := TextField.Draw(session, props)
     if result.focused {
         focused_top = bounds.y
         focused_bottom = bounds.y + bounds.height
@@ -353,10 +366,10 @@ RevealFocusedField :: (area: Rectangle) {
     profile_height = area.height
 }
 
-ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput, key: s32, modifiers: s32) {
+ProfileScreen :: (session: Session, area: Rectangle, input: TextField.Input, key: s32, modifiers: s32) {
     if entity_account {
         width := area.width - 32.0
-        scroll := Scroll(session, ScrollProps.{.key = cast(u64)40,
+        scroll := Scroll.Draw(session, Scroll.Props.{.key = cast(u64)40,
                 .bounds = Rectangle.{area.x + 16.0, area.y, width, area.height},
                 .content_height = profile_content_height, .scroll_offset = profile_scroll})
         profile_scroll = scroll.scroll_offset
@@ -372,7 +385,7 @@ ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput, key:
     }
     index := EntityAppIndex()
     if entity_reload { ReloadApp(index); entity_reload = false }
-    container := Group(session, ColumnProps.{.key = cast(u64)69, .bounds = area})
+    container := Layout.Group(session, Layout.Props.{.key = cast(u64)69, .bounds = area})
     if !container.opened { return }
     ran := index >= 0 && RunApp(index, AppView.{.session = session, .bounds = area,
             .dark = ProfileDark(), .key = key, .modifiers = modifiers, .input = input})
@@ -391,16 +404,16 @@ ProfileScreen :: (session: Session, area: Rectangle, input: TextFieldInput, key:
 }
 
 Note :: (session: Session, key: u64, text: string, x: float32, y: float32, width: float32) {
-    Text(session, TextProps.{.key = key, .bounds = Rectangle.{x, y, width, 40.0}, .text = text, .font = 14,
-            .wrap = TextWrap.TextWrapAuto})
+    Text.Draw(session, Text.Props.{.key = key, .bounds = Rectangle.{x, y, width, 40.0}, .text = text, .size = 14,
+            .wrap = Text.Wrap.TextWrapAuto})
 }
 
 CodeText :: () -> string {
     return TextUntilNul(code_text[:])
 }
 
-CodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput, buffer: []u8) {
-    edit: TextFieldEdit
+CodeField :: (session: Session, bounds: Rectangle, input: TextField.Input, buffer: []u8) {
+    edit: TextField.Edit
     focused := false
     finished := false
     #if #defined(ANDROID_BUILD) {
@@ -409,7 +422,7 @@ CodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput, buffer
         }
     }
     {
-        props := TextFieldProps.{.key = cast(u64)31, .focus_id = 31, .bounds = bounds,
+        props := TextField.Props.{.key = cast(u64)31, .focus_id = 31, .bounds = bounds,
             .label = "Code", .placeholder = "Code from your other device", .value = CodeText(),
             .cursor = code_field.cursor, .anchor = code_field.anchor, .scroll_x = code_field.scroll_x,
             .focused = code_field.focused, .max_bytes = 20, .max_codepoints = 20}
@@ -418,10 +431,10 @@ CodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput, buffer
         }
         #if #defined(ANDROID_BUILD) {
             if code_field.focused {
-                props.input = TextFieldInput.{}
+                props.input = TextField.Input.{}
             }
         }
-        result := TextField(session, props)
+        result := TextField.Draw(session, props)
         if result.focused {
             focused_top = bounds.y
             focused_bottom = bounds.y + bounds.height
@@ -442,8 +455,8 @@ CodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput, buffer
     code_field.focused = focused && !finished
 }
 
-NodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
-    edit: TextFieldEdit
+NodeField :: (session: Session, bounds: Rectangle, input: TextField.Input) {
+    edit: TextField.Edit
     focused := false
     finished := false
     snapshot: [256]u8
@@ -454,7 +467,7 @@ NodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
     }
     {
         snapshot = node_text
-        props := TextFieldProps.{.key = cast(u64)32, .focus_id = 32, .bounds = bounds,
+        props := TextField.Props.{.key = cast(u64)32, .focus_id = 32, .bounds = bounds,
             .label = "Node", .placeholder = "https://your-node.example", .value = TextUntilNul(snapshot[:]),
             .cursor = node_field.cursor, .anchor = node_field.anchor, .scroll_x = node_field.scroll_x,
             .focused = node_field.focused, .max_bytes = 255, .max_codepoints = 255}
@@ -463,10 +476,10 @@ NodeField :: (session: Session, bounds: Rectangle, input: TextFieldInput) {
         }
         #if #defined(ANDROID_BUILD) {
             if node_field.focused {
-                props.input = TextFieldInput.{}
+                props.input = TextField.Input.{}
             }
         }
-        result := TextField(session, props)
+        result := TextField.Draw(session, props)
         if result.focused {
             focused_top = bounds.y
             focused_bottom = bounds.y + bounds.height
@@ -502,9 +515,9 @@ ForgetKeyFields :: () {
 }
 
 // A field whose value shows as dots, for the account key and passphrase.
-SecretField :: (session: Session, bounds: Rectangle, input: TextFieldInput, id: s32, state: *FieldState,
+SecretField :: (session: Session, bounds: Rectangle, input: TextField.Input, id: s32, state: *FieldState,
     label: string, placeholder: string, buffer: []u8) {
-    edit: TextFieldEdit
+    edit: TextField.Edit
     focused := false
     finished := false
     index: s64 = 0
@@ -514,7 +527,7 @@ SecretField :: (session: Session, bounds: Rectangle, input: TextFieldInput, id: 
     }
     secret_snapshot[buffer.count - 1] = cast(u8)0
     {
-        props := TextFieldProps.{.key = cast(u64)id, .focus_id = id, .bounds = bounds, .label = label,
+        props := TextField.Props.{.key = cast(u64)id, .focus_id = id, .bounds = bounds, .label = label,
             .placeholder = placeholder, .value = TextUntilNul(secret_snapshot[:]), .cursor = state.cursor,
             .anchor = state.anchor,
             .scroll_x = state.scroll_x, .focused = state.focused, .max_bytes = cast(s32)buffer.count - 1,
@@ -525,7 +538,7 @@ SecretField :: (session: Session, bounds: Rectangle, input: TextFieldInput, id: 
         if state.focused {
             props.input = input
         }
-        result := TextField(session, props)
+        result := TextField.Draw(session, props)
         if result.focused {
             focused_top = bounds.y
             focused_bottom = bounds.y + bounds.height
@@ -561,7 +574,7 @@ SaveNode :: () -> bool {
 
 // The account that syncs Auth: create one, connect to one, or connect
 // another device to it.
-SyncSection :: (session: Session, x: float32, y: float32, width: float32, input: TextFieldInput) -> float32 {
+SyncSection :: (session: Session, x: float32, y: float32, width: float32, input: TextField.Input) -> float32 {
     Heading(session, cast(u64)46, "Account", x, y, width)
     y += 32.0
     #if #defined(PLATFORM_WEB) {
@@ -640,7 +653,7 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
         y += 32.0
         enabled := AccountSyncEnabled()
         Label(session, cast(u64)83, "Sync", Rectangle.{x, y + 8.0, width - 80.0, 24.0}, 14)
-        toggle := Toggle(session, ToggleProps.{.key = cast(u64)81, .id = 81,
+        toggle := Toggle.Draw(session, Toggle.Props.{.key = cast(u64)81, .id = 81,
                 .bounds = Rectangle.{x + width - 64.0, y, 64.0, 40.0}, .label = "Sync", .value = enabled})
         if toggle.changed && SetAccountSyncEnabled(toggle.value) {
             if !toggle.value {
@@ -674,8 +687,8 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
         y += 56.0
         if phase == LinkPhase.LinkShowing {
             shown: [16]u8
-            Text(session, TextProps.{.key = cast(u64)75, .bounds = Rectangle.{x, y, width, 40.0},
-                    .text = LinkCodeText(shown[:]), .font = 28, .align = TextAlign.TextAlignCenter})
+            Text.Draw(session, Text.Props.{.key = cast(u64)75, .bounds = Rectangle.{x, y, width, 40.0},
+                    .text = LinkCodeText(shown[:]), .size = 28, .align = TextAlign.TextAlignCenter})
             y += 48.0
             Note(session, cast(u64)76,
                 "On your other device, open Profile, then Account, and enter this code. It works for 10 minutes.",
@@ -701,12 +714,12 @@ SyncSection :: (session: Session, x: float32, y: float32, width: float32, input:
     }
 }
 
-AppScreen :: (session: Session, area: Rectangle, key: s32, modifiers: s32, input: TextFieldInput) {
+AppScreen :: (session: Session, area: Rectangle, key: s32, modifiers: s32, input: TextField.Input) {
     view := AppView.{.session = session, .bounds = area, .dark = ProfileDark(), .key = key,
         .modifiers = modifiers, .input = input}
     // The app's widgets live in their own container, so their keys never
     // meet the host's.
-    container := Group(session, ColumnProps.{.key = cast(u64)69, .bounds = area})
+    container := Layout.Group(session, Layout.Props.{.key = cast(u64)69, .bounds = area})
     if !container.opened {
         return
     }
@@ -735,9 +748,9 @@ WerkFrame :: (session: Session, viewport: Rectangle) -> s32 {
     pointer := PointerSample(session)
     BeginScrollFrame(session, Vector2.{pointer.x, pointer.y}, pointer.pressed, pointer.down,
         pointer.released, PointerWheelTake(session, viewport), SteadyClock())
-    background := BoxProps.{.key = cast(u64)1, .bounds = viewport,
+    background := Box.Props.{.key = cast(u64)1, .bounds = viewport,
         .fill = ColorFromPacked(ThemePalette().background)}
-    Box(session, background)
+    Box.Draw(session, background)
     keyboard_wanted = false
     content := viewport
     // Mini Home is the tool tiles alone, without the bar.

@@ -1,33 +1,25 @@
+Spinbox :: #import "kryon/spinbox";
+Checkbox :: #import "kryon/checkbox";
+TextField :: #import "kryon/text_field";
+Scroll :: #import "kryon/scroll";
+Image :: #import "kryon/image";
+Box :: #import "kryon/box";
+Text :: #import "kryon/text";
+Button :: #import "kryon/button";
 // Pass: a stateless password generator. The same site, login, master
 // password and settings always give the same password, with no database.
-#import "session"
-#import "geometry"
-#import "text_props"
-#import "text_widget"
-#import "text_input_props"
-#import "text_field_widget"
-#import "button_props"
-#import "button_widget"
-#import "control_props"
-#import "checkbox_props"
-#import "checkbox_widget"
-#import "spinbox_props"
-#import "spinbox_widget"
-#import "box_props"
-#import "box_widget"
-#import "image_props"
-#import "image_widget"
-#import "scroll_props"
-#import "scroll_widget"
-#import "tree"
-#import "text_buffer"
-#import "utf8"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/control_props"
+#import "kryon/tree"
+#import "std/text_buffer"
+#import "std/utf8"
 #import "kryon/app_context"
 #import "kryon/app_protocol"
 #import "pass_core"
 #import "pass_state"
 #import "pass_text"
-Icon :: #import "mingcute_regular_keyhole";
+Icon :: #import "mingcute/mingcute_regular_keyhole";
 
 FieldState :: struct {
     cursor: s32
@@ -49,15 +41,15 @@ emoji: [32]u8;
 session: Session;
 
 Label :: (value: string, x: float32, y: float32, width: float32, font: s32) {
-    props: TextProps
+    props: Text.Props
     props.bounds = Rectangle.{x, y, width, cast(float32)(font + 8)}
     props.text = value
-    props.font = font
-    Text(session, props)
+    props.size = font
+    Text.Draw(session, props)
 }
 
 Action :: (id: s32, label: string, bounds: Rectangle, accent: bool, disabled: bool) -> bool {
-    props: ButtonProps
+    props: Button.Props
     props.key = cast(u64)id
     props.id = id
     props.bounds = bounds
@@ -69,10 +61,10 @@ Action :: (id: s32, label: string, bounds: Rectangle, accent: bool, disabled: bo
         props.tone = ButtonTone.ButtonToneAccent
         props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
     }
-    return Button(session, props) == 1
+    return Button.Draw(session, props) == 1
 }
 
-ApplyEdit :: (buffer: []u8, edit: TextFieldEdit) -> bool {
+ApplyEdit :: (buffer: []u8, edit: TextField.Edit) -> bool {
     if !edit.changed {
         return false
     }
@@ -121,7 +113,7 @@ Field :: (index: s32, label: string, buffer: []u8, bounds: Rectangle, secure: bo
     mask: [1024]u8
     // The views of the copies end with this block, before they are wiped.
     {
-        props: TextFieldProps
+        props: TextField.Props
         position: s32 = 0
         while position < cast(s32)buffer.count && position < 1023 {
             snapshot[position] = buffer[position]
@@ -157,7 +149,7 @@ Field :: (index: s32, label: string, buffer: []u8, bounds: Rectangle, secure: bo
         if props.focused {
             props.input = AppFieldInput()
         }
-        result := TextField(session, props)
+        result := TextField.Draw(session, props)
         fields[index].cursor = result.cursor
         fields[index].anchor = result.anchor
         fields[index].scroll_x = result.scroll_x
@@ -189,18 +181,18 @@ Codepoints :: (text: string) -> s32 {
 }
 
 Check :: (id: s32, label: string, value: bool, bounds: Rectangle) -> bool {
-    props: CheckboxProps
+    props: Checkbox.Props
     props.key = cast(u64)id
     props.id = id
     props.label = label
     props.bounds = bounds
     props.checked = value
-    return Checkbox(session, props).checked
+    return Checkbox.Draw(session, props).checked
 }
 
 Integer :: (id: s32, label: string, value: s32, low: s32, high: s32, x: float32, y: float32, width: float32) -> s32 {
     Label(label, x, y + 8.0, width - 160.0, 16)
-    props: SpinboxProps
+    props: Spinbox.Props
     props.key = cast(u64)id
     props.id = id
     props.label = label
@@ -209,7 +201,7 @@ Integer :: (id: s32, label: string, value: s32, low: s32, high: s32, x: float32,
     props.min = low
     props.max = high
     props.step = 1
-    return Spinbox(session, props).value
+    return Spinbox.Draw(session, props).value
 }
 
 CurrentOptions :: () -> PassOptions {
@@ -250,13 +242,13 @@ Fingerprint :: (x: float32, y: float32) {
         while glyph < 63 && cast(u32)master_emoji_codepoints[glyph] != decoded.value {
             glyph += 1
         }
-        props: ImageProps
+        props: Image.Props
         props.asset_path = atlas
         props.alt_text = TextView(emoji[position:decoded.after])
         props.bounds = Rectangle.{x + cast(float32)index * 28.0, y, 24.0, 24.0}
         props.source = Rectangle.{cast(float32)(glyph % 8) * 64.0, cast(float32)(glyph / 8) * 64.0, 64.0, 64.0}
         props.tint = ifx AppDark() then cast(u32)0xe8e8e8ff else cast(u32)0x202c29ff
-        Image(session, props)
+        Image.Draw(session, props)
         position = decoded.after
     }
 }
@@ -315,11 +307,11 @@ GenerateForm :: (x: float32, y: float32, width: float32) {
     y += 60.0
     Label("Generated password", x, y, width, 14)
     y += 28.0
-    props: BoxProps
+    props: Box.Props
     props.key = cast(u64)42
     props.bounds = Rectangle.{x, y, width, 54.0}
     props.radius = 8.0
-    Box(session, props)
+    Box.Draw(session, props)
     Label(ifx Generated() == "" then "Password will appear here" else Generated(), x + 10.0, y + 16.0, width - 20.0, 16)
     y += 68.0
     if Action(41, "Copy", Rectangle.{x, y, width, 40.0}, false, false) {
@@ -438,13 +430,13 @@ Draw :: () {
     if view == 2 {
         content_height = 760
     }
-    props: ScrollProps
+    props: Scroll.Props
     props.key = cast(u64)(10 + view)
     props.bounds = Rectangle.{left, area.y + 12.0, width, height}
     props.content_height = content_height
     props.scroll_offset = scroll_offsets[view]
     props.scale = 1.0
-    scroll := Scroll(session, props)
+    scroll := Scroll.Draw(session, props)
     scroll_offsets[view] = scroll.scroll_offset
     if scroll.opened {
         if view == 0 {

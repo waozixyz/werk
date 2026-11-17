@@ -7,6 +7,9 @@ set -eu
 # binary directory through GNU Make's recursive command-line environment.
 unset MAKEFLAGS MFLAGS MAKEOVERRIDES
 
+# The compiler runs in the caller's directory, so a package checkout can be
+# built as its own project; this repository only selects the compiler.
+caller=$(pwd)
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
@@ -14,6 +17,7 @@ cd "$root"
 if [ -f ziran.local.toml ]; then
     local_root=$(python3 -c 'import tomllib; print(tomllib.load(open("ziran.local.toml", "rb")).get("overrides", {}).get("ziran", ""))')
     if [ -n "$local_root" ]; then
+        cd "$caller"
         exec "$local_root/build/bin/ziran" "$@"
     fi
 fi
@@ -47,4 +51,5 @@ if [ ! -x "$ziran" ]; then
     env -u DISPLAY -u WAYLAND_DISPLAY make -j1 -C "$bootstrap" -s all >&2
 fi
 
+cd "$caller"
 exec "$ziran" "$@"

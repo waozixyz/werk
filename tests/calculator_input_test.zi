@@ -1,5 +1,5 @@
 Calculator :: #import "calculator";
-#import "kryon/text_input_props"
+TextField :: #import "kryon/text_field";
 
 pressed: s32;
 typed: string;
@@ -7,7 +7,7 @@ typed: string;
 #program_export
 AppKeyHost :: () -> s32 { return pressed }
 #program_export
-AppFieldInputHost :: () -> TextFieldInput { return .{.text = typed} }
+AppFieldInputHost :: () -> TextField.Input { return .{.text = typed} }
 
 #program_export
 main :: () -> s32 {

@@ -16,8 +16,13 @@ stage = work / "install with spaces"
 share = stage / "share"
 desktop = stage / "Desktop"
 library = stage / "lib/werk"
-subprocess.run(["make", "install-gui", f"BIN_DIR={stage / 'bin'}", f"DATA_DIR={share}",
-                f"LIB_DIR={library}", f"DESKTOP_DIR={desktop}"], cwd=root, check=True)
+prebuilt = ["-o", "gui"] if os.environ.get("WERK_TEST_PREBUILT") == "1" else []
+build_environment = dict(os.environ, XDG_CACHE_HOME=os.environ["WERK_TEST_BUILD_CACHE"])
+for key in ("MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES"):
+    build_environment.pop(key, None)
+subprocess.run(["make", *prebuilt, "install-gui", f"ZIRAN={os.environ['WERK_TEST_ZIRAN']}",
+                f"BIN_DIR={stage / 'bin'}", f"DATA_DIR={share}", f"LIB_DIR={library}",
+                f"DESKTOP_DIR={desktop}"], cwd=root, env=build_environment, check=True)
 environment = dict(os.environ, HOME=str(work / "home"), WERK_DATA=str(work / "data"),
                    WERK_ASSETS=str(library), ENTITY_DATA=str(work / "entity"),
                    XDG_DATA_HOME=str(share), XDG_CONFIG_HOME=str(work / "config"),

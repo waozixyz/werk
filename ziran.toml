@@ -2,19 +2,19 @@
 tool = "kryon"
 name = "Werkzeug"
 entry = "src/desktop.zi"
-module_roots = ["src", "apps/pass"]
+module_roots = ["src", "apps/pass", "apps/calculator", "apps/clock"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "03e01d08d9f12a68693294a3bd12f6c758290e45"
+ref = "e0367fa9c5731dcf9bb84ed7f3d294570d8c0bda"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "addec5e14fa446e8b66a9480c4d4b277a0d76a9f"
+ref = "3f72441949d4e16094834fa9220e5d7fa77a0ac0"
 
 [dependencies.apps]
 git = "https://github.com/waozixyz/apps.git"
-ref = "fec5af055eda9bcc2a2d5a0002a7857bd5cc6a26"
+ref = "0d726f2a96f7a2d6ae209a29e69ff3dd44c16ee4"
 
 [install]
 bin = "werk"
@@ -50,11 +50,11 @@ source = true
 
 [dependencies.entity]
 git = "https://github.com/waozixyz/entity.git"
-ref = "2d12bfca10e09e83ac540cc5fd85299b8438150a"
+ref = "9414cb898e3203a598570beb85353067fb92471b"
 
 [dependencies.auth]
 git = "https://github.com/waozixyz/auth.git"
-ref = "52a9105fa3b57b25cf304bfdeeb7c3f064e6a918"
+ref = "e5a723713bf197b263444529ed55de5b96dd6ced"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
@@ -62,4 +62,4 @@ ref = "master"
 
 [dependencies.workbook]
 git = "https://github.com/kryonlabs/workbook.git"
-ref = "ff3e9f7d1baf3a907304ed3c87ea9fdb37e3e814"
+ref = "020c932232782d5f4526910a183fcb65b67b1e30"

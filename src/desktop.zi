@@ -1,10 +1,13 @@
+#import "kryon/tree_input"
+#import "kryon/tree"
+#import "kryon/session"
 #import "werk"
 #import "apps"
 #import "std/c_string"
 #import "std/byte_text_linux"
 Command :: #import "command";
-Desktop :: #import "kryon/Desktop";
-using UI :: #import "kryon/Widgets";
+Desktop :: #import "kryon/desktop_runtime";
+Capture :: #import "kryon/Cairo";
 #import "kryon/Frame"
 #import "kryon/mini_embed"
 
@@ -119,23 +122,16 @@ main :: (argc: s32, argv: **u8) -> s32 {
         }
     }
     ok: bool = true
-    if Desktop.CaptureRequested() {
+    if Capture.CaptureRequested() {
         ok = DrawDesktop(session)
         if ok {
-            ok = Desktop.CaptureConfigured()
+            ok = Capture.CaptureConfigured()
         }
     } else {
         while ok && Desktop.PollDesktop() {
-            KeyboardModifiersSend(session, Desktop.DesktopModifiers())
-            key := Desktop.DesktopPressedKey()
-            if key != 0 {
-                KeyboardSend(session, key)
-            }
-            codepoint := Desktop.DesktopTypedCodepoint()
-            while codepoint != 0 {
-                TypedCodepointSend(session, codepoint)
-                codepoint = Desktop.DesktopTypedCodepoint()
-            }
+            key, modifiers := Desktop.DesktopInputTake(session)
+            KeyboardModifiersSend(session, modifiers)
+            if key != 0 { KeyboardSend(session, key) }
             ok = DrawDesktop(session)
             if Desktop.WindowTakeCloseRequestHost() {
                 break

@@ -1,3 +1,5 @@
+TextField :: #import "kryon/text_field";
+#import "kryon/key_input"
 // On Android a framework EditText owns the input method (composition,
 // autocorrect, suggestions). The focused text field of whichever app is
 // open is kept in step with it; every other widget call goes straight to
@@ -9,7 +11,6 @@
 #import "kryon/widget_codec"
 #import "kryon/widget_host"
 Names :: #import "kryon/bundle_names";
-using UI :: #import "kryon/Widgets";
 #import "android_input"
 
 using HostValueKind;
@@ -48,7 +49,7 @@ Characters :: (text: string) -> s32 {
 AndroidWidgetCall :: (context: *void, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
     // Package builds qualify the module name, as Kryon's own host matches it.
-    if count != 2 || !Names.ModuleName(TextFromCString(module), "text_field_widget") ||
+    if count != 2 || !Names.ModuleName(TextFromCString(module), "textfield") ||
     TextFromCString(function) != "TextFieldHostedHost" || !WidgetValidTextFieldProps(arguments[1]) {
         return WidgetHostCall(context, module, function, arguments, count, result)
     }
@@ -82,7 +83,7 @@ AndroidWidgetCall :: (context: *void, module: *u8, function: *u8,
     blur := props.input.blur
     commit := props.input.commit
     escape := props.input.escape
-    props.input = TextFieldInput.{}
+    props.input = TextField.Input.{}
     props.input.focus = focus
     props.input.blur = blur
     props.input.commit = commit
@@ -94,7 +95,7 @@ AndroidWidgetCall :: (context: *void, module: *u8, function: *u8,
     answer := WidgetDecodeTextFieldResult(result.*, *result_codec)
     value := original
     if changed {
-        answer.edit = TextFieldEdit.{.start = 0, .end = cast(s32)original.count, .replacement = typed, .changed = true}
+        answer.edit = TextField.Edit.{.start = 0, .end = cast(s32)original.count, .replacement = typed, .changed = true}
         value = typed
     }
     AndroidTextSubmit(props.focus_id, value, answer.cursor, answer.anchor, props.secure)

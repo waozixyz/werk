@@ -64,9 +64,9 @@ SecurePollHost :: (output: []u8) -> s32 {
 }
 
 // The rest of the Werkzeug interface, which Pass's state does not use.
-#import "session"
-#import "geometry"
-#import "text_input_props"
+#import "kryon/session"
+#import "kryon/geometry"
+TextField :: #import "kryon/text_field";
 #program_export
 AppModeHost :: () -> s32 { return 0 }
 #program_export
@@ -82,7 +82,7 @@ AppKeyHost :: () -> s32 { return 0 }
 #program_export
 AppModifiersHost :: () -> s32 { return 0 }
 #program_export
-AppFieldInputHost :: () -> TextFieldInput { return TextFieldInput.{} }
+AppFieldInputHost :: () -> TextField.Input { return TextField.Input.{} }
 #program_export
 AppKeyboardHost :: (visible: bool) {}
 #program_export

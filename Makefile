@@ -6,21 +6,27 @@ unexport ZIRAN_ROOT KRYON_DIR RAYLIB_DIR MINGCUTE_DIR LIBOQS_DIR MONOCYPHER_DIR 
 # Local overrides refer to the real root repositories. Published builds
 # require the exact versions recorded in the committed lock.
 LOCK_FLAGS := $(if $(wildcard ziran.local.toml),,--locked)
-ZIRAN_ROOT = $(shell $(ZIRAN) pkg path ziran $(LOCK_FLAGS))
-KRYON_DIR = $(shell $(ZIRAN) pkg path kryon $(LOCK_FLAGS))
 RAYLIB_DIR = $(shell $(ZIRAN) pkg path raylib $(LOCK_FLAGS))/src
-MINGCUTE_DIR = $(shell $(ZIRAN) pkg path mingcute $(LOCK_FLAGS))
+# Package resolution may build its compiler. Do not pass this make's target
+# overrides or jobserver descriptors to that independent package build.
+PACKAGE_ZIRAN = env -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(ZIRAN)
+ZIRAN_ROOT = $(shell $(PACKAGE_ZIRAN) pkg path ziran $(LOCK_FLAGS))
+KRYON_DIR = $(shell $(PACKAGE_ZIRAN) pkg path kryon $(LOCK_FLAGS))
+MINGCUTE_DIR = $(shell $(PACKAGE_ZIRAN) pkg path mingcute $(LOCK_FLAGS))
 # Account sync: ML-DSA-44 account keys from liboqs, and Ed25519, X25519,
 # BLAKE2b and XChaCha20-Poly1305 from Monocypher.
-LIBOQS_DIR = $(shell $(ZIRAN) pkg path liboqs $(LOCK_FLAGS))
-MONOCYPHER_DIR = $(shell $(ZIRAN) pkg path monocypher $(LOCK_FLAGS))
-QRCODE_DIR = $(shell $(ZIRAN) pkg path qrcode $(LOCK_FLAGS))
-WORKBOOK_DIR = $(shell $(ZIRAN) pkg path workbook $(LOCK_FLAGS))
-ENTITY_DIR = $(shell $(ZIRAN) pkg path entity $(LOCK_FLAGS))
-APPS_DIR = $(shell $(ZIRAN) pkg path apps $(LOCK_FLAGS))
+LIBOQS_DIR = $(shell $(PACKAGE_ZIRAN) pkg path liboqs $(LOCK_FLAGS))
+MONOCYPHER_DIR = $(shell $(PACKAGE_ZIRAN) pkg path monocypher $(LOCK_FLAGS))
+QRCODE_DIR = $(shell $(PACKAGE_ZIRAN) pkg path qrcode $(LOCK_FLAGS))
+WORKBOOK_DIR = $(shell $(PACKAGE_ZIRAN) pkg path workbook $(LOCK_FLAGS))
+ENTITY_DIR = $(shell $(PACKAGE_ZIRAN) pkg path entity $(LOCK_FLAGS))
+APPS_DIR = $(shell $(PACKAGE_ZIRAN) pkg path apps $(LOCK_FLAGS))
 # Auth is its own package; SHA-256 and PBKDF2 come from the crypto package.
-AUTH_DIR = $(shell $(ZIRAN) pkg path auth $(LOCK_FLAGS))
-CRYPTO_DIR = $(shell $(ZIRAN) pkg path crypto $(LOCK_FLAGS))
+AUTH_DIR = $(shell $(PACKAGE_ZIRAN) pkg path auth $(LOCK_FLAGS))
+CRYPTO_DIR = $(shell $(PACKAGE_ZIRAN) pkg path crypto $(LOCK_FLAGS))
+# Qualified entries retain each package's import aliases while using the
+# consumer's locked compiler, UI library and runtime.
+PACKAGE_ID = $(shell python3 -c 'import json; print(json.load(open("ziran.lock"))["root"]["dependencies"]["$(1)"])')
 LIBOQS_FLAGS := -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=OFF -DOQS_BUILD_ONLY_LIB=ON \
 	-DOQS_USE_OPENSSL=OFF -DOQS_DIST_BUILD=OFF -DOQS_OPT_TARGET=generic '-DOQS_MINIMAL_BUILD=SIG_ml_dsa_44;KEM_ml_kem_768'
 MONOCYPHER_SOURCES = $(MONOCYPHER_DIR)/src/monocypher.c $(MONOCYPHER_DIR)/src/optional/monocypher-ed25519.c
@@ -59,38 +65,35 @@ PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zx) build/apps/auth.zx build/apps/enti
 APP_BUNDLES := $(PORTABLE_BUNDLES)
 CRYPTO_SOURCES = $(wildcard $(CRYPTO_DIR)/src/*.zi)
 APPS_UI_SOURCES = $(wildcard $(APPS_DIR)/src/*.zi $(APPS_DIR)/ui/*.zi $(APPS_DIR)/ui/locales/*.json)
-APP_MODULE_PATHS = --module-path crypto=$(CRYPTO_DIR)/src --module-path kryon=$(KRYON_DIR)/src/backend --module-path kryon=$(KRYON_DIR)/src/ui --module-path $(KRYON_DIR)/src/ui --module-path $(MINGCUTE_DIR)/src --module-path $(ZIRAN_ROOT)/std
 apps: $(APP_BUNDLES)
 portable-apps: $(PORTABLE_BUNDLES)
 # Compile the shared screen with the host's compiler and UI library. The
 # reviewed payload must match both the build pin and the native host pin.
 build/apps/apps.zx: $(APPS_UI_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock apps-controller.sha256 Makefile scripts/ziran.sh
 	mkdir -p $(@D)
-	python3 '$(APPS_DIR)/scripts/generate-ui-locales.py' --check
-	$(ZIRAN) bundle --root $(APPS_DIR)/ui --module-path $(APPS_DIR)/src $(APP_MODULE_PATHS) \
-		--define KRYON_HOSTED_UI --entry apps:Main -o $@ $(APPS_DIR)/ui/apps.zi
-	sha256sum $@ | cut -d ' ' -f 1 > $(@D)/apps.sha256
+	python3 '$(APPS_DIR)/scripts/build-ui.py' --project $(CURDIR) --output $(abspath $(@D)) \
+		--compiler $(if $(findstring /,$(ZIRAN)),$(abspath $(ZIRAN)),$(ZIRAN))
 	test "$$(cat $(@D)/apps.sha256)" = "$$(cat apps-controller.sha256)"
 .SECONDEXPANSION:
 build/apps/%.zx: $$(wildcard apps/$$*/*.zi apps/$$*/assets/*) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
 	mkdir -p $(@D)
-	$(ZIRAN) bundle --root . --module-path apps/$* $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERK_APP \
+	$(ZIRAN) bundle $(PROJECT) --root . --define KRYON_HOSTED_UI --define WERK_APP \
 		$(if $(wildcard apps/$*/assets),--asset-dir assets=apps/$*/assets) --entry $*:Main -o $@ apps/$*/$*.zi
 
 build/apps/auth.zx: $(wildcard $(AUTH_DIR)/src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile scripts/ziran.sh
 	mkdir -p $(@D)
-	$(ZIRAN) bundle --root $(AUTH_DIR) --module-path $(AUTH_DIR)/src $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI --define WERK_APP \
-		--entry auth:Main -o $@ $(AUTH_DIR)/src/auth.zi
+	$(ZIRAN) bundle $(PROJECT) --root $(AUTH_DIR)/src --define KRYON_HOSTED_UI --define WERK_APP \
+		--entry $(call PACKAGE_ID,auth)_auth:Main -o $@ $(AUTH_DIR)/src/auth.zi
 
 build/apps/workbook.zx: $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile
 	mkdir -p $(@D)
-	$(ZIRAN) bundle --root $(WORKBOOK_DIR) --module-path $(WORKBOOK_DIR)/src $(APP_MODULE_PATHS) \
-		--module-path kryon=$(KRYON_DIR)/src/backend --define KRYON_HOSTED_UI --entry app:Main -o $@ $(WORKBOOK_DIR)/src/app.zi
+	$(ZIRAN) bundle $(PROJECT) --root $(WORKBOOK_DIR)/src \
+		--define KRYON_HOSTED_UI --entry $(call PACKAGE_ID,workbook)_app:Main -o $@ $(WORKBOOK_DIR)/src/app.zi
 
-build/apps/entity.zx: $(ENTITY_SOURCES) $(LIBRARY_SOURCES) $(ZIRAN_RUNTIME_SOURCES) ziran.lock Makefile
+build/apps/entity.zx: $(ENTITY_SOURCES) ziran.lock Makefile
 	mkdir -p $(@D)
-	$(ZIRAN) bundle --root $(ENTITY_DIR) --module-path $(ENTITY_DIR)/src $(APP_MODULE_PATHS) --define KRYON_HOSTED_UI \
-		--module-path qrcode=$(QRCODE_DIR)/src --asset-dir assets=$(ENTITY_DIR)/assets --entry entity:Main -o $@ $(ENTITY_DIR)/src/entity.zi
+	$(ZIRAN) bundle $(PROJECT) --root $(ENTITY_DIR)/src --define KRYON_HOSTED_UI \
+		--asset-dir assets=$(ENTITY_DIR)/assets --entry $(call PACKAGE_ID,entity)_entity:Main -o $@ $(ENTITY_DIR)/src/entity.zi
 
 # The portable bundle runtime the host links, built from the locked Ziran.
 .PHONY: runtime-cache-force
@@ -155,7 +158,7 @@ gui-test: gui
 	python3 scripts/private-display.py python3 scripts/apps_gui_test.py
 	sh scripts/werk_gui_test.sh
 	python3 scripts/private-display.py python3 scripts/workbook_gui_test.py
-	python3 scripts/private-display.py python3 scripts/launcher_gui_test.py
+	WERK_TEST_ZIRAN="$(ZIRAN)" python3 scripts/private-display.py python3 scripts/launcher_gui_test.py
 	sh scripts/migration_test.sh
 	python3 -I scripts/auth_command_test.py
 	python3 scripts/private-display.py python3 scripts/auth_gui_test.py
@@ -164,13 +167,14 @@ gui-test: gui
 WEB_AR ?= $(dir $(WEB_CC))emar
 build/web-runtime/.toolchain: runtime-cache-force scripts/runtime_cache.py
 	python3 scripts/runtime_cache.py "$(ZIRAN_ROOT)" "$(abspath build/web-runtime)"
-build/web-runtime/libziran.a: ziran.lock build/web-runtime/.toolchain
-	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BOOTSTRAP=1 BUILD_DIR=$(abspath build/web-runtime) \
+build/web-runtime/libziran.a: Makefile ziran.lock build/web-runtime/.toolchain
+	env -u DISPLAY -u WAYLAND_DISPLAY -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(MAKE) -C $(ZIRAN_ROOT) BOOTSTRAP=0 BUILD_DIR=$(abspath build/web-runtime) \
+		GEN_ZI2C=$(ZIRAN_ROOT)/build/bin/zi2c BOOTSTRAP_BIN=$(ZIRAN_ROOT)/build/bootstrap/bin/zi2c \
 		CC=$(WEB_CC) AR=$(WEB_AR) OBJCOPY=true CFLAGS=-O2 $(abspath $@)
 build/generated/browser/.complete: $(wildcard src/*.zi) $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(CRYPTO_SOURCES) $(LIBRARY_SOURCES) ziran.toml ziran.lock
 	rm -rf $(@D)
 	mkdir -p $(@D)
-	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target=c -o $(@D) src/browser.zi
+	$(ZIRAN) build $(PROJECT) --define PLATFORM_WEB --target-os web --target-cpu wasm32 --target=c -o $(@D) src/browser.zi
 	touch $@
 build/web-app/index.js: build/generated/browser/.complete build/web-runtime/libziran.a $(PORTABLE_BUNDLES) build/pfp.webp $(TOOL_ICONS) assets/app/icon.png assets/fonts/NotoSans-Regular.ttf
 	mkdir -p $(@D)

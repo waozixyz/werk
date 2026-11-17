@@ -5,29 +5,25 @@ set -eu
 ziran=${1:?pass the ziran command}
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
+case "$ziran" in
+    /*) ;;
+    */*) ziran="$root/$ziran" ;;
+esac
 ziran_root=$("$ziran" pkg path ziran)
-kryon=$("$ziran" pkg path kryon)
-mingcute=$("$ziran" pkg path mingcute)
-# Auth runs its own tests from its package, with the hashes from crypto.
+# Test Auth in its canonical package graph, as the portable app builds.
 auth=$("$ziran" pkg path auth)
-crypto=$("$ziran" pkg path crypto)
 mkdir -p build/app-logic-test
-"$ziran" bundle --root "$auth" --module-path "$auth/src" --module-path "crypto=$crypto/src" --module-path "$ziran_root/std" \
-    --entry totp_test:Run -o build/app-logic-test/totp.zx "$auth/tests/totp_test.zi"
-test "$("$ziran" run build/app-logic-test/totp.zx)" = 0
-"$ziran" bundle --root "$auth" --module-path "$auth/src" --module-path "crypto=$crypto/src" --module-path "$ziran_root/std" \
-    --entry exports_test:Run -o build/app-logic-test/exports.zx "$auth/tests/exports_test.zi"
-test "$("$ziran" run build/app-logic-test/exports.zx)" = 0
-"$ziran" bundle --root . --module-path apps/calculator --module-path "$ziran_root/std" \
-    --entry arithmetic_test:Run -o build/app-logic-test/arithmetic.zx apps/calculator/arithmetic_test.zi
+for name in totp exports; do
+    (cd "$auth" && "$ziran" bundle --project --locked --entry "${name}_test:Run" \
+        -o "$root/build/app-logic-test/$name.zx" "tests/${name}_test.zi")
+    test "$("$ziran" run "build/app-logic-test/$name.zx")" = 0
+done
+"$ziran" bundle --project --root . --entry arithmetic_test:Run \
+    -o build/app-logic-test/arithmetic.zx apps/calculator/arithmetic_test.zi
 test "$("$ziran" run build/app-logic-test/arithmetic.zx)" = 0
-set -- --root tests --module-path apps/calculator \
-    --module-path "kryon=$kryon/src/backend" --module-path "kryon=$kryon/src/ui" \
-    --module-path "$kryon/src/ui" --module-path "$mingcute/src" --module-path "$ziran_root/std" \
-    --entry calculator_input_test:main
+set -- --project --root . --module-path tests --entry calculator_input_test:main
 "$ziran" bundle "$@" --define KRYON_HOSTED_UI \
-    --bind app_context:AppKeyHost=calculator_input_test:AppKeyHost \
-    --bind app_context:AppFieldInputHost=calculator_input_test:AppFieldInputHost \
+    --bind-host calculator_input_test \
     -o build/app-logic-test/input.zx tests/calculator_input_test.zi
 test "$("$ziran" run build/app-logic-test/input.zx)" = 42
 "$ziran" build "$@" --target=c -o build/app-logic-test/input-c tests/calculator_input_test.zi

@@ -1,18 +1,16 @@
+Text :: #import "kryon/text";
+Button :: #import "kryon/button";
 // Clock: the local time and date, and a stopwatch that keeps running while
 // the app is closed.
-#import "session"
-#import "geometry"
-#import "text_props"
-#import "text_align"
-#import "text_widget"
-#import "button_props"
-#import "button_widget"
-#import "control_props"
-#import "text_buffer"
-#import "number_text"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/text_align"
+#import "kryon/control_props"
+#import "std/text_buffer"
+#import "std/number_text"
 #import "kryon/app_context"
 #import "kryon/app_protocol"
-Icon :: #import "mingcute_regular_time";
+Icon :: #import "mingcute/mingcute_regular_time";
 
 VIEW_CLOCK :: 0
 VIEW_STOPWATCH :: 1
@@ -205,18 +203,18 @@ SaveStopwatch :: () {
 }
 
 Big :: (key: u64, text: string, area: Rectangle, y: float32, font: s32) {
-    Text(session, TextProps.{.key = key, .bounds = Rectangle.{area.x + 16.0, y, area.width - 32.0, cast(float32)(font + 16)},
-            .text = text, .font = font, .align = TextAlign.TextAlignCenter})
+    Text.Draw(session, Text.Props.{.key = key, .bounds = Rectangle.{area.x + 16.0, y, area.width - 32.0, cast(float32)(font + 16)},
+            .text = text, .size = font, .align = TextAlign.TextAlignCenter})
 }
 
 Action :: (id: s32, label: string, bounds: Rectangle, accent: bool) -> bool {
-    props := ButtonProps.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
+    props := Button.Props.{.key = cast(u64)id, .id = id, .bounds = bounds, .label = label,
         .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}
     if accent {
         props.tone = ButtonTone.ButtonToneAccent
         props.emphasis = ButtonEmphasis.ButtonEmphasisFilled
     }
-    return Button(session, props) != 0
+    return Button.Draw(session, props) != 0
 }
 
 Draw :: () {

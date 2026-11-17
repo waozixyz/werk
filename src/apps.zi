@@ -1,3 +1,7 @@
+TextField :: #import "kryon/text_field";
+#import "kryon/tree_input"
+#import "kryon/session"
+#import "kryon/geometry"
 // Runs the Werkzeug apps. Each app is its own bundle: the host checks every
 // capability it asks for, answers its calls and draws its widgets into the
 // host's session. An app's files, assets and secret belong to it alone.
@@ -12,7 +16,6 @@
 #import "kryon/hosted_values"
 #import "kryon/widget_codec"
 #import "kryon/widget_host"
-using UI :: #import "kryon/Widgets";
 #import "kryon/app_protocol"
 #import "kryon/app_context_host"
 #import "kryon/app_local"
@@ -73,7 +76,7 @@ AppView :: struct {
     dark: bool
     key: s32
     modifiers: s32
-    input: TextFieldInput
+    input: TextField.Input
 }
 
 apps: [APP_LIMIT]App;
