@@ -14,7 +14,7 @@ codes, calculate and keep time in one free, open-source app.
 ## Your everyday tools
 
 - **Pass:** generate the same password from your site, login, master password and settings. Save profiles without keeping a password database.
-- **Auth:** keep two-factor sign-in codes together. Import existing accounts, rename them and copy a code when you need it.
+- **Auth:** keep two-factor sign-in codes together. Tap anywhere on a card to copy its current code, or use Edit to change the account.
 - **Calculator:** everyday arithmetic and scientific functions, with a keypad or keyboard.
 - **Clock:** see the local time and use a stopwatch that keeps running while the app is closed.
 - **Workbook:** edit spreadsheets on Linux, Android and the web, with formulas, sheet tabs and portable workbook files.

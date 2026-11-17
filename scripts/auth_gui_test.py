@@ -7,10 +7,11 @@ import hmac
 import os
 import re
 import shutil
+import statistics
 import struct
 import subprocess
 import time
-from PIL import Image
+from PIL import Image, ImageOps
 
 assert os.environ.get("WERK_TEST_PRIVATE_DISPLAY") == "1", "Use private-display.py"
 root = Path(__file__).resolve().parents[1]
@@ -52,15 +53,47 @@ def capture(name):
     return target
 
 
-def read_code(image, bounds, name):
+def read_code(image, bounds, name, expected_codes=None):
     target = output / f"{name}.png"
     with Image.open(image) as frame:
-        region = frame.crop(bounds)
-        region.resize((region.width * 4, region.height * 4)).save(target)
-    text = command("tesseract", str(target), "stdout", "--psm", "7",
-                   "-c", "tessedit_char_whitelist=0123456789 ").strip()
-    assert " " in text, f"No grouping space in {name}: {text!r}"
-    return re.sub(r"\s", "", text)
+        region = frame.crop(bounds).convert("L")
+        if region.getpixel((0, 0)) < 128:
+            region = ImageOps.invert(region)
+        region = ImageOps.autocontrast(region)
+    # Small preview glyphs differ between installed fonts, and Tesseract reads
+    # a large current-code 5 as 0 or 9 at some scales. Require an exact
+    # independently computed RFC code from real OCR, with no digit substitution.
+    first = None
+    variants = ((scale, threshold) for scale in (6, 3, 4) for threshold in (None, 150, 110, 190))
+    for scale, threshold in variants:
+        variant = region.resize((region.width * scale, region.height * scale), Image.Resampling.LANCZOS)
+        if threshold is not None:
+            variant = variant.point(lambda value: 255 if value > threshold else 0)
+        variant.save(target)
+        text = command("tesseract", str(target), "stdout", "--psm", "7",
+                       "-c", "preserve_interword_spaces=1",
+                       "-c", "tessedit_char_whitelist=0123456789 ").strip()
+        if first is None:
+            first = text
+        if expected_codes is None or re.sub(r"\s", "", text) in expected_codes:
+            break
+    else:
+        raise AssertionError(f"{name}: OCR {first!r}, expected one of {sorted(expected_codes)}")
+    digits = re.sub(r"\s", "", text)
+    if " " not in text:
+        # OCR sometimes joins a real grouping space. Character positions
+        # must still show the extra gaps separating each group of three digits.
+        boxes = command("tesseract", str(target), "stdout", "--psm", "7",
+                        "-c", "tessedit_char_whitelist=0123456789", "makebox")
+        centers = [(int(parts[1]) + int(parts[3])) / 2
+                   for line in boxes.splitlines()
+                   if len(parts := line.split()) == 6 and parts[0].isdigit()]
+        assert len(centers) == len(digits) and len(digits) in (6, 8), boxes
+        steps = [right - left for left, right in zip(centers, centers[1:])]
+        separators = set(range(2, len(steps), 3))
+        ordinary = [step for index, step in enumerate(steps) if index not in separators]
+        assert all(steps[index] > statistics.median(ordinary) + 6 for index in separators), f"No visible grouping gap in {name}: {steps}"
+    return digits
 
 
 def stop():
@@ -98,15 +131,45 @@ try:
             for label, bounds, offset in (
                     ("current", (32, 184 + y, 236, 230 + y), 0),
                     ("next", (234, 207 + y, 380, 234 + y), period)):
-                actual = read_code(image, bounds, f"{label}-{row}-{dark}")
-                assert actual in {expected(secret, at + offset, digits, period)
-                                  for at in (before, after)}, (row, label, actual)
-        before = time.time()
-        command("xdotool", "mousemove", "--window", window, "100", "210")
-        command("xdotool", "click", "--window", window, "1")
-        time.sleep(0.3)
-        copied = command("xclip", "-selection", "clipboard", "-o").strip()
-        assert copied in {expected(key, at, 6, 10) for at in (before, time.time())}, copied
+                wanted = {expected(secret, at + offset, digits, period) for at in (before, after)}
+                actual = read_code(image, bounds, f"{label}-{row}-{dark}", wanted)
+                assert actual in wanted, (row, label, actual)
+        # Background, title, account, current code, preview and bottom padding.
+        for x, y in ((20, 124), (70, 146), (70, 169), (100, 210), (340, 220), (390, 244)):
+            subprocess.run(["xclip", "-selection", "clipboard", "-i"],
+                           input="fixture-before-card", text=True, env=environment,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=True, timeout=20)
+            before = time.time()
+            command("xdotool", "mousemove", "--window", window, str(x), str(y))
+            command("xdotool", "click", "1")
+            time.sleep(0.15)
+            copied = command("xclip", "-selection", "clipboard", "-o")
+            assert re.fullmatch(r"[0-9]{6}", copied), (x, y, copied)
+            assert copied in {expected(key, at, 6, 10) for at in (before, time.time())}, (x, y, copied)
+        # Edit remains independently clickable and never overwrites the clipboard.
+        before_edit = copied
+        command("xdotool", "mousemove", "--window", window, "370", "146")
+        command("xdotool", "click", "1")
+        time.sleep(0.2)
+        assert command("xclip", "-selection", "clipboard", "-o") == before_edit
+        edit_image = capture("edit-dark" if dark else "edit-light")
+        text = command("tesseract", str(edit_image), "stdout", "--psm", "11")
+        assert "Remove account" in text, text
+        # Sparse-page OCR skips small labels inside filled buttons. Read the
+        # actual action in isolation, with enough contrast in either theme.
+        cancel_image = output / f"cancel-{dark}.png"
+        with Image.open(edit_image) as frame:
+            action = frame.crop((214, 252, 404, 292)).convert("L")
+            if dark:
+                action = ImageOps.invert(action)
+            action.resize((action.width * 6, action.height * 6)).save(cancel_image)
+        assert command("tesseract", str(cancel_image), "stdout", "--psm", "7").strip() == "Cancel"
+        command("xdotool", "mousemove", "--window", window, "309", "272")
+        command("xdotool", "click", "1")
+        time.sleep(0.2)
+        returned = capture(f"after-cancel-{dark}")
+        assert re.fullmatch(r"[0-9]{6}", read_code(returned, (32, 184, 236, 230), f"returned-{dark}"))
         if dark:
             # The short fixture period exercises both colours and a new cycle.
             seen = set()
