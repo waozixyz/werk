@@ -1,0 +1,359 @@
+// Real read-only Android Storage Access Framework gallery, entirely in Ziran.
+// A separate native Fragment class avoids replacing the workbook callback.
+#import "android"
+#import "kryon/android_jni"
+#import "android_dispatch"
+#import "files"
+#import "std/file"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/number_text"
+Model :: #import "gallery_model";
+DocumentDex :: #import "android_document_dex";
+Images :: #import "android_images";
+
+GalleryCallback :: #type (*JniEnv, *void, s32, s32, *void) -> void #c_call;
+GalleryNative :: struct { name: *u8; signature: *u8; callback: GalleryCallback }
+REQUEST :: 6502
+picker_state: s32;
+selected_intent: *void;
+
+IntCall :: (env: *JniEnv, object: *void, name: string, signature: string, args: []JniValue) -> s32 {
+    method := Method(env, object, name, signature, false)
+    if method == null { return -1 }
+    result := env.functions.CallIntMethodA(env, object, method, *args[0])
+    if !JniOk(env) { return -1 }
+    return result
+}
+
+Selected :: (env: *JniEnv, fragment: *void, request: s32, result: s32, intent: *void) {
+    if request != REQUEST { return }
+    UiLock()
+    if picker_state == 2 {
+        if result == -1 && intent != null {
+            selected_intent = env.functions.NewGlobalRef(env, intent)
+            picker_state = ifx selected_intent != null then 3 else 5
+        } else { picker_state = 4 }
+    }
+    UiUnlock()
+    empty := NoArguments()
+    manager := ObjectCall(env, fragment, "getFragmentManager", "()Landroid/app/FragmentManager;", empty[:])
+    transaction := ObjectCall(env, manager, "beginTransaction", "()Landroid/app/FragmentTransaction;", empty[:])
+    args: [1]JniValue = .[ArgumentObject(fragment)]
+    unused ObjectCall(env, transaction, "remove", "(Landroid/app/Fragment;)Landroid/app/FragmentTransaction;", args[:])
+    unused IntCall(env, transaction, "commitAllowingStateLoss", "()I", empty[:])
+}
+
+Fragment :: (env: *JniEnv) -> *void {
+    bytes: [1024]u8
+    length := DocumentDex.DocumentPickerDex(env, bytes[:])
+    if length <= 0 { return null }
+    original := "DocumentPicker"; replacement := "GalleryPickerX"
+    for at: 0..length - original.count {
+        matches := true
+        for index: 0..original.count - 1 { if bytes[at + index] != original[index] { matches = false } }
+        if matches { for index: 0..replacement.count - 1 { bytes[at + index] = replacement[index] } }
+    }
+    length = DexSeal(env, bytes[:], length)
+    klass := DexClass(env, bytes[:], length, "gallery-picker-v1.dex", "xyz.waozi.pass.GalleryPickerX")
+    if klass == null { return null }
+    label: [32]u8; signature: [64]u8
+    unused CopyCString("onActivityResult", label[:]); unused CopyCString("(IILandroid/content/Intent;)V", signature[:])
+    methods: [1]GalleryNative = .[GalleryNative.{*label[0], *signature[0], Selected}]
+    if env.functions.RegisterNatives(env, klass, cast(*void)*methods[0], 1) != 0 || !JniOk(env) { return null }
+    unused CopyCString("<init>", label[:]); unused CopyCString("()V", signature[:])
+    constructor := env.functions.GetMethodID(env, klass, *label[0], *signature[0])
+    empty := NoArguments()
+    if constructor == null { unused JniOk(env); return null }
+    return env.functions.NewObjectA(env, klass, constructor, *empty[0])
+}
+
+OpenUi :: (env: *JniEnv, task: *void) {
+    unused task
+    fragment := Fragment(env)
+    // UiRun invokes this callback with UiLock held.
+    if fragment == null { picker_state = 5; return }
+    empty := NoArguments()
+    manager := ObjectCall(env, JniGetAndroidApp().activity.activity, "getFragmentManager", "()Landroid/app/FragmentManager;", empty[:])
+    transaction := ObjectCall(env, manager, "beginTransaction", "()Landroid/app/FragmentTransaction;", empty[:])
+    args: [2]JniValue
+    args[0] = ArgumentObject(fragment); args[1] = ArgumentObject(TextObject(env, "werk-gallery-picker"))
+    unused ObjectCall(env, transaction, "add", "(Landroid/app/Fragment;Ljava/lang/String;)Landroid/app/FragmentTransaction;", args[:])
+    // A successful transaction outside the back stack returns -1. Failure
+    // is a missing method or JNI exception, not that back-stack identifier.
+    commit := Method(env, transaction, "commitAllowingStateLoss", "()I", false)
+    if commit == null { picker_state = 5; return }
+    unused env.functions.CallIntMethodA(env, transaction, commit, *empty[0])
+    if !JniOk(env) { picker_state = 5; return }
+    if !BoolCall(env, manager, "executePendingTransactions", "()Z", empty[:]) { picker_state = 5; return }
+    args[0] = ArgumentObject(TextObject(env, "android.intent.action.OPEN_DOCUMENT_TREE"))
+    intent := NewObject(env, "android/content/Intent", "(Ljava/lang/String;)V", args[:])
+    args[0] = ArgumentInteger(1 | 64 | 128)
+    unused ObjectCall(env, intent, "addFlags", "(I)Landroid/content/Intent;", args[:])
+    args[0] = ArgumentObject(TextObject(env, "android.intent.extra.LOCAL_ONLY")); args[1] = ArgumentBool(true)
+    unused ObjectCall(env, intent, "putExtra", "(Ljava/lang/String;Z)Landroid/content/Intent;", args[:])
+    args[0] = ArgumentObject(intent); args[1] = ArgumentInteger(REQUEST)
+    if !VoidCall(env, fragment, "startActivityForResult", "(Landroid/content/Intent;I)V", args[:]) { picker_state = 5 }
+}
+
+Choose :: () -> bool {
+    UiLock()
+    if picker_state == 1 || picker_state == 2 { UiUnlock(); return true }
+    picker_state = 1
+    UiUnlock()
+    return true
+}
+
+// Only Android's built-in local document providers; never a cloud provider.
+LocalUri :: (env: *JniEnv, uri: *void) -> bool {
+    empty := NoArguments()
+    authority := ObjectCall(env, uri, "getAuthority", "()Ljava/lang/String;", empty[:])
+    text: [128]u8
+    if CopyJavaText(env, authority, text[:]) <= 0 { return false }
+    name := TextUntilNul(text[:])
+    return name == "com.android.externalstorage.documents" || name == "com.android.providers.media.documents" || name == "com.android.providers.downloads.documents"
+}
+Uri :: (env: *JniEnv, text: string) -> *void {
+    args: [1]JniValue = .[ArgumentObject(TextObject(env, text))]
+    return StaticCall(env, "android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", args[:])
+}
+TreeId :: (env: *JniEnv, tree: *void) -> *void {
+    args: [1]JniValue = .[ArgumentObject(tree)]
+    return StaticCall(env, "android/provider/DocumentsContract", "getTreeDocumentId", "(Landroid/net/Uri;)Ljava/lang/String;", args[:])
+}
+DocumentUri :: (env: *JniEnv, tree: *void, id: *void) -> *void {
+    args: [2]JniValue = .[ArgumentObject(tree), ArgumentObject(id)]
+    return StaticCall(env, "android/provider/DocumentsContract", "buildDocumentUriUsingTree", "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;", args[:])
+}
+
+// 0 still pending, 1 persistent local root selected, 2 cancelled, -1 failed.
+Poll :: (output: []u8) -> s32 {
+    UiLock()
+    state := picker_state
+    if state == 1 { picker_state = 2 }
+    intent := selected_intent
+    if state >= 3 { picker_state = 0; selected_intent = null }
+    UiUnlock()
+    if state == 1 {
+        // The editor can still own the shared UI dispatcher this frame.
+        // Keep the user's request queued instead of reporting a read error.
+        if !UiSchedule(OpenUi) { UiLock(); picker_state = 1; UiUnlock() }
+        return 0
+    }
+    if state <= 2 { return 0 }
+    if state == 4 { return 2 }
+    if state != 3 || intent == null { return -1 }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 {
+        // Retain the result for another poll if the render thread cannot
+        // attach yet; do not leak or lose the granted result reference.
+        UiLock(); picker_state = 3; selected_intent = intent; UiUnlock()
+        return 0
+    }
+    defer { AndroidJniDetachCurrent(*session) }
+    env := session.env
+    defer { env.functions.DeleteGlobalRef(env, intent) }
+    empty := NoArguments()
+    uri := ObjectCall(env, intent, "getData", "()Landroid/net/Uri;", empty[:])
+    if uri == null || !LocalUri(env, uri) { return -1 }
+    resolver := ObjectCall(env, session.activity, "getContentResolver", "()Landroid/content/ContentResolver;", empty[:])
+    args: [2]JniValue = .[ArgumentObject(uri), ArgumentInteger(1)]
+    if !VoidCall(env, resolver, "takePersistableUriPermission", "(Landroid/net/Uri;I)V", args[:]) { return -1 }
+    text := ObjectCall(env, uri, "toString", "()Ljava/lang/String;", empty[:])
+    return ifx CopyJavaText(env, text, output) > 0 then 1 else -1
+}
+
+Column :: (env: *JniEnv, cursor: *void, name: string) -> s32 {
+    args: [1]JniValue = .[ArgumentObject(TextObject(env, name))]
+    return IntCall(env, cursor, "getColumnIndex", "(Ljava/lang/String;)I", args[:])
+}
+Cell :: (env: *JniEnv, cursor: *void, column: s32, output: []u8) -> bool {
+    if column < 0 { return false }
+    args: [1]JniValue = .[ArgumentInteger(column)]
+    value := ObjectCall(env, cursor, "getString", "(I)Ljava/lang/String;", args[:])
+    return CopyJavaText(env, value, output) >= 0
+}
+
+List :: (grant: string, location: string, listing: *Model.Listing) -> bool {
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return false }
+    defer { AndroidJniDetachCurrent(*session) }
+    env := session.env
+    tree := Uri(env, grant)
+    if !LocalUri(env, tree) { return false }
+    current := Uri(env, location)
+    args: [5]JniValue
+    args[0] = ArgumentObject(current)
+    id := ifx grant == location then TreeId(env, tree) else StaticCall(env, "android/provider/DocumentsContract", "getDocumentId", "(Landroid/net/Uri;)Ljava/lang/String;", args[:])
+    args[0] = ArgumentObject(tree); args[1] = ArgumentObject(id)
+    children := StaticCall(env, "android/provider/DocumentsContract", "buildChildDocumentsUriUsingTree", "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;", args[:])
+    empty := NoArguments()
+    resolver := ObjectCall(env, session.activity, "getContentResolver", "()Landroid/content/ContentResolver;", empty[:])
+    args[0] = ArgumentObject(children); args[1] = ArgumentObject(null)
+    cursor := ObjectCall(env, resolver, "query", "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;", args[:])
+    if cursor == null { return false }
+    defer { unused VoidCall(env, cursor, "close", "()V", empty[:]) }
+    name_column := Column(env, cursor, "_display_name")
+    mime_column := Column(env, cursor, "mime_type")
+    id_column := Column(env, cursor, "document_id")
+    if name_column < 0 || mime_column < 0 || id_column < 0 { return false }
+    expected_rows := IntCall(env, cursor, "getCount", "()I", empty[:])
+    if expected_rows < 0 { return false }
+    visited: s32 = 0
+    while BoolCall(env, cursor, "moveToNext", "()Z", empty[:]) {
+        visited += 1
+        // Release every per-row reference; a large album never fills JNI's table.
+        if env.functions.PushLocalFrame(env, 16) != 0 { unused JniOk(env); return false }
+        name: [256]u8; mime: [128]u8; document: [1024]u8; path: [1024]u8
+        if Cell(env, cursor, name_column, name[:]) && Cell(env, cursor, mime_column, mime[:]) && Cell(env, cursor, id_column, document[:]) {
+            folder := TextUntilNul(mime[:]) == "vnd.android.document/directory"
+            filename := TextUntilNul(name[:])
+            if filename != "" && filename[0] != #char "." && (folder || Model.ImageName(filename)) {
+                uri := DocumentUri(env, tree, TextObject(env, TextUntilNul(document[:])))
+                text := ObjectCall(env, uri, "toString", "()Ljava/lang/String;", empty[:])
+                if CopyJavaText(env, text, path[:]) > 0 { unused Model.Add(listing, filename, TextUntilNul(path[:]), folder) }
+            }
+        }
+        unused env.functions.PopLocalFrame(env, null)
+    }
+    return visited == expected_rows && JniOk(env)
+}
+
+// Read a human folder title from its granted document, never a cloud service.
+Title :: (grant: string, output: []u8) {
+    unused CopyCString("Selected folder", output)
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return }
+    defer { AndroidJniDetachCurrent(*session) }
+    env := session.env
+    tree := Uri(env, grant)
+    if !LocalUri(env, tree) { return }
+    id := TreeId(env, tree)
+    fallback: [1024]u8
+    if CopyJavaText(env, id, fallback[:]) > 0 {
+        name := TextUntilNul(fallback[:])
+        start: s64 = 0
+        for at: 0..name.count - 1 { if name[at] == #char "/" || name[at] == #char ":" { start = at + 1 } }
+        if start < name.count { unused CopyCString(name[start:], output) }
+    }
+    uri := DocumentUri(env, tree, id)
+    empty := NoArguments()
+    resolver := ObjectCall(env, session.activity, "getContentResolver", "()Landroid/content/ContentResolver;", empty[:])
+    args: [5]JniValue
+    args[0] = ArgumentObject(uri)
+    cursor := ObjectCall(env, resolver, "query", "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;", args[:])
+    if cursor == null { return }
+    defer { unused VoidCall(env, cursor, "close", "()V", empty[:]) }
+    if !BoolCall(env, cursor, "moveToFirst", "()Z", empty[:]) { return }
+    unused Cell(env, cursor, Column(env, cursor, "_display_name"), output)
+}
+
+// Thirty-two private, on-demand cache slots, at most 64 MiB apiece. Neither
+// originals nor grants are exposed to another app or to account sync.
+cache_uri: [32][1024]u8;
+cache_path: [32][1024]u8;
+cache_epoch: s64;
+asset_error: s32;
+Forget :: (index: s32) {
+    slot := index % 32
+    {
+        previous := TextUntilNul(cache_path[slot][:])
+        if previous != "" { Images.Forget(previous); unused RemoveFile(previous) }
+    }
+    cache_uri[slot][0] = cast(u8)0; cache_path[slot][0] = cast(u8)0
+}
+Asset :: (root: string, uri_text: string, index: s32, filename: string) -> string {
+    asset_error = Model.IMAGE_READ_ERROR
+    slot := index % 32
+    if TextUntilNul(cache_uri[slot][:]) == uri_text && PathExists(TextUntilNul(cache_path[slot][:])) { return TextUntilNul(cache_path[slot][:]) }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return "" }
+    defer { AndroidJniDetachCurrent(*session) }
+    env := session.env
+    uri := Uri(env, uri_text)
+    if !LocalUri(env, uri) { return "" }
+    empty := NoArguments()
+    resolver := ObjectCall(env, session.activity, "getContentResolver", "()Landroid/content/ContentResolver;", empty[:])
+    args: [1]JniValue = .[ArgumentObject(uri)]
+    stream := ObjectCall(env, resolver, "openInputStream", "(Landroid/net/Uri;)Ljava/io/InputStream;", args[:])
+    if stream == null { return "" }
+    defer { unused VoidCall(env, stream, "close", "()V", empty[:]) }
+    // Unique paths per entry prevent a cached thumbnail showing another photo.
+    name: [48]u8; number: [24]u8
+    epoch_bytes: [24]u8
+    cache_epoch += 1
+    epoch := FormatInteger(cache_epoch, epoch_bytes[:])
+    label := FormatInteger(cast(s64)index, number[:])
+    unused CopyCString(epoch, name[:])
+    name[epoch.count] = #char "-"
+    for at: 0..label.count - 1 { name[epoch.count + 1 + at] = label[at] }
+    label_size := epoch.count + 1 + label.count
+    dot: s64 = -1
+    for at: 0..filename.count - 1 { if filename[at] == #char "." { dot = at } }
+    if dot < 0 || filename.count - dot > 6 { return "" }
+    for at: dot..filename.count - 1 { name[label_size + at - dot] = filename[at] }
+    name[label_size + filename.count - dot] = cast(u8)0
+    {
+        previous := TextUntilNul(cache_path[slot][:])
+        if previous != "" { Images.Forget(previous); unused RemoveFile(previous) }
+    }
+    cache: [1024]u8
+    cache_root := PathJoin(cache[:], root, "cache")
+    if !EnsureDirectory(cache_root) { return "" }
+    unused PathJoin(cache_path[slot][:], cache_root, TextUntilNul(name[:]))
+    path := TextUntilNul(cache_path[slot][:])
+    unused RemoveFile(path)
+    cache_uri[slot][0] = cast(u8)0
+    file := OpenExclusivePrivate(path)
+    if !file.valid { return "" }
+    good := false
+    defer { unused CloseFile(file); if !good { unused RemoveFile(path) } }
+    buffer := env.functions.NewByteArray(env, 8192)
+    read := Method(env, stream, "read", "([B)I", false)
+    if buffer == null || read == null { return "" }
+    args[0] = ArgumentObject(buffer)
+    bytes: [8192]u8
+    used: s64 = 0
+    while true {
+        count := env.functions.CallIntMethodA(env, stream, read, *args[0])
+        if !JniOk(env) { return "" }
+        if count < 0 { break }
+        if count <= 0 || count > 8192 { return "" }
+        if used + count > Model.IMAGE_BYTE_LIMIT { asset_error = Model.IMAGE_LIMIT_ERROR; return "" }
+        env.functions.GetByteArrayRegion(env, buffer, 0, count, *bytes[0])
+        if !JniOk(env) || WriteAt(file, bytes[:count], used) != count { return "" }
+        used += count
+    }
+    if used == 0 { return "" }
+    good = true
+    asset_error = 0
+    unused CopyCString(uri_text, cache_uri[slot][:])
+    return path
+}
+
+ResetCache :: (root: string) {
+    cache_epoch += 1
+    cache: [1024]u8
+    cache_root := PathJoin(cache[:], root, "cache")
+    cursor := OpenDirectory(cache_root)
+    if cursor.valid {
+        while true {
+            entry := NextDirectoryEntry(*cursor)
+            if !entry.valid { break }
+            name := TextUntilNul(entry.name[:])
+            // Only Gallery's disposable cache directory, never source media.
+            if Model.ImageName(name) {
+                path: [1024]u8
+                unused RemoveFile(PathJoin(path[:], cache_root, name))
+            }
+        }
+        unused CloseDirectory(*cursor)
+    }
+    for slot: 0..31 {
+        {
+            path := TextUntilNul(cache_path[slot][:])
+            if path != "" { unused RemoveFile(path) }
+        }
+        cache_uri[slot][0] = cast(u8)0; cache_path[slot][0] = cast(u8)0
+    }
+}

@@ -1,0 +1,16 @@
+[package]
+name = "werk-gallery"
+entry = "gallery.zi"
+module_roots = ["."]
+
+[toolchain]
+git = "https://github.com/ziranlang/ziran.git"
+ref = "e0367fa9c5731dcf9bb84ed7f3d294570d8c0bda"
+
+[dependencies.kryon]
+git = "https://github.com/kryonlabs/kryon.git"
+ref = "3f72441949d4e16094834fa9220e5d7fa77a0ac0"
+
+[dependencies.mingcute]
+git = "https://github.com/kryonlabs/mingcute.git"
+ref = "master"

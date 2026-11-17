@@ -137,7 +137,7 @@ owns a headless API 31 Google APIs emulator, including Workbook's system documen
 CI also retains API 30 input, profile and in-place update coverage through
 `make android-profile-test`.
 
-Linux installs include separate Pass, Auth, Calculator, Clock and Workbook
+Linux installs include separate Pass, Auth, Calculator, Clock, Workbook and Gallery
 launchers, each with its own icon. They open the selected tool directly and
 share Werkzeug's existing private data. `make install-gui` also adds shortcuts
 to the desktop folder configured by `xdg-user-dir`; set `DESKTOP_DIR=` to skip

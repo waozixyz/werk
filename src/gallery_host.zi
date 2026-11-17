@@ -1,0 +1,335 @@
+// Werk's local-only folder grant. Call Configure once with DataRoot(), then
+// dispatch gallery.local.v1 only for the bundled Gallery. No synced storage.
+Model :: #import "gallery_model"
+#import "files"
+#import "std/file"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/number_text"
+#if #defined(ANDROID_BUILD) {
+    AndroidGallery :: #import "android_gallery";
+    AndroidImages :: #import "android_images";
+} else #if !#defined(PLATFORM_WEB) {
+    Tree :: #import "std/file_tree_linux";
+}
+
+state: Model.Listing;
+grant: [PATH_LIMIT]u8;
+location: [PATH_LIMIT]u8;
+private_root: [PATH_LIMIT]u8;
+response: [PATH_LIMIT]u8;
+resolved: [Model.LIMIT][PATH_LIMIT]u8;
+previews: [Model.LIMIT][PATH_LIMIT]u8;
+asset_errors: [Model.LIMIT]s32;
+root_title: [256]u8;
+album_titles: [64][256]u8;
+configured: bool;
+status: string = "empty";
+// Navigation is bounded and never climbs outside the selected root.
+parents: [64][PATH_LIMIT]u8;
+depth: s32;
+
+GalleryHostConfigure :: (data_root: string) {
+    if configured { return }
+    configured = true
+    own := PathJoin(private_root[:], data_root, "gallery")
+    if own == "" || !EnsureDirectory(own) { status = "error"; return }
+    saved: [PATH_LIMIT]u8
+    path: [PATH_LIMIT]u8
+    if ReadPrivate(PathJoin(path[:], own, "location.txt"), saved[:]) > 0 {
+        #if #defined(ANDROID_BUILD) {
+            unused CopyCString(TextUntilNul(saved[:]), grant[:])
+            unused CopyCString(TextUntilNul(saved[:]), location[:])
+            AndroidGallery.Title(TextUntilNul(saved[:]), root_title[:])
+            Refresh()
+        } else #if !#defined(PLATFORM_WEB) {
+            unused GrantDesktop(TextUntilNul(saved[:]), false)
+        }
+    }
+}
+
+SaveGrant :: (candidate: string) -> bool {
+    path: [PATH_LIMIT]u8
+    if !EnsureDirectory(TextUntilNul(private_root[:])) { return false }
+    return WritePrivate(PathJoin(path[:], TextUntilNul(private_root[:]), "location.txt"), candidate)
+}
+
+// Persist the candidate before changing any active album state.
+CommitGrant :: (candidate: string, save: bool) -> bool {
+    if save && !SaveGrant(candidate) { status = "save-error"; return false }
+    unused CopyCString(candidate, grant[:]); unused CopyCString(candidate, location[:]); depth = 0
+    #if #defined(ANDROID_BUILD) {
+        AndroidGallery.Title(candidate, root_title[:])
+    }
+    Refresh()
+    return status == "ready" || status == "limited"
+}
+
+Breadcrumb :: () -> string {
+    unused CopyCString(TextUntilNul(root_title[:]), response[:])
+    for index: 0..depth - 1 {
+        used := TextUntilNul(response[:]).count
+        label := TextUntilNul(album_titles[index][:])
+        if used + label.count + 4 >= PATH_LIMIT { break }
+        response[used] = #char " "; response[used + 1] = #char "/"; response[used + 2] = #char " "
+        for at: 0..label.count - 1 { response[used + 3 + at] = label[at] }
+        response[used + 3 + label.count] = cast(u8)0
+    }
+    return TextUntilNul(response[:])
+}
+
+Refresh :: () {
+    state.count = 0; state.truncated = false
+    for index: 0..Model.LIMIT - 1 { resolved[index][0] = cast(u8)0; previews[index][0] = cast(u8)0; asset_errors[index] = 0 }
+    #if #defined(ANDROID_BUILD) {
+        AndroidGallery.ResetCache(TextUntilNul(private_root[:]))
+    }
+    if location[0] == cast(u8)0 { status = "empty"; return }
+    #if #defined(ANDROID_BUILD) {
+        if !AndroidGallery.List(TextUntilNul(grant[:]), TextUntilNul(location[:]), *state) { state.count = 0; status = "error"; return }
+    } else #if !#defined(PLATFORM_WEB) {
+        path := TextUntilNul(location[:])
+        // Recheck the canonical boundary on every enumeration, including a
+        // replaced directory. Skip symlinks rather than following them.
+        canonical_bytes: [4096]u8
+        canonical := Canonical(path, canonical_bytes[:])
+        if canonical != path || !Model.Within(TextUntilNul(grant[:]), canonical) { status = "error"; return }
+        cursor := OpenDirectory(path)
+        if !cursor.valid { status = "error"; return }
+        defer { unused CloseDirectory(*cursor) }
+        while true {
+            entry := NextDirectoryEntry(*cursor)
+            if !entry.valid { break }
+            name := TextUntilNul(entry.name[:])
+            if name == "" || name[0] == #char "." { continue }
+            child: [PATH_LIMIT]u8
+            full := PathJoin(child[:], path, name)
+            info := Tree.PathStatus(full, false)
+            folder := info.kind == .Directory
+            if folder || (info.kind == .File && Model.ImageName(name)) { unused Model.Add(*state, name, full, folder) }
+        }
+        if cursor.failed { state.count = 0; status = "error"; return }
+    } else {
+        status = "unavailable"
+        return
+    }
+    status = ifx state.truncated then "limited" else "ready"
+}
+
+#if !#defined(ANDROID_BUILD) && !#defined(PLATFORM_WEB) {
+    GalleryC :: #system_library "libc";
+    RealPath :: (path: *u8, output: *u8) -> *u8 #foreign GalleryC "realpath";
+    Canonical :: (path: string, output: []u8) -> string {
+        input: [4096]u8
+        if output.count < 4096 || !CopyCString(path, input[:]) || RealPath(*input[0], *output[0]) == null { return "" }
+        return TextUntilNul(output)
+    }
+    Pipe :: (fds: *s32) -> s32 #foreign GalleryC "pipe";
+    Fork :: () -> s32 #foreign GalleryC "fork";
+    Dup :: (fd: s32, target: s32) -> s32 #foreign GalleryC "dup2";
+    Close :: (fd: s32) -> s32 #foreign GalleryC "close";
+    PickerRead :: (fd: s32, bytes: *u8, count: usize) -> isize #foreign GalleryC "read";
+    Exec :: (file: *u8, args: **u8) -> s32 #foreign GalleryC "execvp";
+    Exit :: (code: s32) #foreign GalleryC "_exit";
+    Wait :: (pid: s32, result: *s32, flags: s32) -> s32 #foreign GalleryC "waitpid";
+    Flags :: (fd: s32, command: s32, value: s32) -> s32 #foreign GalleryC "fcntl";
+    #if #defined(__APPLE__) {
+        Errno :: () -> *s32 #foreign GalleryC "__error";
+        NONBLOCK :: 4
+    } else {
+        Errno :: () -> *s32 #foreign GalleryC "__errno_location";
+        NONBLOCK :: 2048
+    }
+    Arg :: struct { value: *u8 }
+    picker: s32;
+    picker_fd: s32 = -1;
+
+    GrantDesktop :: (path: string, save: bool) -> bool {
+        canonical_bytes: [4096]u8
+        canonical := Canonical(path, canonical_bytes[:])
+        if canonical == "" || canonical.count >= PATH_LIMIT || Tree.PathStatus(canonical, false).kind != .Directory { status = "error"; return false }
+        return CommitGrant(canonical, save)
+    }
+
+    Choose :: () {
+        if picker > 0 { return }
+        fds: [2]s32
+        if Pipe(*fds[0]) != 0 { status = "error"; return }
+        // The GUI has worker threads. Prepare argv before fork so the child
+        // calls only async-signal-safe OS functions before exec.
+        program: [16]u8; selection: [32]u8; directory: [32]u8; title: [64]u8
+        unused CopyCString("zenity", program[:]); unused CopyCString("--file-selection", selection[:])
+        unused CopyCString("--directory", directory[:]); unused CopyCString("--title=Choose a local photo folder", title[:])
+        args: [5]Arg = .[Arg.{*program[0]}, Arg.{*selection[0]}, Arg.{*directory[0]}, Arg.{*title[0]}, Arg.{null}]
+        pid := Fork()
+        if pid == 0 {
+            unused Close(fds[0])
+            if Dup(fds[1], 1) < 0 { Exit(127) }
+            unused Close(fds[1])
+            unused Exec(*program[0], cast(**u8)*args[0]); Exit(127)
+        }
+        unused Close(fds[1])
+        if pid < 0 { unused Close(fds[0]); status = "error"; return }
+        unused Flags(fds[0], 4, NONBLOCK)
+        picker = pid; picker_fd = fds[0]; status = "pending"
+    }
+    Poll :: () {
+        if picker <= 0 { return }
+        code: s32
+        done := Wait(picker, *code, 1)
+        if done == 0 || (done < 0 && Errno().* == 4) { return }
+        picker = 0
+        if done < 0 || (code & 127) != 0 || ((code >> 8) & 255) != 0 {
+            unused Close(picker_fd); picker_fd = -1
+            status = ifx done > 0 && ((code >> 8) & 255) == 1 && (code & 127) == 0 then "cancelled" else "error"
+            if done > 0 && ((code >> 8) & 255) == 127 && (code & 127) == 0 { status = "chooser-missing" }
+            return
+        }
+        chosen: [PATH_LIMIT]u8
+        size := PickerRead(picker_fd, *chosen[0], cast(usize)(PATH_LIMIT - 1))
+        unused Close(picker_fd); picker_fd = -1
+        if size <= 1 || size >= PATH_LIMIT - 1 { status = "error"; return }
+        if chosen[size - 1] != #char "\n" { status = "error"; return }
+        chosen[size - 1] = cast(u8)0
+        unused GrantDesktop(TextUntilNul(chosen[:]), true)
+    }
+}
+
+#if !#defined(PLATFORM_WEB) {
+    ProbeImage :: (path: string) -> s32 {
+        file := OpenRead(path)
+        if !file.valid { return Model.IMAGE_READ_ERROR }
+        defer { unused CloseFile(file) }
+        length := FileSize(file)
+        if length > Model.IMAGE_BYTE_LIMIT { return Model.IMAGE_LIMIT_ERROR }
+        if length < 0 { return Model.IMAGE_READ_ERROR }
+        bytes: [32]u8
+        if ReadAt(file, bytes[:], 0) < 30 { return Model.IMAGE_FORMAT_ERROR }
+        if bytes[0] == 255 && bytes[1] == 216 {
+            offset: s64 = 2
+            for segment: 0..1023 {
+                unused segment
+                if offset + 4 > length || ReadAt(file, bytes[:4], offset) != 4 || bytes[0] != 255 { return Model.IMAGE_FORMAT_ERROR }
+                marker := bytes[1]
+                if marker == 255 { offset += 1; continue }
+                if marker == 217 || marker == 218 { return Model.IMAGE_FORMAT_ERROR }
+                if marker == 216 || marker == 1 || (marker >= 208 && marker <= 215) { offset += 2; continue }
+                size := Model.Big16(bytes[:], 2)
+                if size < 2 || offset + 2 + size > length { return Model.IMAGE_FORMAT_ERROR }
+                if marker >= 192 && marker <= 207 && marker != 196 && marker != 200 && marker != 204 {
+                    if size < 8 || ReadAt(file, bytes[:9], offset) != 9 { return Model.IMAGE_FORMAT_ERROR }
+                    return Model.PixelError(Model.Dimensions.{Model.Big16(bytes[:], 7), Model.Big16(bytes[:], 5)})
+                }
+                offset += size + 2
+            }
+            return Model.IMAGE_FORMAT_ERROR
+        }
+        return Model.PixelError(Model.HeaderDimensions(bytes[:]))
+    }
+}
+
+// The host must apply this only to Gallery's own widgets. Exact enumerated
+// items are checked again; arbitrary paths and sibling-prefix escapes fail.
+GalleryAssetAllowed :: (path: string) -> bool {
+    if path == "" { return true }
+    for index: 0..state.count - 1 {
+        if !state.entries[index].folder && (TextUntilNul(resolved[index][:]) == path || TextUntilNul(previews[index][:]) == path) {
+            #if #defined(ANDROID_BUILD) {
+                return PathExists(ifx path.count >= 8 && path[path.count - 8:] == ".preview" then path[:path.count - 8] else path)
+            } else {
+                return Asset(cast(s32)index) == path
+            }
+        }
+    }
+    return false
+}
+
+Asset :: (index: s32, preview: bool = false) -> string {
+    if index < 0 || index >= state.count || state.entries[index].folder { return "" }
+    if asset_errors[index] != 0 { return "" }
+    path := TextUntilNul(state.entries[index].path[:])
+    #if #defined(ANDROID_BUILD) {
+        value := AndroidGallery.Asset(TextUntilNul(private_root[:]), path, index, TextUntilNul(state.entries[index].name[:]))
+        if value == "" { asset_errors[index] = AndroidGallery.asset_error; return "" }
+        asset_errors[index] = ProbeImage(value)
+        if asset_errors[index] != 0 { return "" }
+        rendered := AndroidImages.Prepare(value, preview)
+        if preview { unused CopyCString(rendered, previews[index][:]); return TextUntilNul(previews[index][:]) }
+        unused CopyCString(rendered, resolved[index][:]); return TextUntilNul(resolved[index][:])
+    } else #if !#defined(PLATFORM_WEB) {
+        canonical_bytes: [4096]u8
+        canonical := Canonical(path, canonical_bytes[:])
+        if canonical != path || !Model.Within(TextUntilNul(grant[:]), path) || Tree.PathStatus(path, false).kind != .File { asset_errors[index] = Model.IMAGE_READ_ERROR; return "" }
+        asset_errors[index] = ProbeImage(path)
+        if asset_errors[index] != 0 { return "" }
+        unused CopyCString(path, resolved[index][:]); return path
+    }
+    return ""
+}
+
+GalleryHostService :: (request: string) -> string {
+    if !configured { return "error" }
+    if request == "choose" {
+        #if #defined(ANDROID_BUILD) {
+            if AndroidGallery.Choose() { status = "pending" } else { status = "error" }
+        } else #if !#defined(PLATFORM_WEB) {
+            Choose()
+        } else {
+            status = "unavailable"
+        }
+    }
+    if request == "poll" {
+        #if #defined(ANDROID_BUILD) {
+            picked: [PATH_LIMIT]u8
+            result := AndroidGallery.Poll(picked[:])
+            if result == 1 {
+                unused CommitGrant(TextUntilNul(picked[:]), true)
+            } else if result == 2 { status = "cancelled" } else if result == -1 { status = "error" }
+        } else #if !#defined(PLATFORM_WEB) {
+            Poll()
+        }
+    }
+    if request == "refresh" { Refresh() }
+    if request == "up" && depth > 0 {
+        depth -= 1; unused CopyCString(TextUntilNul(parents[depth][:]), location[:]); Refresh()
+    }
+    if request.count > 6 && request[:6] == "enter:" {
+        index := Model.Index(request[6:])
+        if index >= 0 && index < state.count && state.entries[index].folder && depth < 64 {
+            unused CopyCString(TextUntilNul(location[:]), parents[depth][:])
+            unused CopyCString(TextUntilNul(state.entries[index].name[:]), album_titles[depth][:]); depth += 1
+            unused CopyCString(TextUntilNul(state.entries[index].path[:]), location[:]); Refresh()
+        } else { status = "error" }
+    }
+    if request == "location" {
+        #if #defined(ANDROID_BUILD) {
+            return ifx location[0] == cast(u8)0 then "Choose a local folder" else Breadcrumb()
+        }
+        return TextUntilNul(location[:])
+    }
+    if request == "count" { return FormatInteger(cast(s64)state.count, response[:]) }
+    if request == "can-up" { return ifx depth > 0 then "yes" else "no" }
+    if request.count > 12 && request[:12] == "asset-error:" {
+        index := Model.Index(request[12:])
+        if index < 0 || index >= state.count { return "" }
+        return Model.ImageError(asset_errors[index])
+    }
+    if request.count > 6 && request[:6] == "retry:" {
+        index := Model.Index(request[6:])
+        if index >= 0 && index < state.count {
+            asset_errors[index] = 0; resolved[index][0] = cast(u8)0; previews[index][0] = cast(u8)0
+            #if #defined(ANDROID_BUILD) {
+                AndroidGallery.Forget(index)
+            }
+        }
+    }
+    if request.count > 5 && request[4] == #char ":" {
+        index := Model.Index(request[5:])
+        if index < 0 || index >= state.count { return "" }
+        if request[:5] == "name:" { return TextUntilNul(state.entries[index].name[:]) }
+        if request[:5] == "kind:" { return ifx state.entries[index].folder then "folder" else "image" }
+    }
+    if request.count > 6 && request[:6] == "asset:" { return Asset(Model.Index(request[6:])) }
+    if request.count > 6 && request[:6] == "thumb:" { return Asset(Model.Index(request[6:]), true) }
+    return status
+}

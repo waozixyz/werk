@@ -14,6 +14,7 @@ icons = {
     "auth": ("regular/system/shield.svg", "#146B58"),
     "calculator": ("regular/education/counter.svg", "#245F9B"),
     "clock": ("regular/system/time.svg", "#9A4F19"),
+    "gallery": ("regular/files/photo_album.svg", "#8251A0"),
     "workbook": ("extra/table_row_add.svg", "#356B30"),
 }
 for app, (relative, color) in icons.items():

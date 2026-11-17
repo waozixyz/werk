@@ -39,6 +39,8 @@ TextField :: #import "kryon/text_field";
     AndroidImages :: #import "android_images";
 }
 
+Gallery :: #import "gallery_host";
+
 Spreadsheet :: #import "workbook/service";
 Font :: #import "kryon/font_metrics";
 Json :: #import "std/json_scan";
@@ -53,7 +55,7 @@ using HostValueKind;
 APP_LIMIT :: 8
 APP_STORE_LIMIT :: 262144
 // The preinstalled apps, in their home screen order.
-BUNDLED_APPS :: 5
+BUNDLED_APPS :: 6
 
 App :: struct {
     id: [128]u8
@@ -116,6 +118,7 @@ AppServiceAllowed :: (context: *void, name: string) -> bool {
     #if !#defined(ANDROID_BUILD) {
         if name == "app.bundle.export.v1" { return true }
     }
+    if name == "gallery.local.v1" { return app.bundled && id == "gallery" }
     if name == "entity.assets" || name == "entity.management" { return id == "entity" }
     if name == "media.asset" || name == "media.query" || name == "media.pick" {
         return AppLocalAllows(cast(*void)(*app.local), name)
@@ -317,6 +320,11 @@ AppCall :: (context: *void, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
     app := cast(*App)context
     name := TextFromCString(function)
+    if app.bundled && TextUntilNul(app.id[:]) == "gallery" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "gallery.local.v1" {
+        Gallery.GalleryHostConfigure(DataRoot())
+        ReturnText(result, Gallery.GalleryHostService(ArgumentText(arguments[1])))
+        return 1
+    }
     if TextUntilNul(app.id[:]) == "entity" && name == "AppServiceHost" && count == 2 && ArgumentText(arguments[0]) == "entity.assets" {
         ReturnText(result, TextUntilNul(app.asset_folder[:]))
         return 1
@@ -492,6 +500,9 @@ AssetAllowed :: (path: string) -> bool {
     if running < 0 {
         return false
     }
+    if apps[running].bundled && TextUntilNul(apps[running].id[:]) == "gallery" {
+        return Gallery.GalleryAssetAllowed(path)
+    }
     documents := TextUntilNul(apps[running].document_root[:])
     if documents != "" && path.count > documents.count + 1 &&
     path[:documents.count] == documents && path[documents.count] == cast(u8)47 {
@@ -589,7 +600,7 @@ LoadApp :: (id: string, path: string) -> bool {
 }
 
 LoadApps :: () {
-    ids: [BUNDLED_APPS]string = .["pass", "auth", "calculator", "clock", "workbook"]
+    ids: [BUNDLED_APPS]string = .["pass", "auth", "calculator", "clock", "workbook", "gallery"]
     root := BundledAppsRoot()
     if root == "" {
         return

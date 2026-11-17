@@ -18,6 +18,7 @@ codes, calculate and keep time in one free, open-source app.
 - **Calculator:** everyday arithmetic and scientific functions, with a keypad or keyboard.
 - **Clock:** see the local time and use a stopwatch that keeps running while the app is closed.
 - **Workbook:** edit spreadsheets on Linux, Android and the web, with formulas, sheet tabs and portable workbook files.
+- **Gallery:** browse local photo folders and albums on Linux and Android. Open a photo, move between pictures and zoom; your photos stay local.
 
 <p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-pass.png" alt="Pass password generation" width="30%">

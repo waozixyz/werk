@@ -1,0 +1,152 @@
+// Portable gallery state. No account, network, deletion or arbitrary-path API.
+#import "std/text_buffer"
+#import "std/byte_text_linux"
+#import "std/c_string"
+
+LIMIT :: 512
+PATH_CAPACITY :: 1024
+IMAGE_BYTE_LIMIT :: 67108864
+IMAGE_PIXEL_LIMIT :: 32000000
+IMAGE_READ_ERROR :: 1
+IMAGE_FORMAT_ERROR :: 2
+IMAGE_LIMIT_ERROR :: 3
+
+ImageError :: (reason: s32) -> string {
+    if reason == IMAGE_READ_ERROR { return "Cannot read image. Retry or refresh the folder." }
+    if reason == IMAGE_FORMAT_ERROR { return "Cannot decode image. Retry or choose another photo." }
+    if reason == IMAGE_LIMIT_ERROR { return "Image exceeds the viewing limit: 64 MiB or 32 megapixels." }
+    return ""
+}
+
+Dimensions :: struct { width: s64; height: s64 }
+Big16 :: (bytes: []u8, at: s32) -> s64 { return cast(s64)bytes[at] * 256 + cast(s64)bytes[at + 1] }
+Little :: (bytes: []u8, at: s32, count: s32) -> s64 {
+    value: s64; multiplier: s64 = 1
+    for index: 0..count - 1 { value += cast(s64)bytes[at + index] * multiplier; multiplier *= 256 }
+    return value
+}
+Big32 :: (bytes: []u8, at: s32) -> s64 { return Big16(bytes, at) * 65536 + Big16(bytes, at + 2) }
+PixelError :: (size: Dimensions) -> s32 {
+    if size.width <= 0 || size.height <= 0 { return IMAGE_FORMAT_ERROR }
+    if size.height > IMAGE_PIXEL_LIMIT || size.width > IMAGE_PIXEL_LIMIT / size.height { return IMAGE_LIMIT_ERROR }
+    return 0
+}
+// Header-only bounds checks run before a native decoder allocates pixels.
+// JPEG's variable-length segments are walked by the host with bounded I/O.
+HeaderDimensions :: (bytes: []u8) -> Dimensions {
+    if bytes.count < 30 { return .{} }
+    if bytes[0] == 137 && bytes[1] == 80 && bytes[2] == 78 && bytes[3] == 71 && bytes[12] == 73 && bytes[13] == 72 && bytes[14] == 68 && bytes[15] == 82 {
+        return Dimensions.{Big32(bytes, 16), Big32(bytes, 20)}
+    }
+    if bytes[0] == 71 && bytes[1] == 73 && bytes[2] == 70 { return Dimensions.{Little(bytes, 6, 2), Little(bytes, 8, 2)} }
+    if bytes[0] == 66 && bytes[1] == 77 {
+        height := Little(bytes, 22, 4)
+        if height >= 2147483648 { height = 4294967296 - height }
+        return Dimensions.{Little(bytes, 18, 4), height}
+    }
+    if bytes[0] == 82 && bytes[1] == 73 && bytes[2] == 70 && bytes[3] == 70 && bytes[8] == 87 && bytes[9] == 69 && bytes[10] == 66 && bytes[11] == 80 {
+        if bytes[15] == 88 { return Dimensions.{Little(bytes, 24, 3) + 1, Little(bytes, 27, 3) + 1} }
+        if bytes[15] == 76 && bytes[20] == 47 {
+            bits := Little(bytes, 21, 4)
+            return Dimensions.{(bits & 16383) + 1, ((bits >> 14) & 16383) + 1}
+        }
+        if bytes[15] == 32 && bytes[23] == 157 && bytes[24] == 1 && bytes[25] == 42 { return Dimensions.{Little(bytes, 26, 2) & 16383, Little(bytes, 28, 2) & 16383} }
+    }
+    return .{}
+}
+Entry :: struct {
+    name: [256]u8
+    path: [PATH_CAPACITY]u8
+    folder: bool
+}
+Listing :: struct {
+    entries: [LIMIT]Entry
+    count: s32
+    truncated: bool
+}
+Viewer :: struct {
+    selected: s32
+    zoom: s32
+    pan_x: s32
+    pan_y: s32
+}
+
+ImageName :: (name: string) -> bool {
+    dot: s64 = -1
+    for index: 0..name.count - 1 { if name[index] == #char "." { dot = index } }
+    if dot < 0 || name.count - dot > 6 { return false }
+    extension: [8]u8
+    for index: dot..name.count - 1 {
+        byte := name[index]
+        if byte >= #char "A" && byte <= #char "Z" { byte += cast(u8)32 }
+        extension[index - dot] = byte
+    }
+    suffix := TextUntilNul(extension[:])
+    return suffix == ".jpg" || suffix == ".jpeg" || suffix == ".png" || suffix == ".webp" || suffix == ".bmp" || suffix == ".gif"
+}
+
+// Bytewise UTF-8 order is stable across platforms, locales and launches.
+Before :: (left: Entry, right: Entry) -> bool {
+    if left.folder != right.folder { return left.folder }
+    a := TextUntilNul(left.name[:]); b := TextUntilNul(right.name[:])
+    count := ifx a.count < b.count then a.count else b.count
+    for index: 0..count - 1 { if a[index] != b[index] { return a[index] < b[index] } }
+    if a.count != b.count { return a.count < b.count }
+    a = TextUntilNul(left.path[:]); b = TextUntilNul(right.path[:])
+    count = ifx a.count < b.count then a.count else b.count
+    for index: 0..count - 1 { if a[index] != b[index] { return a[index] < b[index] } }
+    return a.count < b.count
+}
+
+Add :: (listing: *Listing, name: string, path: string, folder: bool) -> bool {
+    if name == "" || name == "." || name == ".." || name.count >= 256 || path == "" || path.count >= PATH_CAPACITY { return false }
+    entry: Entry
+    unused CopyCString(name, entry.name[:]); unused CopyCString(path, entry.path[:]); entry.folder = folder
+    // Retain the first LIMIT entries in sorted order even when the provider's
+    // enumeration order varies. Never silently present an arbitrary subset.
+    at := listing.count
+    if at == LIMIT {
+        listing.truncated = true
+        if !Before(entry, listing.entries[LIMIT - 1]) { return false }
+        at -= 1
+    } else { listing.count += 1 }
+    while at > 0 && Before(entry, listing.entries[at - 1]) {
+        listing.entries[at] = listing.entries[at - 1]; at -= 1
+    }
+    listing.entries[at] = entry
+    return true
+}
+
+Index :: (text: string) -> s32 {
+    if text == "" { return -1 }
+    result: s32 = 0
+    for index: 0..text.count - 1 {
+        if text[index] < #char "0" || text[index] > #char "9" || result > 10000 { return -1 }
+        result = result * 10 + cast(s32)(text[index] - #char "0")
+    }
+    return result
+}
+
+Move :: (viewer: *Viewer, listing: *Listing, direction: s32) {
+    at := viewer.selected + direction
+    while at >= 0 && at < listing.count {
+        if !listing.entries[at].folder {
+            viewer.selected = at; viewer.zoom = 1; viewer.pan_x = 0; viewer.pan_y = 0; return
+        }
+        at += direction
+    }
+}
+
+Zoom :: (viewer: *Viewer, delta: s32) {
+    viewer.zoom += delta
+    if viewer.zoom < 1 { viewer.zoom = 1 }
+    if viewer.zoom > 4 { viewer.zoom = 4 }
+    viewer.pan_x = 0; viewer.pan_y = 0
+}
+
+Within :: (root: string, path: string) -> bool {
+    if root == "" || path == "" { return false }
+    if root == path { return true }
+    if root == "/" { return path[0] == #char "/" }
+    return path.count > root.count && path[:root.count] == root && path[root.count] == #char "/"
+}

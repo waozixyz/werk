@@ -73,6 +73,7 @@ main :: (argc: s32, argv: **u8) -> s32 {
         if id == "auth" { unused CopyCString("werk-auth", window_class[:]) }
         if id == "calculator" { unused CopyCString("werk-calculator", window_class[:]) }
         if id == "clock" { unused CopyCString("werk-clock", window_class[:]) }
+        if id == "gallery" { unused CopyCString("werk-gallery", window_class[:]) }
         if id == "workbook" { unused CopyCString("werk-workbook", window_class[:]) }
     }
     hint: [32]u8

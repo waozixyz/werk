@@ -1,0 +1,142 @@
+// Fixture-backed native host + portable-model integration. The Python runner
+// supplies only disposable fixtures and a private data root, never real photos.
+Host :: #import "gallery_host";
+Model :: #import "gallery_model";
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/byte_text_linux"
+#import "std/file"
+
+TestC :: #system_library "libc";
+GetEnv :: (name: *u8) -> *u8 #foreign TestC "getenv";
+BriefWait :: (microseconds: u32) -> s32 #foreign TestC "usleep";
+Env :: (name: string) -> string {
+    bytes: [128]u8
+    unused CopyCString(name, bytes[:])
+    value := GetEnv(*bytes[0])
+    return ifx value == null then "" else TextFromCString(value)
+}
+
+#program_export
+Check :: () -> s32 {
+    if !Model.ImageName("a.JPEG") || !Model.ImageName("b.webp") || Model.ImageName("x.jpg.exe") || Model.ImageName("x.svg") { return 1 }
+    if !Model.Within("/fixture", "/fixture/album") || Model.Within("/fixture", "/fixture-other/photo.jpg") || Model.Within("", "/x") { return 2 }
+    if Model.Index("-1") != -1 || Model.Index("5x") != -1 || Model.Index("0012") != 12 { return 3 }
+    listing: Model.Listing
+    unused Model.Add(*listing, "z.jpg", "/fixture/z.jpg", false)
+    unused Model.Add(*listing, "Album", "/fixture/Album", true)
+    unused Model.Add(*listing, "a.png", "/fixture/a.png", false)
+    if listing.count != 3 || !listing.entries[0].folder || TextUntilNul(listing.entries[1].name[:]) != "a.png" { return 4 }
+    viewer := Model.Viewer.{.selected = 1, .zoom = 1}
+    Model.Move(*viewer, *listing, -1)
+    if viewer.selected != 1 { return 5 }
+    Model.Move(*viewer, *listing, 1)
+    if viewer.selected != 2 { return 6 }
+    Model.Move(*viewer, *listing, 1)
+    if viewer.selected != 2 { return 7 }
+    Model.Zoom(*viewer, 20)
+    if viewer.zoom != 4 { return 8 }
+    Model.Move(*viewer, *listing, -1)
+    if viewer.selected != 1 || viewer.zoom != 1 { return 9 }
+    Model.Zoom(*viewer, -20)
+    if viewer.zoom != 1 { return 10 }
+
+    root := Env("WERK_GALLERY_TEST_DATA")
+    if root == "" { return 11 }
+    Host.GalleryHostConfigure(root)
+    mode := Env("WERK_GALLERY_TEST_MODE")
+    if mode == "persist-reopen" {
+        if Host.GalleryHostService("count") != "1" || Host.GalleryHostService("name:0") != "outside.png" || Host.GalleryHostService("location") != Env("WERK_GALLERY_TEST_CANDIDATE") { return 47 }
+        return 0
+    }
+    if mode == "chooser-missing" {
+        unused Host.GalleryHostService("choose")
+        for attempt: 0..999 {
+            unused attempt
+            unused Host.GalleryHostService("poll")
+            if Host.GalleryHostService("status") != "pending" { break }
+            unused BriefWait(1000)
+        }
+        if Host.GalleryHostService("status") != "chooser-missing" || Host.GalleryHostService("count") != "5" { return 48 }
+        return 0
+    }
+    if mode == "persist" {
+        if !Host.GrantDesktop(Env("WERK_GALLERY_TEST_CANDIDATE"), true) { return 30 }
+        Host.configured = false
+        Host.GalleryHostConfigure(root)
+        if Host.GalleryHostService("count") != "1" || Host.GalleryHostService("name:0") != "outside.png" { return 31 }
+        return 0
+    }
+    if mode == "images" {
+        if Host.GalleryHostService("count") != "8" || Host.GalleryHostService("asset:0") == "" { return 32 }
+        for index: 1..2 {
+            if Host.Asset(cast(s32)index) != "" || Host.asset_errors[index] != Model.IMAGE_LIMIT_ERROR { return 33 }
+        }
+        if Host.GalleryHostService("asset:3") != "" || Host.GalleryHostService("asset-error:3") != Model.ImageError(Model.IMAGE_FORMAT_ERROR) { return 34 }
+        for index: 4..7 { if Host.Asset(cast(s32)index) == "" { return 35 } }
+        return 0
+    }
+    if mode == "retry" {
+        path: [1024]u8
+        unused CopyCString(Host.GalleryHostService("asset:0"), path[:])
+        if path[0] == cast(u8)0 { return 36 }
+        file := OpenRead(TextUntilNul(path[:]))
+        bytes: [8192]u8
+        size := ReadAt(file, bytes[:], 0)
+        unused CloseFile(file)
+        if size <= 0 || !RemoveFile(TextUntilNul(path[:])) { return 37 }
+        if Host.GalleryHostService("asset:0") != "" || Host.GalleryHostService("asset-error:0") != Model.ImageError(Model.IMAGE_READ_ERROR) { return 38 }
+        replacement := OpenExclusivePrivate(TextUntilNul(path[:]))
+        if !replacement.valid || WriteAt(replacement, bytes[:size], 0) != size { return 39 }
+        unused CloseFile(replacement)
+        unused Host.GalleryHostService("retry:0")
+        if Host.GalleryHostService("asset:0") == "" || Host.GalleryHostService("asset-error:0") != "" { return 40 }
+        return 0
+    }
+    if mode == "first-save-failure" {
+        unused CopyCString(Env("WERK_GALLERY_TEST_BLOCKED"), Host.private_root[:])
+        if Host.GrantDesktop(Env("WERK_GALLERY_TEST_CANDIDATE"), true) || Host.GalleryHostService("status") != "save-error" { return 41 }
+        if Host.GalleryHostService("count") != "0" || Host.GalleryHostService("location") != "" || TextUntilNul(Host.grant[:]) != "" { return 42 }
+        return 0
+    }
+    if mode == "empty" { return ifx Host.GalleryHostService("status") == "ready" && Host.GalleryHostService("count") == "0" then 0 else 12 }
+    if mode == "revoked" { return ifx Host.GalleryHostService("status") == "error" && Host.GalleryHostService("count") == "0" then 0 else 13 }
+    if mode == "large" {
+        return ifx Host.GalleryHostService("status") == "limited" && Host.GalleryHostService("count") == "512" && Host.GalleryHostService("name:0") == "0000.png" && Host.GalleryHostService("name:511") == "0511.png" then 0 else 14
+    }
+    if Host.GalleryHostService("status") != "ready" || Host.GalleryHostService("count") != "5" { return 15 }
+    if Host.GalleryHostService("name:0") != "Album" || Host.GalleryHostService("kind:0") != "folder" ||
+    Host.GalleryHostService("name:1") != "a.png" || Host.GalleryHostService("name:2") != "broken.png" ||
+    Host.GalleryHostService("name:3") != "z.JPG" || Host.GalleryHostService("name:4") != "été.png" { return 16 }
+    if Host.GalleryHostService("asset:0") != "" || Host.GalleryHostService("asset:999") != "" || Host.GalleryHostService("name:-1") != "" { return 17 }
+    if Host.GalleryAssetAllowed("/etc/passwd") || Host.GalleryAssetAllowed(Env("WERK_GALLERY_TEST_OUTSIDE")) { return 18 }
+    photo := Host.GalleryHostService("asset:1")
+    if photo == "" || !Host.GalleryAssetAllowed(photo) { return 19 }
+    if Host.GalleryHostService("can-up") != "no" { return 20 }
+    unused Host.GalleryHostService("up")
+    if Host.GalleryHostService("count") != "5" { return 21 }
+    unused Host.GalleryHostService("enter:0")
+    if Host.GalleryHostService("count") != "1" || Host.GalleryHostService("name:0") != "b.png" || Host.GalleryHostService("can-up") != "yes" { return 22 }
+    unused CopyCString("Photos", Host.root_title[:])
+    if Host.Breadcrumb() != "Photos / Album" { return 43 }
+    original_private: [1024]u8; original_location: [1024]u8; original_grant: [1024]u8
+    unused CopyCString(TextUntilNul(Host.private_root[:]), original_private[:])
+    unused CopyCString(TextUntilNul(Host.location[:]), original_location[:])
+    unused CopyCString(TextUntilNul(Host.grant[:]), original_grant[:])
+    unused CopyCString(Env("WERK_GALLERY_TEST_BLOCKED"), Host.private_root[:])
+    if Host.GrantDesktop(Env("WERK_GALLERY_TEST_CANDIDATE"), true) || Host.GalleryHostService("status") != "save-error" { return 44 }
+    if TextUntilNul(Host.location[:]) != TextUntilNul(original_location[:]) || TextUntilNul(Host.grant[:]) != TextUntilNul(original_grant[:]) || Host.depth != 1 || Host.GalleryHostService("name:0") != "b.png" || Host.GalleryHostService("count") != "1" { return 45 }
+    if Host.GalleryHostService("asset:0") == "" { return 46 }
+    unused CopyCString(TextUntilNul(original_private[:]), Host.private_root[:])
+    // Previously issued paths no longer belong to the current listing.
+    if Host.GalleryAssetAllowed(photo) { return 23 }
+    unused Host.GalleryHostService("up")
+    if Host.GalleryHostService("count") != "5" { return 24 }
+    unused Host.GalleryHostService("refresh")
+    if Host.GalleryHostService("name:1") != "a.png" { return 25 }
+    // Simulate a new process reading only its private persisted grant.
+    Host.configured = false
+    Host.GalleryHostConfigure(root)
+    if Host.GalleryHostService("count") != "5" { return 26 }
+    return 0
+}

@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Browse local photo folders and albums with Gallery on desktop and Android.
 - Read the account picture back from the node without replacing a local choice still waiting to sync.
 - Auth shows grouped codes and the next code on clean cards, with a purple countdown line that turns orange halfway through.
 - Password fields in Profile start empty and show one mask character for each character you type.

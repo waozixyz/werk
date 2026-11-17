@@ -1,0 +1,196 @@
+// Gallery is a separate portable tool. Only Werk knows platform file grants.
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/tree"
+Text :: #import "kryon/text";
+Button :: #import "kryon/button";
+#import "kryon/control_props"
+#import "std/number_text"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "kryon/app_context"
+#import "kryon/app_protocol"
+Model :: #import "gallery_model";
+Icon :: #import "mingcute/mingcute_regular_photo_album";
+Image :: #import "kryon/image";
+Showing :: #import "kryon/image_showing";
+Scroll :: #import "kryon/scroll";
+
+listing: Model.Listing;
+viewer: Model.Viewer = Model.Viewer.{.selected = -1, .zoom = 1};
+loaded: bool;
+status: [32]u8;
+location: [1024]u8;
+can_up: bool;
+grid_offset: s32;
+zoom_x: s32;
+zoom_y: s32;
+session: Session;
+// The host's navigation is in the same retained tree as the active tool.
+// Keep Gallery controls separate from its Home/avatar keys.
+KEY_BASE :: 2000000
+
+Call :: (request: string) -> string { return AppService("gallery.local.v1", request) }
+Indexed :: (verb: string, index: s32) -> string {
+    number: [24]u8; buffer: [64]u8
+    text := FormatInteger(cast(s64)index, number[:])
+    for at: 0..verb.count - 1 { buffer[at] = verb[at] }
+    for at: 0..text.count - 1 { buffer[verb.count + at] = text[at] }
+    buffer[verb.count + text.count] = cast(u8)0
+    return Call(TextUntilNul(buffer[:]))
+}
+Reload :: () {
+    listing.count = Model.Index(Call("count"))
+    if listing.count < 0 { listing.count = 0 }
+    if listing.count > Model.LIMIT { listing.count = Model.LIMIT }
+    for index: 0..listing.count - 1 {
+        unused CopyCString(Indexed("name:", cast(s32)index), listing.entries[index].name[:])
+        listing.entries[index].folder = Indexed("kind:", cast(s32)index) == "folder"
+        listing.entries[index].path[0] = cast(u8)0
+    }
+    unused CopyCString(Call("location"), location[:]); can_up = Call("can-up") == "yes"
+    unused CopyCString(Call("status"), status[:])
+    viewer = Model.Viewer.{.selected = -1, .zoom = 1}; grid_offset = 0; zoom_x = 0; zoom_y = 0
+}
+Action :: (id: s32, label: string, bounds: Rectangle, disabled: bool) -> bool {
+    return Button.Draw(session, Button.Props.{.key = cast(u64)(KEY_BASE + id), .id = KEY_BASE + id, .bounds = bounds,
+            .label = label, .disabled = disabled, .tone = ButtonTone.ButtonToneNeutral,
+            .emphasis = ButtonEmphasis.ButtonEmphasisSoft, .fit_content = true}) != 0
+}
+Label :: (key: u64, text: string, bounds: Rectangle) {
+    Text.Draw(session, Text.Props.{.key = cast(u64)KEY_BASE + key, .bounds = bounds, .text = text, .size = 16})
+}
+Picture :: (index: s32, bounds: Rectangle, preview: bool = false) -> bool {
+    entry := *listing.entries[index]
+    unused CopyCString(Indexed(ifx preview then "thumb:" else "asset:", index), entry.path[:])
+    props := Image.Props.{.key = cast(u64)(KEY_BASE + 5000 + index), .bounds = bounds,
+        .asset_path = TextUntilNul(entry.path[:]), .alt_text = TextUntilNul(entry.name[:]),
+        .fit = Image.ImageFit.ImageFitContain, .smooth = true}
+    if props.asset_path == "" {
+        Label(cast(u64)(7000 + index), "Image unavailable", bounds)
+        return false
+    }
+    state := Showing.ImageShowingOf(session, props)
+    if state == Image.ImageShowing.ImageShowingUnavailable {
+        Label(cast(u64)(7000 + index), "Image unavailable", bounds)
+        return false
+    }
+    if state == Image.ImageShowing.ImageShowingNone { Label(cast(u64)(7000 + index), "Loading image...", bounds) }
+    Image.Draw(session, props)
+    return true
+}
+
+DrawViewer :: (area: Rectangle) {
+    width := (area.width - 32.0) / 3.0
+    if Action(30, "Albums", Rectangle.{area.x, area.y, width, 42.0}, false) { viewer.selected = -1; return }
+    previous := viewer; Model.Move(*previous, *listing, -1)
+    next := viewer; Model.Move(*next, *listing, 1)
+    if Action(31, "Previous", Rectangle.{area.x + width + 8.0, area.y, width, 42.0}, previous.selected == viewer.selected) { viewer = previous; zoom_x = 0; zoom_y = 0 }
+    if Action(32, "Next", Rectangle.{area.x + (width + 8.0) * 2.0, area.y, width, 42.0}, next.selected == viewer.selected) { viewer = next; zoom_x = 0; zoom_y = 0 }
+    if AppKey() == 263 { Model.Move(*viewer, *listing, -1); zoom_x = 0; zoom_y = 0 }
+    if AppKey() == 262 { Model.Move(*viewer, *listing, 1); zoom_x = 0; zoom_y = 0 }
+    if AppKey() == 256 { viewer.selected = -1; return }
+    Label(40, TextUntilNul(listing.entries[viewer.selected].name[:]), Rectangle.{area.x, area.y + 50.0, area.width, 28.0})
+    viewport := Rectangle.{area.x, area.y + 84.0, area.width - 8.0, area.height - 194.0}
+    if viewport.height < 40.0 { viewport.height = 40.0 }
+    scale := cast(float32)viewer.zoom
+    horizontal := Scroll.Draw(session, Scroll.Props.{.key = KEY_BASE + 50, .bounds = viewport, .horizontal = true,
+            .content_width = cast(s32)(viewport.width * scale), .scroll_offset = zoom_x, .manual_scroll = true})
+    zoom_x = horizontal.scroll_offset
+    vertical := Scroll.Draw(session, Scroll.Props.{.key = KEY_BASE + 51, .bounds = viewport,
+            .content_height = cast(s32)(viewport.height * scale), .scroll_offset = zoom_y, .manual_scroll = true})
+    zoom_y = vertical.scroll_offset
+    available := Picture(viewer.selected, Rectangle.{horizontal.content.x, vertical.content.y, viewport.width * scale, viewport.height * scale})
+    if vertical.opened { unused End(session) }
+    if horizontal.opened { unused End(session) }
+    if !available {
+        problem: [256]u8
+        unused CopyCString(Indexed("asset-error:", viewer.selected), problem[:])
+        if problem[0] == cast(u8)0 { unused CopyCString(Model.ImageError(Model.IMAGE_FORMAT_ERROR), problem[:]) }
+        Label(54, TextUntilNul(problem[:]), Rectangle.{viewport.x + 8.0, viewport.y + 36.0, viewport.width - 16.0, 80.0})
+        if Action(55, "Retry image", Rectangle.{viewport.x + 8.0, viewport.y + 122.0, 140.0, 40.0}, false) { unused Indexed("retry:", viewer.selected) }
+    }
+    pan_width := (area.width - 24.0) / 4.0
+    pan_y := area.y + area.height - 94.0
+    step_x := cast(s32)(viewport.width / 4.0)
+    step_y := cast(s32)(viewport.height / 4.0)
+    max_x := cast(s32)(viewport.width * cast(float32)(viewer.zoom - 1))
+    max_y := cast(s32)(viewport.height * cast(float32)(viewer.zoom - 1))
+    if Action(60, "Pan left", Rectangle.{area.x, pan_y, pan_width, 38.0}, !available || zoom_x <= 0) { zoom_x -= step_x }
+    if Action(61, "Pan right", Rectangle.{area.x + pan_width + 8.0, pan_y, pan_width, 38.0}, !available || zoom_x >= max_x) { zoom_x += step_x }
+    if Action(62, "Pan up", Rectangle.{area.x + (pan_width + 8.0) * 2.0, pan_y, pan_width, 38.0}, !available || zoom_y <= 0) { zoom_y -= step_y }
+    if Action(63, "Pan down", Rectangle.{area.x + (pan_width + 8.0) * 3.0, pan_y, pan_width, 38.0}, !available || zoom_y >= max_y) { zoom_y += step_y }
+    if zoom_x < 0 { zoom_x = 0 }; if zoom_x > max_x { zoom_x = max_x }
+    if zoom_y < 0 { zoom_y = 0 }; if zoom_y > max_y { zoom_y = max_y }
+    y := area.y + area.height - 48.0
+    if Action(33, "Zoom out", Rectangle.{area.x, y, width, 42.0}, !available || viewer.zoom == 1) { Model.Zoom(*viewer, -1); zoom_x = cast(s32)(viewport.width * cast(float32)(viewer.zoom - 1) * 0.5); zoom_y = cast(s32)(viewport.height * cast(float32)(viewer.zoom - 1) * 0.5) }
+    if Action(34, "Fit", Rectangle.{area.x + width + 8.0, y, width, 42.0}, false) { viewer.zoom = 1; zoom_x = 0; zoom_y = 0 }
+    if Action(35, "Zoom in", Rectangle.{area.x + (width + 8.0) * 2.0, y, width, 42.0}, !available || viewer.zoom == 4) { Model.Zoom(*viewer, 1); zoom_x = cast(s32)(viewport.width * cast(float32)(viewer.zoom - 1) * 0.5); zoom_y = cast(s32)(viewport.height * cast(float32)(viewer.zoom - 1) * 0.5) }
+}
+
+DrawGrid :: (area: Rectangle) {
+    pending := TextUntilNul(status[:]) == "pending"
+    if Action(10, "Choose folder", Rectangle.{area.x, area.y, 148.0, 44.0}, pending) {
+        unused CopyCString(Call("choose"), status[:]); pending = TextUntilNul(status[:]) == "pending"
+    }
+    if Action(11, "Refresh", Rectangle.{area.x + 156.0, area.y, 92.0, 44.0}, pending) { unused Call("refresh"); Reload() }
+    if can_up && Action(12, "Up", Rectangle.{area.x + 256.0, area.y, 54.0, 44.0}, pending) { unused Call("up"); Reload() }
+    Label(13, TextUntilNul(location[:]), Rectangle.{area.x, area.y + 52.0, area.width, 26.0})
+    current := TextUntilNul(status[:])
+    message := "Name order - folders first"
+    if current == "pending" { message = "Choose a local folder in the system window" }
+    else if current == "empty" { message = "Choose a folder to browse photos on this device" }
+    else if current == "cancelled" { message = "Selection cancelled - your folder is unchanged" }
+    else if current == "error" { message = "Cannot read this folder. Choose it again or refresh." }
+    else if current == "save-error" { message = "Could not save this selection. Your previous folder is unchanged. Try again." }
+    else if current == "chooser-missing" { message = "Folder chooser unavailable. Install Zenity, then choose the folder again." }
+    else if current == "unavailable" { message = "Local folders are available in the Android and desktop apps" }
+    else if current == "limited" { message = "Showing first 512 items by name. Open a smaller folder." }
+    else if listing.count == 0 { message = "No supported photos or albums in this folder" }
+    Label(14, message, Rectangle.{area.x, area.y + 82.0, area.width, 46.0})
+    columns := cast(s32)(area.width / 150.0)
+    if columns < 2 { columns = 2 }
+    tile := (area.width - cast(float32)(columns - 1) * 8.0) / cast(float32)columns
+    height := tile + 38.0
+    rows := (listing.count + columns - 1) / columns
+    viewport := Rectangle.{area.x, area.y + 134.0, area.width, area.height - 134.0}
+    grid := Scroll.Draw(session, Scroll.Props.{.key = KEY_BASE + 20, .bounds = viewport,
+            .content_height = cast(s32)(cast(float32)rows * (height + 8.0)), .scroll_offset = grid_offset})
+    grid_offset = grid.scroll_offset
+    for index: 0..listing.count - 1 {
+        x := grid.content.x + cast(float32)(index % columns) * (tile + 8.0)
+        y := grid.content.y + cast(float32)(index / columns) * (height + 8.0)
+        if y + height >= viewport.y && y < viewport.y + viewport.height {
+            entry := *listing.entries[index]
+            if !entry.folder { unused Picture(cast(s32)index, Rectangle.{x + 4.0, y + 4.0, tile - 8.0, tile - 8.0}, true) }
+            else { Label(cast(u64)(4000 + index), "Folder", Rectangle.{x + 8.0, y + 12.0, tile - 16.0, tile - 12.0}) }
+            Label(cast(u64)(6000 + index), TextUntilNul(entry.name[:]), Rectangle.{x + 8.0, y + tile, tile - 16.0, 34.0})
+            if Button.Draw(session, Button.Props.{.key = cast(u64)(KEY_BASE + 100 + index), .id = cast(s32)(KEY_BASE + 100 + index),
+                    .bounds = Rectangle.{x, y, tile, height}, .label = TextUntilNul(entry.name[:]),
+                    .invisible = true, .disabled = pending}) != 0 {
+                if entry.folder { unused Indexed("enter:", cast(s32)index); loaded = false; break }
+                else { viewer = Model.Viewer.{.selected = cast(s32)index, .zoom = 1}; zoom_x = 0; zoom_y = 0 }
+            }
+        }
+    }
+    if grid.opened { unused End(session) }
+}
+
+#program_export "GalleryMain"
+Main :: () -> s32 {
+    if AppMode() == APP_IDENTIFY {
+        AppIdentity("gallery"); AppDescribe("Gallery", Icon.Shape); return APP_PROTOCOL
+    }
+    if AppMode() == APP_BACK && viewer.selected >= 0 { viewer.selected = -1; return 1 }
+    if AppMode() != APP_FRAME { return 0 }
+    session = AppSession()
+    if !loaded { Reload(); loaded = true }
+    if TextUntilNul(status[:]) == "pending" {
+        value := Call("poll")
+        if value != "pending" { Reload() }
+    }
+    area := AppBounds()
+    area.x += 12.0; area.y += 12.0; area.width -= 24.0; area.height -= 24.0
+    if viewer.selected >= 0 { DrawViewer(area) } else { DrawGrid(area) }
+    return 0
+}

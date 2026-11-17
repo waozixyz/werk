@@ -39,7 +39,7 @@ def command(*args):
 
 
 for tool, name in (("", "Werkzeug"), ("pass", "Pass"), ("auth", "Auth"),
-                   ("calculator", "Calculator"), ("clock", "Clock"), ("workbook", "Workbook")):
+                   ("calculator", "Calculator"), ("clock", "Clock"), ("workbook", "Workbook"), ("gallery", "Gallery")):
     identity = "xyz.waozi.werk" + ("." + tool if tool else "")
     entry = share / "applications" / (identity + ".desktop")
     assert entry.read_bytes() == (desktop / entry.name).read_bytes()
@@ -93,4 +93,4 @@ subprocess.run(["python3", str(root / "scripts/install-launchers.py"), "--data-d
                 "--desktop-dir", str(desktop), "--uninstall"], check=True)
 assert not list((share / "applications").glob("xyz.waozi.werk*.desktop"))
 assert not list(desktop.glob("xyz.waozi.werk*.desktop"))
-print("All six installed launchers, distinct icons and shortcut removal verified locally")
+print("All seven installed launchers, distinct icons and shortcut removal verified locally")

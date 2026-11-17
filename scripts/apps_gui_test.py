@@ -116,7 +116,7 @@ try:
     deadline = time.monotonic() + 20
     while True:
         home = capture("home")
-        if all(name in home for name in ("Pass", "Auth", "Calculator", "Clock", "Workbook")):
+        if all(name in home for name in ("Pass", "Auth", "Calculator", "Clock", "Workbook", "Gallery")):
             break
         assert app.poll() is None, "Werkzeug exited while loading Apps"
         assert time.monotonic() < deadline, "Shared Apps controller did not render: " + home
@@ -138,7 +138,7 @@ try:
         'fixture_only': True, 'bundle': 'entity',
         'extraction_path': 'assets/entity', 'decoded': picture_diagnostics,
     }, indent=2) + '\n')
-    for name in ("Auth", "Calculator", "Clock", "Workbook", "Pass"):
+    for name in ("Auth", "Calculator", "Clock", "Workbook", "Gallery", "Pass"):
         click_word(name)
         expect_title(name)
         assert "stopped" not in capture(name.lower()).lower(), name + " failed to run"
@@ -207,7 +207,7 @@ try:
     saved = json.loads(preferences.read_text())
     clock = next(item for item in saved["apps"] if item["id"] == "clock")
     assert not clock["favorite"] and clock["title"] == "Timepiece" and clock["icon"] == "auth"
-    print("Shared Apps: list/grid, search, menus, pins, name/icon edits, restart persistence, five tools and resized layouts verified locally")
+    print("Shared Apps: list/grid, search, menus, pins, name/icon edits, restart persistence, six tools, Entity picture resources and resized layouts verified locally")
 finally:
     if app.poll() is None:
         app.terminate()

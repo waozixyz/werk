@@ -59,7 +59,7 @@ cli: build/pass
 	cp build/pass pass
 
 # Each app is its own bundle, shared by the desktop, web and Android hosts.
-APPS := pass calculator clock
+APPS := pass calculator clock gallery
 PORTABLE_BUNDLES := $(APPS:%=build/apps/%.zx) build/apps/auth.zx build/apps/entity.zx build/apps/apps.zx build/apps/workbook.zx
 APP_BUNDLES := $(PORTABLE_BUNDLES)
 CRYPTO_SOURCES = $(wildcard $(CRYPTO_DIR)/src/*.zi)
@@ -88,6 +88,12 @@ build/apps/workbook.zx: $(wildcard $(WORKBOOK_DIR)/src/*.zi) $(LIBRARY_SOURCES) 
 	mkdir -p $(@D)
 	$(ZIRAN) bundle $(PROJECT) --root $(WORKBOOK_DIR)/src \
 		--define KRYON_HOSTED_UI --entry $(call PACKAGE_ID,workbook)_app:Main -o $@ $(WORKBOOK_DIR)/src/app.zi
+
+# These portable apps use their public package exports. Their UI sources may
+# advance independently; all bundles are emitted by this host's compiler.
+build/apps/gallery.zx: $(wildcard apps/gallery/*.zi) apps/gallery/ziran.toml apps/gallery/ziran.lock ziran.lock Makefile
+	mkdir -p $(@D)
+	$(ZIRAN) bundle $(PROJECT) --root . --define KRYON_HOSTED_UI --entry gallery:Main -o $@ apps/gallery/gallery.zi
 
 build/apps/entity.zx: $(ENTITY_SOURCES) ziran.lock Makefile
 	mkdir -p $(@D)
@@ -144,7 +150,7 @@ entity-account-test: build/liboqs/lib/liboqs.a
 .PHONY: android-sdk-install-test
 android-sdk-install-test:
 	python3 scripts/install_android_sdk_test.py
-test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test entity-account-test android-sdk-install-test android-apk-check-test android-startup-test runtime-cache-test
+test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test entity-account-test android-sdk-install-test android-apk-check-test android-startup-test runtime-cache-test gallery-test
 
 .PHONY: android-startup-test
 android-startup-test:
@@ -235,11 +241,14 @@ android-smoke:
 android-input-test:
 	$(MAKE) android-profile-test
 	$(MAKE) workbook-android-test
-.PHONY: android-profile-test workbook-android-test
+	$(MAKE) gallery-android-test
+.PHONY: android-profile-test workbook-android-test gallery-android-test
 android-profile-test:
 	python3 scripts/android_input_test.py
 workbook-android-test:
 	python3 scripts/workbook_android_test.py
+gallery-android-test:
+	python3 scripts/android_gallery_test.py
 
 check-package-urls:
 	bash scripts/check_package_urls.sh
@@ -272,3 +281,14 @@ package-deb: gui
 	./scripts/package-deb.sh
 package-appimage: gui
 	./scripts/package-appimage.sh
+
+.PHONY: gallery-test gallery-gui-test
+gallery-test:
+	rm -rf build/gallery-test-generated
+	mkdir -p build/gallery-test-generated
+	$(ZIRAN) build $(PROJECT) --root . --target=c --entry gallery_test:Check -o build/gallery-test-generated tests/gallery_test.zi
+	printf '%s\n' '#include "tests/gallery_test.h"' 'int main(void) { return Check(); }' > build/gallery-test-generated/main.c
+	$(CC) -std=c11 -O2 -I$(ZIRAN_ROOT)/include -Ibuild/gallery-test-generated $$(find build/gallery-test-generated -name '*.c' -print) -o build/gallery-test
+	python3 scripts/gallery_gui_test.py --behavioral-only
+gallery-gui-test: gui gallery-test
+	python3 scripts/private-display.py dbus-run-session -- python3 scripts/gallery_gui_test.py

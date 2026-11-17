@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Gallery
+Comment=Browse local photo albums with Werkzeug
+Exec=werk --app gallery
+TryExec=werk
+Icon=werk-gallery
+Terminal=false
+Categories=Graphics;Photography;
+Keywords=Werkzeug;Photos;Albums;Local;
+StartupNotify=true
+StartupWMClass=werk-gallery

@@ -149,7 +149,7 @@ try {
   // Mini Home shows the tool tiles: no Profile, search or title bar.
   const expectMiniHome = async name => {
     const text = await screenText(name);
-    for (const tool of ['Pass', 'Auth', 'Calculator', 'Clock', 'Workbook'])
+    for (const tool of ['Pass', 'Auth', 'Calculator', 'Clock', 'Workbook', 'Gallery'])
       if (!text.includes(tool.toLowerCase())) throw Error(`${name}: missing the ${tool} tile, saw ${text}`);
     for (const hidden of ['Profile', 'Find an app', 'Werkzeug'])
       if (text.includes(hidden.toLowerCase())) throw Error(`${name}: mini Home shows ${hidden}: ${text}`);
@@ -343,7 +343,7 @@ try {
   // name as the title, and Back returns to the tiles.
   await open('?mini', 'mini-home');
   await expectMiniHome('mini-home');
-  for (const app of ['pass', 'auth', 'calculator', 'clock', 'workbook']) {
+  for (const app of ['pass', 'auth', 'calculator', 'clock', 'workbook', 'gallery']) {
     await open('?mini&app=' + app, app + '-mini-direct');
     await expectText(app + '-mini-direct', app);
     await click(28, 28);
@@ -367,7 +367,7 @@ try {
   await click(16 + 28, 16 + 28);
   await expectMiniHome('card-returned');
   if (exceptions.length) throw Error('Page exceptions: ' + exceptions.join(' '));
-  console.log('Werkzeug web: Workbook editing, calculation, import/export and persistence; Calculator, Home, shared Entity profile and five-tool mini mode verified in private Chromium');
+  console.log('Werkzeug web: Workbook editing, calculation, import/export and persistence; Calculator, Home, shared Entity profile and six-tool mini mode verified in private Chromium');
 } finally {
   socket?.close();
   try {
