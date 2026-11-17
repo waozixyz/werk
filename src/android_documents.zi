@@ -1,7 +1,7 @@
 // Android document transfers are asynchronous and use the system chooser.
 // The chooser grants one URI; bundles see only their private document name.
 #import "android"
-#import "android_jni"
+#import "kryon/android_jni"
 #import "android_dispatch"
 #import "android_document_dex"
 #import "files"
@@ -65,7 +65,7 @@ DocumentOpenUi :: (env: *JniEnv, task: *void) {
     fragment := DocumentFragment(env)
     if fragment == null { document_state = 5; unused JniOk(env); return }
     empty := NoArguments()
-    activity := NativeApp().activity.activity
+    activity := JniGetAndroidApp().activity.activity
     manager := ObjectCall(env, activity, "getFragmentManager", "()Landroid/app/FragmentManager;", empty[:])
     transaction := ObjectCall(env, manager, "beginTransaction", "()Landroid/app/FragmentTransaction;", empty[:])
     args: [2]JniValue
@@ -91,9 +91,9 @@ DocumentOpenUi :: (env: *JniEnv, task: *void) {
 }
 
 DocumentCopy :: (files: *AppFiles, name: string, save: bool, intent: *void) -> bool {
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return false }
-    defer { activity_jni_detach(*session) }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return false }
+    defer { AndroidJniDetachCurrent(*session) }
     env := session.env
     defer { env.functions.DeleteGlobalRef(env, intent) }
     empty := NoArguments()

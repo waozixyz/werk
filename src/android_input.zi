@@ -2,7 +2,7 @@
 // Kryon continues to own the visible fields and editing decisions. All view
 // access runs on Android's UI thread through the generated native Runnable.
 #import "android"
-#import "android_jni"
+#import "kryon/android_jni"
 #import "android_dispatch"
 #import "std/c_string"
 #import "std/text_buffer"
@@ -26,6 +26,25 @@ input_dirty: bool;
 selection_dirty: bool;
 input_available: bool;
 input_secure: bool;
+native_input: AndroidInputHandler;
+editor_android :: #system_library "android";
+EditorEventType :: (event: *void) -> s32 #foreign editor_android "AInputEvent_getType";
+EditorKeyCode :: (event: *void) -> s32 #foreign editor_android "AKeyEvent_getKeyCode";
+
+// NativeActivity offers hardware keys to its native queue before the focused
+// framework view. While EditText owns editing, leave those keys unhandled so
+// Android delivers letters, selection and deletion to that same editor.
+// Back and all pointer events retain Kryon's navigation and touch handling.
+AndroidEditorInput :: (app: *void, event: *void) -> s32 {
+    if event != null && EditorEventType(event) == 1 && EditorKeyCode(event) != 4 {
+        UiLock()
+        editing := input_field >= 0 && input_field == requested_field
+        UiUnlock()
+        if editing { return 0 }
+    }
+    if native_input != null { return native_input(app, event) }
+    return 0
+}
 
 IntegerCall :: (env: *JniEnv, object: *void, name: string, signature: string, arguments: []JniValue) -> s32 {
     method := Method(env, object, name, signature, false)
@@ -52,7 +71,7 @@ Utf8Position :: (value: string, units: s32) -> s32 {
 }
 UiInputCreate :: (env: *JniEnv) -> bool {
     args: [2]JniValue
-    args[0] = ArgumentObject(NativeApp().activity.activity)
+    args[0] = ArgumentObject(JniGetAndroidApp().activity.activity)
     view := NewObject(env, "android/widget/EditText", "(Landroid/content/Context;)V", args[:])
     if view == null { return false }
     input_view = env.functions.NewGlobalRef(env, view)
@@ -68,7 +87,7 @@ UiInputCreate :: (env: *JniEnv) -> bool {
     args[0] = ArgumentInteger(1); args[1] = ArgumentInteger(1)
     layout := NewObject(env, "android/widget/FrameLayout$LayoutParams", "(II)V", args[:])
     empty := NoArguments()
-    window := ObjectCall(env, NativeApp().activity.activity, "getWindow", "()Landroid/view/Window;", empty[:])
+    window := ObjectCall(env, JniGetAndroidApp().activity.activity, "getWindow", "()Landroid/view/Window;", empty[:])
     decor := ObjectCall(env, window, "getDecorView", "()Landroid/view/View;", empty[:])
     args[0] = ArgumentObject(view); args[1] = ArgumentObject(layout)
     return VoidCall(env, decor, "addView", "(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V", args[:])
@@ -104,8 +123,8 @@ UiInputSync :: (env: *JniEnv, task: *void) {
     }
     if changed {
         BoolCall(env, input_view, "requestFocus", "()Z", empty[:])
-        session: ActivityJniSession
-        session.env = env; session.activity = NativeApp().activity.activity
+        session: AndroidJniSession
+        session.env = env; session.activity = JniGetAndroidApp().activity.activity
         manager := Service(*session, "input_method")
         args[0] = ArgumentObject(input_view); args[1] = ArgumentInteger(0)
         BoolCall(env, manager, "showSoftInput", "(Landroid/view/View;I)Z", args[:])
@@ -128,6 +147,11 @@ UiInputSync :: (env: *JniEnv, task: *void) {
 }
 AndroidTextInitialize :: () -> bool {
     input_available = UiInitialize()
+    app := JniGetAndroidApp()
+    if input_available && app != null {
+        native_input = app.input_callback
+        app.input_callback = AndroidEditorInput
+    }
     return input_available
 }
 AndroidTextRead :: (id: s32, output: []u8) -> AndroidTextSelection {
@@ -156,6 +180,10 @@ AndroidTextSubmit :: (id: s32, value: string, cursor: s32, anchor: s32, secure: 
 }
 AndroidTextHide :: () {
     if !input_available { return }
-    UiLock(); requested_field = -1; requested_value = .{}; UiUnlock()
+    UiLock()
+    active := input_field >= 0 || requested_field >= 0
+    requested_field = -1; requested_value = .{}
+    UiUnlock()
+    if !active { return }
     UiSchedule(UiInputSync)
 }

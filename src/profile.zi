@@ -1,3 +1,6 @@
+#if #defined(ANDROID_BUILD) {
+    ProfileRaster :: #import "android_images";
+}
 Image :: #import "kryon/image";
 #import "kryon/geometry"
 // The Werkzeug profile: a name and picture, and the appearance every app
@@ -263,6 +266,9 @@ SaveProfile :: () -> bool {
 PictureImage :: (picture: s32, bounds: Rectangle) -> Image.Props {
     image: Image.Props
     image.asset_path = ProfilePicturesPath()
+    #if #defined(ANDROID_BUILD) {
+        unused ProfileRaster.Prepare(image.asset_path)
+    }
     image.alt_text = "Profile picture"
     image.bounds = bounds
     image.source = Rectangle.{cast(float32)((picture % 5) * 64), cast(float32)((picture / 5) * 64), 64.0, 64.0}
@@ -287,6 +293,9 @@ ProfileImage :: (bounds: Rectangle) -> Image.Props {
             asset := ProfileEntity.EntityAbstractPictureAsset(Clamp(profile.abstract_picture, 0, 2))
             path := PathJoin(abstract_picture_path[:], folder, asset)
             if path != "" && PathExists(path) {
+                #if #defined(ANDROID_BUILD) {
+                    unused ProfileRaster.Prepare(path)
+                }
                 image: Image.Props
                 image.asset_path = path
                 image.alt_text = "Profile picture"

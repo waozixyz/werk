@@ -2,11 +2,10 @@
 ZIRAN ?= ./scripts/ziran.sh
 # Gradle invokes make again for portable bundles. Inherited environment
 # variables otherwise export these shell-derived paths while resolving them.
-unexport ZIRAN_ROOT KRYON_DIR RAYLIB_DIR MINGCUTE_DIR LIBOQS_DIR MONOCYPHER_DIR QRCODE_DIR WORKBOOK_DIR ENTITY_DIR APPS_DIR AUTH_DIR CRYPTO_DIR
+unexport ZIRAN_ROOT KRYON_DIR MINGCUTE_DIR LIBOQS_DIR MONOCYPHER_DIR QRCODE_DIR WORKBOOK_DIR ENTITY_DIR APPS_DIR AUTH_DIR CRYPTO_DIR
 # Local overrides refer to the real root repositories. Published builds
 # require the exact versions recorded in the committed lock.
 LOCK_FLAGS := $(if $(wildcard ziran.local.toml),,--locked)
-RAYLIB_DIR = $(shell $(ZIRAN) pkg path raylib $(LOCK_FLAGS))/src
 # Package resolution may build its compiler. Do not pass this make's target
 # overrides or jobserver descriptors to that independent package build.
 PACKAGE_ZIRAN = env -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES $(ZIRAN)
@@ -203,22 +202,22 @@ web-smoke: site
 
 # CMake emits JNI and foreign ABI types separately for each Android ABI.
 android-debug: portable-apps
-	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
+	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
 	mkdir -p build
 	cp droid/app/build/outputs/apk/debug/app-universal-debug.apk build/werk-android-debug.apk
 	python3 scripts/android_apk_check.py build/werk-android-debug.apk
 	cp droid/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk build/werk-android-arm64-v8a-debug.apk
 	cp droid/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk build/werk-android-armeabi-v7a-debug.apk
 android-emulator: portable-apps
-	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=x86_64 $(GRADLE_ARGS)
+	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleDebug -Pabi=x86_64 $(GRADLE_ARGS)
 	mkdir -p build
 	cp droid/app/build/outputs/apk/debug/app-debug.apk build/werk-android-emulator.apk
 	python3 scripts/android_apk_check.py build/werk-android-emulator.apk
 android-release: portable-apps
-	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
+	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew assembleRelease -Pabi=$(ANDROID_ABIS) -PsplitApks=true $(GRADLE_ARGS)
 .PHONY: android-bundle
 android-bundle: portable-apps
-	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" RAYLIB_DIR="$(RAYLIB_DIR)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew bundleRelease -Pabi=$(ANDROID_ABIS) $(GRADLE_ARGS)
+	cd droid && env WERK_ZIRAN_COMMAND="$(ZIRAN)" KRYON_DIR="$(KRYON_DIR)" ZIRAN_ROOT="$(ZIRAN_ROOT)" LIBOQS_DIR="$(LIBOQS_DIR)" MONOCYPHER_DIR="$(MONOCYPHER_DIR)" ./gradlew bundleRelease -Pabi=$(ANDROID_ABIS) $(GRADLE_ARGS)
 	cp droid/app/build/outputs/bundle/release/app-release.aab build/werk-$(shell cat VERSION).aab
 .PHONY: android-fdroid
 # F-Droid compares this source build with the signed upstream release.

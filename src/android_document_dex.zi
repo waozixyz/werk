@@ -2,7 +2,7 @@
 // Like UiTask, its only bytecode is a constructor; all behavior is native.
 // Identifier tables and map entries follow Android's DEX 035 format.
 #import "android"
-#import "android_jni"
+#import "kryon/android_jni"
 Dex :: #import "android_dispatch";
 
 Uleb :: (bytes: []u8, at: *s32, value: u32) {

@@ -1,0 +1,184 @@
+// NativeActivity's Pixmap renderer borrows decoded pixels. Keep a bounded
+// host cache for approved APK assets and local Gallery files, with small
+// thumbnails and the original resolution for the viewer.
+#import "android"
+#import "kryon/android_jni"
+#import "kryon/pixmap"
+#import "std/c_string"
+#import "std/text_buffer"
+
+ImageEntry :: struct { path: [256]u8; pixels: *u32; count: s64; touched: s64 }
+images: [96]ImageEntry;
+image_clock: s64;
+image_pixels: s64;
+image_path: [256]u8;
+PIXEL_BUDGET :: 48000000
+SLOT_BASE :: 512
+image_libc :: #system_library "c";
+PixelsAllocate :: (count: usize, size: usize) -> *u8 #foreign image_libc "calloc";
+PixelsRelease :: (memory: *void) #foreign image_libc "free";
+PixelView :: struct { data: *u32; length: s64 }
+
+Pixels :: (pointer: *u32, count: s64) -> []u32 {
+    result: []u32
+    view := cast(*PixelView)(*result)
+    view.data = pointer; view.length = count
+    return result
+}
+
+Orient :: (input: *u32, width: s32, height: s32, orientation: s32) -> *u32 {
+    if orientation <= 1 || orientation > 8 { return input }
+    output := cast(*u32)PixelsAllocate(cast(usize)(cast(s64)width * height), 4)
+    if output == null { PixelsRelease(cast(*void)input); return null }
+    output_width := ifx orientation >= 5 then height else width
+    for y: cast(s32)0..height - 1 {
+        for x: cast(s32)0..width - 1 {
+            tx := x; ty := y
+            if orientation == 2 { tx = width - 1 - x }
+            if orientation == 3 { tx = width - 1 - x; ty = height - 1 - y }
+            if orientation == 4 { ty = height - 1 - y }
+            if orientation == 5 { tx = y; ty = x }
+            if orientation == 6 { tx = height - 1 - y; ty = x }
+            if orientation == 7 { tx = height - 1 - y; ty = width - 1 - x }
+            if orientation == 8 { tx = y; ty = width - 1 - x }
+            output[cast(s64)ty * output_width + tx] = input[cast(s64)y * width + x]
+        }
+    }
+    PixelsRelease(cast(*void)input)
+    return output
+}
+
+Drop :: (at: s32) {
+    PixmapClearImage(SLOT_BASE + at)
+    if images[at].pixels != null { PixelsRelease(cast(*void)images[at].pixels) }
+    image_pixels -= images[at].count
+    images[at] = .{}
+}
+
+Forget :: (path: string) {
+    for at: cast(s32)0..95 {
+        matches: bool
+        {
+            name := TextUntilNul(images[at].path[:])
+            matches = name == path || (name.count == path.count + 8 && name[:path.count] == path && name[path.count:] == ".preview")
+        }
+        if matches { Drop(at) }
+    }
+}
+
+SetOption :: (env: *JniEnv, options: *void, name: string, value: s32, boolean: bool = false) -> bool {
+    args: [2]JniValue
+    args[0] = ArgumentObject(TextObject(env, name))
+    klass := env.functions.GetObjectClass(env, options)
+    field := ObjectCall(env, klass, "getField", "(Ljava/lang/String;)Ljava/lang/reflect/Field;", args[:])
+    if field == null { return false }
+    args[0] = ArgumentObject(options); args[1] = ArgumentInteger(value)
+    if boolean { return VoidCall(env, field, "setBoolean", "(Ljava/lang/Object;Z)V", args[:]) }
+    return VoidCall(env, field, "setInt", "(Ljava/lang/Object;I)V", args[:])
+}
+
+Option :: (env: *JniEnv, options: *void, name: string) -> s32 {
+    label: [32]u8; signature: [2]u8
+    if !CopyCString(name, label[:]) || !CopyCString("I", signature[:]) { return 0 }
+    klass := env.functions.GetObjectClass(env, options)
+    field := env.functions.GetFieldID(env, klass, *label[0], *signature[0])
+    if !JniOk(env) || field == null { return 0 }
+    return env.functions.GetIntField(env, options, field)
+}
+
+Decode :: (env: *JniEnv, path: string, options: *void) -> *void {
+    args: [3]JniValue
+    args[0] = ArgumentObject(TextObject(env, path))
+    stream: *void
+    if path.count > 0 && path[0] == #char "/" {
+        stream = NewObject(env, "java/io/FileInputStream", "(Ljava/lang/String;)V", args[:])
+    } else {
+        empty := NoArguments()
+        assets := ObjectCall(env, JniGetAndroidApp().activity.activity, "getAssets", "()Landroid/content/res/AssetManager;", empty[:])
+        stream = ObjectCall(env, assets, "open", "(Ljava/lang/String;)Ljava/io/InputStream;", args[:])
+    }
+    if stream == null { return null }
+    empty := NoArguments()
+    defer { unused VoidCall(env, stream, "close", "()V", empty[:]) }
+    args[0] = ArgumentObject(stream); args[1] = ArgumentObject(null); args[2] = ArgumentObject(options)
+    return StaticCall(env, "android/graphics/BitmapFactory", "decodeStream", "(Ljava/io/InputStream;Landroid/graphics/Rect;Landroid/graphics/BitmapFactory$Options;)Landroid/graphics/Bitmap;", args[:])
+}
+
+// Returns a stable renderer path. Callers retain their own path allowlist.
+Prepare :: (path: string, preview: bool = false) -> string {
+    if path == "" || path.count + 8 >= 256 || !CopyCString(path, image_path[:]) { return path }
+    if preview {
+        suffix := ".preview"
+        for at: 0..7 { image_path[path.count + at] = suffix[at] }
+        image_path[path.count + 8] = cast(u8)0
+    }
+    name := TextUntilNul(image_path[:])
+    image_clock += 1
+    for at: cast(s32)0..95 {
+        if TextUntilNul(images[at].path[:]) == name { images[at].touched = image_clock; return name }
+    }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return name }
+    defer { AndroidJniDetachCurrent(*session) }
+    env := session.env
+    empty := NoArguments()
+    options := NewObject(env, "android/graphics/BitmapFactory$Options", "()V", empty[:])
+    if options == null || !SetOption(env, options, "inJustDecodeBounds", 1, true) { return name }
+    unused Decode(env, path, options)
+    width := Option(env, options, "outWidth"); height := Option(env, options, "outHeight")
+    if width <= 0 || height <= 0 || cast(s64)width * height > 32000000 { return name }
+    sample: s32 = 1
+    if preview { while width / sample > 256 || height / sample > 256 { sample *= 2 } }
+    if !SetOption(env, options, "inJustDecodeBounds", 0, true) || !SetOption(env, options, "inSampleSize", sample) { return name }
+    bitmap := Decode(env, path, options)
+    if bitmap == null { return name }
+    defer { unused VoidCall(env, bitmap, "recycle", "()V", empty[:]) }
+    width_method := Method(env, bitmap, "getWidth", "()I", false)
+    height_method := Method(env, bitmap, "getHeight", "()I", false)
+    if width_method == null || height_method == null { return name }
+    width = env.functions.CallIntMethodA(env, bitmap, width_method, *empty[0])
+    height = env.functions.CallIntMethodA(env, bitmap, height_method, *empty[0])
+    count := cast(s64)width * height
+    if width <= 0 || height <= 0 || count > 32000000 || !JniOk(env) { return name }
+    slot: s32 = -1
+    while slot < 0 || image_pixels + count > PIXEL_BUDGET {
+        oldest: s32 = -1
+        for at: cast(s32)0..95 {
+            if images[at].pixels != null && (oldest < 0 || images[at].touched < images[oldest].touched) { oldest = at }
+            if images[at].pixels == null { slot = at }
+        }
+        if slot >= 0 && image_pixels + count <= PIXEL_BUDGET { break }
+        Drop(oldest)
+        slot = oldest
+    }
+    pixels := cast(*u32)PixelsAllocate(cast(usize)count, 4)
+    if pixels == null { return name }
+    good := false
+    defer { if !good { PixelsRelease(cast(*void)pixels) } }
+    array := env.functions.NewIntArray(env, cast(s32)count)
+    if !JniOk(env) || array == null { return name }
+    args: [7]JniValue = .[ArgumentObject(array), ArgumentInteger(0), ArgumentInteger(width), ArgumentInteger(0), ArgumentInteger(0), ArgumentInteger(width), ArgumentInteger(height)]
+    if !VoidCall(env, bitmap, "getPixels", "([IIIIIII)V", args[:]) { return name }
+    env.functions.GetIntArrayRegion(env, array, 0, cast(s32)count, cast(*s32)pixels)
+    if !JniOk(env) { return name }
+    orientation: s32 = 1
+    if path.count > 0 && path[0] == #char "/" {
+        exif_args: [2]JniValue
+        exif_args[0] = ArgumentObject(TextObject(env, path))
+        exif := NewObject(env, "android/media/ExifInterface", "(Ljava/lang/String;)V", exif_args[:])
+        if exif != null {
+            exif_args[0] = ArgumentObject(TextObject(env, "Orientation")); exif_args[1] = ArgumentInteger(1)
+            method := Method(env, exif, "getAttributeInt", "(Ljava/lang/String;I)I", false)
+            if method != null { orientation = env.functions.CallIntMethodA(env, exif, method, *exif_args[0]) }
+            unused JniOk(env)
+        }
+    }
+    pixels = Orient(pixels, width, height, orientation)
+    if pixels == null { good = true; return name }
+    if orientation >= 5 && orientation <= 8 { swap := width; width = height; height = swap }
+    if !PixmapSetImage(SLOT_BASE + slot, name, width, height, Pixels(pixels, count)) { return name }
+    unused CopyCString(name, images[slot].path[:])
+    images[slot].pixels = pixels; images[slot].count = count; images[slot].touched = image_clock
+    image_pixels += count; good = true
+    return name
+}

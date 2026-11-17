@@ -36,6 +36,7 @@ TextField :: #import "kryon/text_field";
 #if #defined(ANDROID_BUILD) {
     #import "android_fields"
     #import "android_documents"
+    AndroidImages :: #import "android_images";
 }
 
 Spreadsheet :: #import "workbook/service";
@@ -476,6 +477,13 @@ AppCall :: (context: *void, module: *u8, function: *u8,
 }
 
 // Images an app draws come from its own unpacked assets.
+AppAssetResolve :: (path: string) -> string {
+    #if #defined(ANDROID_BUILD) {
+        unused AndroidImages.Prepare(path)
+    }
+    return path
+}
+
 AssetAllowed :: (path: string) -> bool {
     // Widgets without an image ask with an empty path.
     if path == "" {
@@ -644,7 +652,7 @@ RunApp :: (index: s32, view: AppView) -> bool {
     app.portable.area_input.composition_event = view.input.composition_event
     app.portable.area_input.now_seconds = SteadyClock()
     running = index
-    WidgetHostBegin(view.session, AssetAllowed)
+    WidgetHostBegin(view.session, AssetAllowed, AppAssetResolve)
     ran := AppContextRun(*app.portable, APP_FRAME)
     app_keyboard = app.portable.keyboard
     WidgetHostEnd()

@@ -2,7 +2,7 @@
 // Ziran through RegisterNatives. The class has no app behavior or Java source.
 // DEX layout: https://source.android.com/docs/core/runtime/dex-format
 #import "android"
-#import "android_jni"
+#import "kryon/android_jni"
 #import "c_string"
 #import "byte_text_linux"
 #import "text_buffer"
@@ -119,7 +119,7 @@ DexSeal :: (env: *JniEnv, bytes: []u8, length: s32) -> s32 {
 DexClass :: (env: *JniEnv, bytes: []u8, length: s32, filename: string, name: string) -> *void {
     if length <= 0 || length > bytes.count || length > 4096 || !SafeName(filename) { return null }
     path: [1024]u8
-    base := TextFromCString(ActivityInternalDataPath())
+    base := TextFromCString(AndroidInternalDataPath())
     if PathJoin(path[:], base, filename) == "" { return null }
     mode: [3]u8
     unused CopyCString("rb", mode[:])
@@ -152,7 +152,7 @@ DexClass :: (env: *JniEnv, bytes: []u8, length: s32, filename: string, name: str
         if !ok { return null }
     }
     empty := NoArguments()
-    parent := ObjectCall(env, NativeApp().activity.activity, "getClassLoader", "()Ljava/lang/ClassLoader;", empty[:])
+    parent := ObjectCall(env, JniGetAndroidApp().activity.activity, "getClassLoader", "()Ljava/lang/ClassLoader;", empty[:])
     args: [4]JniValue
     args[0] = ArgumentObject(TextObject(env, TextUntilNul(path[:])))
     args[1] = ArgumentObject(TextObject(env, base)); args[2] = ArgumentObject(null); args[3] = ArgumentObject(parent)
@@ -167,8 +167,8 @@ UiRun :: (env: *JniEnv, task: *void) {
 }
 UiInitialize :: () -> bool {
     if ui_task != null { return true }
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return false }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return false }
     env := session.env
     bytes: [512]u8
     length := DexRunnable(env, bytes[:])
@@ -185,7 +185,7 @@ UiInitialize :: () -> bool {
         constructor := env.functions.GetMethodID(env, klass, *ClassConstructorName()[0], *descriptor[0])
         if constructor != null { ui_task = env.functions.NewGlobalRef(env, env.functions.NewObjectA(env, klass, constructor, *empty[0])) }
     }
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     return ui_task != null
 }
 constructor_name: [7]u8;
@@ -198,12 +198,12 @@ UiSchedule :: (callback: UiCallback) -> bool {
     if ui_pending { UiUnlock(); return false }
     ui_pending = true; ui_callback = callback
     UiUnlock()
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { UiLock(); ui_pending = false; UiUnlock(); return false }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { UiLock(); ui_pending = false; UiUnlock(); return false }
     args: [1]JniValue
     args[0] = ArgumentObject(ui_task)
     ok := VoidCall(session.env, session.activity, "runOnUiThread", "(Ljava/lang/Runnable;)V", args[:])
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     if !ok { UiLock(); ui_pending = false; UiUnlock() }
     return ok
 }

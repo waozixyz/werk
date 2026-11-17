@@ -1,3 +1,6 @@
+#if #defined(ANDROID_BUILD) {
+    HomeRaster :: #import "android_images";
+}
 TextField :: #import "kryon/text_field";
 Image :: #import "kryon/image";
 Button :: #import "kryon/button";
@@ -274,7 +277,11 @@ HomeAssetResolve :: (path: string) -> string {
     name: [96]u8
     file := HomeArtwork(tool, name[:])
     // The host's own file, without the portable assets/ prefix.
-    return AssetPath(home_artwork_files[tool][:], file[7:file.count])
+    resolved := AssetPath(home_artwork_files[tool][:], file[7:file.count])
+    #if #defined(ANDROID_BUILD) {
+        unused HomeRaster.Prepare(resolved)
+    }
+    return resolved
 }
 
 HomeCards :: (context: *void, indices: []s32, bounds: Rectangle,

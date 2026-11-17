@@ -1,6 +1,6 @@
 // NativeActivity, AndroidKeyStore, and device authentication are called
 // directly through JNI. No application Java or C implementation is needed.
-#import "android_jni"
+#import "kryon/android_jni"
 #import "std/c_string"
 #import "std/byte_text_linux"
 #import "std/text_buffer"
@@ -38,7 +38,7 @@ secure_deadline: float64;
 secure_master: [1024]u8;
 
 AndroidInitialize :: () -> bool {
-    path := ActivityInternalDataPath()
+    path := AndroidInternalDataPath()
     if path == null || ChangeDirectory(path) != 0 {
         return false
     }
@@ -68,7 +68,7 @@ AndroidInitialize :: () -> bool {
 
 AndroidKeyboard :: (visible: bool) {
     if visible == keyboard_visible { return }
-    app := NativeApp()
+    app := JniGetAndroidApp()
     if app == null || app.activity == null { return }
     keyboard_visible = visible
     if visible { ShowKeyboard(app.activity, cast(u32)0) }
@@ -102,50 +102,58 @@ Method :: (env: *JniEnv, object: *void, name: string, signature: string, static:
     if !JniOk(env) { return null }
     return result
 }
+// Use Java's explicit UTF-8 conversion. JNI's NewStringUTF uses modified
+// UTF-8 and cannot preserve NUL and supplementary characters from our fields.
 TextObject :: (env: *JniEnv, value: string) -> *void {
-    text: [4096]u16
-    count: s32 = 0; index: s32 = 0
-    while index < cast(s32)value.count {
-        decoded := Decode(value, index)
-        codepoint := decoded.value
-        if count + 2 >= 4096 { return null }
-        if codepoint <= cast(u32)65535 { text[count] = cast(u16)codepoint; count += 1 }
-        else {
-            codepoint -= cast(u32)65536
-            text[count] = cast(u16)(cast(u32)55296 + (codepoint >> cast(u32)10))
-            text[count + 1] = cast(u16)(cast(u32)56320 + (codepoint & cast(u32)1023))
-            count += 2
-        }
-        index = decoded.after
+    if value.count > 16384 { return null }
+    bytes := env.functions.NewByteArray(env, cast(s32)value.count)
+    if !JniOk(env) || bytes == null { return null }
+    defer { env.functions.DeleteLocalRef(env, bytes) }
+    if value.count > 0 {
+        descriptor := cast(*TextDescriptor)(*value)
+        env.functions.SetByteArrayRegion(env, bytes, 0, cast(s32)value.count, descriptor.data)
+        if !JniOk(env) { return null }
     }
-    return env.functions.NewString(env, *text[0], count)
+    type := Class(env, "java/lang/String")
+    if type == null { return null }
+    defer { env.functions.DeleteLocalRef(env, type) }
+    // Constructors are instance methods even though NewObjectA receives a class.
+    label: [16]u8; signature: [48]u8
+    unused CopyCString("<init>", label[:])
+    unused CopyCString("([BLjava/lang/String;)V", signature[:])
+    method := env.functions.GetMethodID(env, type, *label[0], *signature[0])
+    if !JniOk(env) || method == null { return null }
+    encoding_bytes: [8]u8
+    unused CopyCString("UTF-8", encoding_bytes[:])
+    encoding := AndroidJniString(env, *encoding_bytes[0])
+    if !JniOk(env) || encoding == null { return null }
+    defer { env.functions.DeleteLocalRef(env, encoding) }
+    arguments: [2]JniValue = .[ArgumentObject(bytes), ArgumentObject(encoding)]
+    result := env.functions.NewObjectA(env, type, method, *arguments[0])
+    if !JniOk(env) { return null }
+    return result
 }
 CopyJavaText :: (env: *JniEnv, value: *void, output: []u8) -> s32 {
     if value == null || output.count == 0 { return -1 }
-    count := env.functions.GetStringLength(env, value)
-    chars := env.functions.GetStringChars(env, value, null)
-    if chars == null { return -1 }
-    index: s32 = 0; used: s32 = 0
-    while index < count {
-        codepoint := cast(u32)chars[index]
-        if codepoint >= cast(u32)55296 && codepoint <= cast(u32)56319 && index + 1 < count {
-            low := cast(u32)chars[index + 1]
-            if low >= cast(u32)56320 && low <= cast(u32)57343 {
-                codepoint = cast(u32)65536 + ((codepoint - cast(u32)55296) << cast(u32)10) + low - cast(u32)56320
-                index += 1
-            }
-        }
-        next := TypedTextAppend(output[0:output.count - 1], used, cast(s32)codepoint)
-        if next == used { used = -1; break }
-        used = next; index += 1
-    }
-    if used >= 0 { output[used] = cast(u8)0 }
-    env.functions.ReleaseStringChars(env, value, chars)
-    return used
+    encoding_bytes: [8]u8
+    unused CopyCString("UTF-8", encoding_bytes[:])
+    encoding := AndroidJniString(env, *encoding_bytes[0])
+    if !JniOk(env) || encoding == null { return -1 }
+    defer { env.functions.DeleteLocalRef(env, encoding) }
+    arguments: [1]JniValue = .[ArgumentObject(encoding)]
+    bytes := ObjectCall(env, value, "getBytes", "(Ljava/lang/String;)[B", arguments[:])
+    if bytes == null { return -1 }
+    defer { env.functions.DeleteLocalRef(env, bytes) }
+    count := env.functions.GetArrayLength(env, bytes)
+    if !JniOk(env) || count < 0 || cast(s64)count >= output.count { return -1 }
+    if count > 0 { env.functions.GetByteArrayRegion(env, bytes, 0, count, *output[0]) }
+    if !JniOk(env) { return -1 }
+    output[count] = 0
+    return count
 }
-ArgumentObject :: (reference: *void) -> JniValue { return JniValue.{cast(u64)cast(usize)reference} }
-ArgumentInteger :: (integer: s32) -> JniValue { return JniValue.{cast(u64)cast(u32)integer} }
-ArgumentBool :: (boolean: bool) -> JniValue { return JniValue.{cast(u64)boolean} }
+ArgumentObject :: (reference: *void) -> JniValue { return JniValue.{.reference = reference} }
+ArgumentInteger :: (integer: s32) -> JniValue { return JniValue.{.integer = integer} }
+ArgumentBool :: (boolean: bool) -> JniValue { return JniValue.{.boolean = cast(u8)boolean} }
 ObjectCall :: (env: *JniEnv, object: *void, name: string, signature: string, arguments: []JniValue) -> *void {
     method := Method(env, object, name, signature, false)
     if method == null { return null }
@@ -186,7 +194,7 @@ BoolCall :: (env: *JniEnv, object: *void, name: string, signature: string, argum
 }
 NoArguments :: () -> [1]JniValue { result: [1]JniValue; return result }
 
-Service :: (session: *ActivityJniSession, name: string) -> *void {
+Service :: (session: *AndroidJniSession, name: string) -> *void {
     args: [1]JniValue
     args[0] = ArgumentObject(TextObject(session.env, name))
     return ObjectCall(session.env, session.activity, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", args[:])
@@ -196,8 +204,8 @@ AndroidReadPreference :: (name: string, output: []u8) -> s32 {
     prefix := ".kryon_pass_"
     if name.count <= prefix.count + 4 || name[0:cast(s32)prefix.count] != prefix { return -1 }
     key := name[cast(s32)prefix.count:cast(s32)name.count - 4]
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return -1 }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return -1 }
     env := session.env
     args: [2]JniValue
     args[0] = ArgumentObject(TextObject(env, "pass_preferences_pass")); args[1] = ArgumentInteger(0)
@@ -208,17 +216,17 @@ AndroidReadPreference :: (name: string, output: []u8) -> s32 {
     if value != null && env.functions.ExceptionCheck(env) == cast(u8)0 {
         count = CopyJavaText(env, value, output)
     }
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     return count
 }
 
 AndroidSecureAvailable :: () -> bool {
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return false }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return false }
     args := NoArguments()
     keyguard := Service(*session, "keyguard")
     available := BoolCall(session.env, keyguard, "isDeviceSecure", "()Z", args[:])
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     return available
 }
 AndroidSecureSaved :: () -> bool {
@@ -272,7 +280,7 @@ CreateKey :: (env: *JniEnv) -> bool {
     return key != null && env.functions.ExceptionCheck(env) == cast(u8)0
 }
 
-ConfirmDevice :: (session: *ActivityJniSession) -> bool {
+ConfirmDevice :: (session: *AndroidJniSession) -> bool {
     keyguard := Service(session, "keyguard")
     args: [2]JniValue
     args[0] = ArgumentObject(TextObject(session.env, "Werkzeug"))
@@ -285,12 +293,12 @@ ConfirmDevice :: (session: *ActivityJniSession) -> bool {
 
 AndroidSecureRequest :: (master: string, save: bool) -> bool {
     if secure_pending != 0 || !AndroidSecureAvailable() { return false }
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return false }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return false }
     ok: bool = true
     if save { ok = CopyCString(master, secure_master[:]) && CreateKey(session.env) }
     if ok { ok = ConfirmDevice(*session) }
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     if !ok { secure_master = .{}; return false }
     secure_pending = ifx save then 1 else 2
     secure_deadline = Now() + 60.0
@@ -308,7 +316,7 @@ Unhex :: (byte: u8) -> s32 {
     return -1
 }
 
-TrySecure :: (session: *ActivityJniSession, output: []u8) -> s32 {
+TrySecure :: (session: *AndroidJniSession, output: []u8) -> s32 {
     env := session.env
     key_store := KeyStore(env)
     args: [3]JniValue
@@ -379,12 +387,12 @@ AndroidSecurePoll :: (output: []u8) -> s32 {
     if secure_pending == 0 { return 0 }
     result: s32 = 3
     if Now() < secure_deadline {
-        session: ActivityJniSession
-        if activity_jni_attach(*session) != 0 {
+        session: AndroidJniSession
+        if AndroidJniAttachCurrent(*session) != 0 {
             result = TrySecure(*session, output)
             // Unauthenticated key use is expected while the system prompt is open.
             if session.env.functions.ExceptionCheck(session.env) != cast(u8)0 { session.env.functions.ExceptionClear(session.env) }
-            activity_jni_detach(*session)
+            AndroidJniDetachCurrent(*session)
         }
     }
     if result == 2 || result == 3 { secure_pending = 0; secure_master = .{} }
@@ -392,32 +400,32 @@ AndroidSecurePoll :: (output: []u8) -> s32 {
 }
 
 AndroidSecureForget :: () -> bool {
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return false }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return false }
     args: [1]JniValue
     args[0] = ArgumentObject(TextObject(session.env, "pass_master_ziran"))
     ok := VoidCall(session.env, KeyStore(session.env), "deleteEntry", "(Ljava/lang/String;)V", args[:])
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     secure_pending = 0; secure_master = .{}
     return WriteStore(SECURE_FILE, "") && ok
 }
 
 AndroidClipboardWrite :: (value: string) -> bool {
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return false }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return false }
     args: [2]JniValue
     args[0] = ArgumentObject(TextObject(session.env, "Werkzeug"))
     args[1] = ArgumentObject(TextObject(session.env, value))
     clip := StaticCall(session.env, "android/content/ClipData", "newPlainText", "(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;", args[:])
     args[0] = ArgumentObject(clip)
     ok := VoidCall(session.env, Service(*session, "clipboard"), "setPrimaryClip", "(Landroid/content/ClipData;)V", args[:])
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     return ok
 }
 
 AndroidClipboardRead :: (output: []u8) -> string {
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return "" }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return "" }
     args := NoArguments()
     clip := ObjectCall(session.env, Service(*session, "clipboard"), "getPrimaryClip", "()Landroid/content/ClipData;", args[:])
     args[0] = ArgumentInteger(0)
@@ -429,14 +437,14 @@ AndroidClipboardRead :: (output: []u8) -> string {
     if string != null && session.env.functions.ExceptionCheck(session.env) == cast(u8)0 {
         copied = CopyJavaText(session.env, string, output) >= 0
     }
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     if copied { return TextUntilNul(output) }
     return ""
 }
 
 AndroidDark :: () -> bool {
-    session: ActivityJniSession
-    if activity_jni_attach(*session) == 0 { return false }
+    session: AndroidJniSession
+    if AndroidJniAttachCurrent(*session) == 0 { return false }
     env := session.env
     args := NoArguments()
     resources := ObjectCall(env, session.activity, "getResources", "()Landroid/content/res/Resources;", args[:])
@@ -446,6 +454,6 @@ AndroidDark :: () -> bool {
     field := env.functions.GetFieldID(env, Class(env, "android/content/res/Configuration"), *name[0], *signature[0])
     dark: bool
     if config != null && field != null { dark = (env.functions.GetIntField(env, config, field) & 48) == 32 }
-    activity_jni_detach(*session)
+    AndroidJniDetachCurrent(*session)
     return dark
 }
