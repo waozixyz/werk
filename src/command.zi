@@ -1,5 +1,5 @@
 // Werkzeug without a window, for scripts and devices without a screen:
-// `werk sync …` connects this device to the owner's account on a Daochi
+// `werk sync …` connects this device to the owner's account on a Mesh
 // node, and `werk auth …` reads and changes Auth's accounts, which sync
 // through it. Secrets never appear in arguments or output; `werk auth code`
 // prints one current code for the program that asked.
@@ -36,7 +36,7 @@ Usage: werk sync status
        werk sync create          create an account on this device
        werk sync show            show a code that connects another device
        werk sync join [CODE]     connect to an account with another device's code
-       werk sync key [FILE]      sign in with a Daochi account key, such as the
+       werk sync key [FILE]      sign in with a Mesh account key, such as the
                                  one Inbe exports; a key with a passphrase is
                                  read from FILE and its passphrase from
                                  standard input

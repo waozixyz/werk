@@ -2,8 +2,8 @@
 // A switch is staged until its data choice is explicit and its writes succeed.
 Recovery :: #import "entity/recovery";
 #import "entity/recovery"
-#import "daochi_client/keys"
-#import "daochi_client/crypto"
+#import "mesh_client/keys"
+#import "mesh_client/crypto"
 #import "account"
 #import "account_journal"
 #import "records"

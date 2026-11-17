@@ -1,4 +1,4 @@
-// A Daochi node is an origin, without credentials or request parameters.
+// A Mesh node is an origin, without credentials or request parameters.
 // Plain HTTP is restricted to loopback for a locally hosted node.
 NodeOrigin :: (text: string) -> string {
     end := text.count

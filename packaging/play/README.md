@@ -23,7 +23,7 @@ Before closed/open testing or production, complete the store text, images,
 privacy policy, account-deletion requirements, target audience, ads declaration,
 content rating and Data safety answers. Accept Play terms only with owner
 authorization. Tools work locally without an account; optional account/sync
-connects to the chosen Daochi node. Do not declare that the app never connects
+connects to the chosen Mesh node. Do not declare that the app never connects
 or that the node receives no identifiers. Biometric unlock stays on the device.
 
 If Play App Signing is enabled, preserve the existing signing identity for

@@ -381,8 +381,8 @@ HostColors :: (host: SystemPalette) -> Palette {
 // host's theme and follows its changes.
 ApplyHostTheme :: (host: SystemPalette) {
     if theme_hosted && host.background == theme_host.background && host.base == theme_host.base &&
-        host.text == theme_host.text && host.selected == theme_host.selected &&
-        host.border == theme_host.border && host.dark == theme_host.dark {
+    host.text == theme_host.text && host.selected == theme_host.selected &&
+    host.border == theme_host.border && host.dark == theme_host.dark {
         return
     }
     theme_hosted = true; theme_host = host; theme_signature = -1

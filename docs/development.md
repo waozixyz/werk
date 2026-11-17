@@ -26,7 +26,7 @@ key-file import, backups, device linking and logout. Switching accounts asks
 whether to keep and merge local Auth records or replace them. A private rollback
 journal preserves the previous key and records if a switch is interrupted.
 
-The account can use a [Daochi](https://github.com/kryonlabs/daochi) node,
+The account can use a [Mesh](https://github.com/ziranlang/mesh) node,
 `api.waozi.xyz` by default. Tools work locally without an account. Saved nodes
 and the preferred node live in Profile → Nodes; choosing a node preserves the
 account and its paused state. The sync switch pauses automatic synchronization
@@ -66,7 +66,7 @@ first; Back returns to the tiles. Browser sync is currently unavailable.
   that has not seen a newer one. A lost device keeps the keys it had: stop
   syncing there if you can, and replace two-factor secrets you care about.
 
-`scripts/sync_e2e_test.sh` runs two devices against a local Daochi node.
+`scripts/sync_e2e_test.sh` runs two devices against a local Mesh node.
 
 ## The `werk sync` and `werk auth` commands
 

@@ -14,7 +14,7 @@ ref = "3f72441949d4e16094834fa9220e5d7fa77a0ac0"
 
 [dependencies.apps]
 git = "https://github.com/waozixyz/apps.git"
-ref = "0d726f2a96f7a2d6ae209a29e69ff3dd44c16ee4"
+ref = "40f598a1719bc99bbef7b61649aa168e923ef1f5"
 
 [install]
 bin = "werk"
@@ -30,9 +30,9 @@ host = "src/desktop.zi"
 git = "https://github.com/kryonlabs/mingcute.git"
 ref = "master"
 
-[dependencies.daochi_client]
-git = "https://github.com/ziranlang/daochi-client.git"
-ref = "970d5e44b1702158cb16469892da6ff50f142427"
+[dependencies.mesh_client]
+git = "https://github.com/ziranlang/mesh-client.git"
+ref = "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449"
 
 [dependencies.oqs]
 git = "https://github.com/ziranlang/oqs.git"
@@ -50,7 +50,7 @@ source = true
 
 [dependencies.entity]
 git = "https://github.com/waozixyz/entity.git"
-ref = "9414cb898e3203a598570beb85353067fb92471b"
+ref = "3c7df0daa0cfb12fff67dfaac34aac736687a59e"
 
 [dependencies.auth]
 git = "https://github.com/waozixyz/auth.git"

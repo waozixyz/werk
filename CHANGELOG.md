@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Use Mesh account sync and client imports while keeping existing account keys and Werkzeug data compatible.
+
 - Embedded in Harmony's Sessions window, Werkzeug draws every colour from Harmony's theme and follows its changes; started on its own it keeps its own appearance.
 - Tap the whole Auth card to copy the current code as plain digits, while keeping Edit and the next-code preview.
 - Browse local photo folders and albums with Gallery on desktop and Android.

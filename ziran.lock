@@ -37,15 +37,6 @@
       "url": "https://github.com/libsdl-org/SDL.git"
     },
     {
-      "commit": "0d726f2a96f7a2d6ae209a29e69ff3dd44c16ee4",
-      "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "peb1e86e2b07f33bb"},
-      "dependency_refs": {"crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "3f72441949d4e16094834fa9220e5d7fa77a0ac0"},
-      "id": "p24d17f212dc98f51",
-      "name": "Apps",
-      "ref": "0d726f2a96f7a2d6ae209a29e69ff3dd44c16ee4",
-      "url": "https://github.com/waozixyz/apps.git"
-    },
-    {
       "commit": "f26a552247e2cd367fd33def6860d903cac6ab8a",
       "dependencies": {"av1": "p5d7d12505a42f7b3", "dav1d": "pb24767b9eb34d961", "image_codec": "p69c0e968ae5735d9", "libaom": "p74ab3cb6eb3b86fa", "libavif": "p57c0272208aae8db"},
       "dependency_refs": {"av1": "bd278217e2bac754d868b3d6502eac4257658d4b", "dav1d": "54706fc6bc0cdecab7e9593974a4039cc038fca7", "image_codec": "360553150917f352e49e1beb78917370792ccaef", "libaom": "b141d9c45db236335351c8a4b2a14b3ade27c937", "libavif": "1aadfad932c98c069a1204261b1856f81f3bc199"},
@@ -53,15 +44,6 @@
       "name": "avif",
       "ref": "f26a552247e2cd367fd33def6860d903cac6ab8a",
       "url": "https://github.com/ziranlang/avif.git"
-    },
-    {
-      "commit": "9414cb898e3203a598570beb85353067fb92471b",
-      "dependencies": {"curl": "p8da229d15597ab5c", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "peb1e86e2b07f33bb", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "qrcode": "p0dfa70137405b096", "zlib": "p82dbc05081cd4d96"},
-      "dependency_refs": {"curl": "19b299005fbe2d895f4ad525cfdae62a2220c3ea", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "3f72441949d4e16094834fa9220e5d7fa77a0ac0", "monocypher": "master", "oqs": "master", "qrcode": "master", "zlib": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"},
-      "id": "p287896e728a9a4b3",
-      "name": "Entity",
-      "ref": "9414cb898e3203a598570beb85353067fb92471b",
-      "url": "https://github.com/waozixyz/entity.git"
     },
     {
       "commit": "ec6ed304767e10c125ab2820f3b01d6fd773e147",
@@ -117,15 +99,6 @@
       "url": "https://github.com/ziranlang/image-codec.git"
     },
     {
-      "commit": "970d5e44b1702158cb16469892da6ff50f142427",
-      "dependencies": {"crypto": "pc23fbf455e97614d", "oqs": "p7098ac9cd92f7e5f"},
-      "dependency_refs": {"crypto": "master", "oqs": "master"},
-      "id": "p6af0b5bd9fd0cd31",
-      "name": "DaochiClient",
-      "ref": "970d5e44b1702158cb16469892da6ff50f142427",
-      "url": "https://github.com/ziranlang/daochi-client.git"
-    },
-    {
       "commit": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3",
       "dependencies": {"liboqs": "p60ff905f3a963886"},
       "dependency_refs": {"liboqs": "main"},
@@ -151,6 +124,15 @@
       "ref": "b141d9c45db236335351c8a4b2a14b3ade27c937",
       "source": true,
       "url": "https://aomedia.googlesource.com/aom"
+    },
+    {
+      "commit": "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449",
+      "dependencies": {"crypto": "pc23fbf455e97614d", "oqs": "p7098ac9cd92f7e5f"},
+      "dependency_refs": {"crypto": "master", "oqs": "master"},
+      "id": "p8204ae87a845c1c3",
+      "name": "mesh_client",
+      "ref": "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449",
+      "url": "https://github.com/ziranlang/mesh-client.git"
     },
     {
       "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
@@ -224,6 +206,24 @@
       "url": "https://github.com/raysan5/raylib.git"
     },
     {
+      "commit": "40f598a1719bc99bbef7b61649aa168e923ef1f5",
+      "dependencies": {"crypto": "pc23fbf455e97614d", "kryon": "peb1e86e2b07f33bb", "mesh_client": "p8204ae87a845c1c3"},
+      "dependency_refs": {"crypto": "master", "kryon": "3f72441949d4e16094834fa9220e5d7fa77a0ac0", "mesh_client": "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449"},
+      "id": "pd0b0496bce01d79f",
+      "name": "Apps",
+      "ref": "40f598a1719bc99bbef7b61649aa168e923ef1f5",
+      "url": "https://github.com/waozixyz/apps.git"
+    },
+    {
+      "commit": "3c7df0daa0cfb12fff67dfaac34aac736687a59e",
+      "dependencies": {"curl": "p8da229d15597ab5c", "kryon": "peb1e86e2b07f33bb", "mesh_client": "p8204ae87a845c1c3", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "qrcode": "p0dfa70137405b096", "zlib": "p82dbc05081cd4d96"},
+      "dependency_refs": {"curl": "19b299005fbe2d895f4ad525cfdae62a2220c3ea", "kryon": "3f72441949d4e16094834fa9220e5d7fa77a0ac0", "mesh_client": "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449", "monocypher": "master", "oqs": "master", "qrcode": "master", "zlib": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf"},
+      "id": "pd380d4bff37de135",
+      "name": "Entity",
+      "ref": "3c7df0daa0cfb12fff67dfaac34aac736687a59e",
+      "url": "https://github.com/waozixyz/entity.git"
+    },
+    {
       "commit": "e5a723713bf197b263444529ed55de5b96dd6ced",
       "dependencies": {"crypto": "pc23fbf455e97614d", "kryon": "peb1e86e2b07f33bb", "mingcute": "pe1027b9d16704793"},
       "dependency_refs": {"crypto": "master", "kryon": "3f72441949d4e16094834fa9220e5d7fa77a0ac0", "mingcute": "master"},
@@ -269,8 +269,8 @@
     }
   ],
   "root": {
-    "dependencies": {"apps": "p24d17f212dc98f51", "auth": "pde6efcf4aea7571e", "crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "entity": "p287896e728a9a4b3", "kryon": "peb1e86e2b07f33bb", "liboqs": "p60ff905f3a963886", "mingcute": "pe1027b9d16704793", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "workbook": "p722965f753094273"},
-    "dependency_refs": {"apps": "0d726f2a96f7a2d6ae209a29e69ff3dd44c16ee4", "auth": "e5a723713bf197b263444529ed55de5b96dd6ced", "crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "entity": "9414cb898e3203a598570beb85353067fb92471b", "kryon": "3f72441949d4e16094834fa9220e5d7fa77a0ac0", "liboqs": "main", "mingcute": "master", "monocypher": "master", "oqs": "master", "workbook": "020c932232782d5f4526910a183fcb65b67b1e30"},
+    "dependencies": {"apps": "pd0b0496bce01d79f", "auth": "pde6efcf4aea7571e", "crypto": "pc23fbf455e97614d", "entity": "pd380d4bff37de135", "kryon": "peb1e86e2b07f33bb", "liboqs": "p60ff905f3a963886", "mesh_client": "p8204ae87a845c1c3", "mingcute": "pe1027b9d16704793", "monocypher": "p002f6ed23e3a3576", "oqs": "p7098ac9cd92f7e5f", "workbook": "p722965f753094273"},
+    "dependency_refs": {"apps": "40f598a1719bc99bbef7b61649aa168e923ef1f5", "auth": "e5a723713bf197b263444529ed55de5b96dd6ced", "crypto": "master", "entity": "3c7df0daa0cfb12fff67dfaac34aac736687a59e", "kryon": "3f72441949d4e16094834fa9220e5d7fa77a0ac0", "liboqs": "main", "mesh_client": "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449", "mingcute": "master", "monocypher": "master", "oqs": "master", "workbook": "020c932232782d5f4526910a183fcb65b67b1e30"},
     "name": "Werkzeug"
   },
   "toolchain": {

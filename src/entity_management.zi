@@ -14,7 +14,7 @@
     #import "entity/picture_publish"
     #import "std/date_time_linux"
     #import "entity/pairing"
-    #import "daochi_client/client"
+    #import "mesh_client/client"
     #import "account"
     #import "account_transition"
     #import "sync"

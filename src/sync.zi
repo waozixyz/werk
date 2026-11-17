@@ -1,5 +1,5 @@
 // Syncs the records of the apps that sync (Auth) through the account's
-// Daochi server. Each record travels sealed with the vault key; the sealed
+// Mesh server. Each record travels sealed with the vault key; the sealed
 // text holds the change time and whether the record was removed, so the
 // server can neither read, forge nor reorder a change it relays. Every
 // request uploads the unsynced changes and pages through the server's.
@@ -9,11 +9,11 @@
 #import "std/number_text"
 #import "std/json_scan"
 #import "std/net_http"
-#import "daochi_client/auth"
-Auth :: #import "daochi_client/auth";
-#import "daochi_client/sync"
-#import "daochi_client/async_client"
-#import "daochi_client/async_sync"
+#import "mesh_client/auth"
+Auth :: #import "mesh_client/auth";
+#import "mesh_client/sync"
+#import "mesh_client/async_client"
+#import "mesh_client/async_sync"
 #import "kryon/http_transfer"
 #import "files"
 #import "platform"

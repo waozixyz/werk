@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Registers the werkzeug app on a Daochi node with a signed manifest, so the
+"""Registers the werkzeug app on a Mesh node with a signed manifest, so the
 node accepts Werkzeug's sealed Auth records. The publisher key signs the
 manifest and is created on first use; the node's registry key approves it.
 
-Usage: register_daochi_app.py NODE_URL PUBLISHER_PEM REGISTRY_PEM
+Usage: register_mesh_app.py NODE_URL PUBLISHER_PEM REGISTRY_PEM
            [--dry-run] [--new-registry] [--registry-public]
 """
 import json, os, sys, urllib.request, urllib.error
@@ -32,7 +32,7 @@ def raw_public(key):
 publisher = load_or_create(publisher_path, True)
 registry = load_or_create(registry_path, '--new-registry' in sys.argv)
 collection = 'private.werkzeug.v1.auth'
-# Daochi signs json.Marshal of its normalized AppManifest: struct field order,
+# Mesh signs json.Marshal of its normalized AppManifest: struct field order,
 # omitempty fields left out, each collection carrying the app id.
 manifest = {
     'manifest_version': 1,

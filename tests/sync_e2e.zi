@@ -1,4 +1,4 @@
-// Two Werkzeug devices against a local Daochi node: one creates the account
+// Two Werkzeug devices against a local Mesh node: one creates the account
 // and an Auth record, the other connects with the shown code and receives
 // it; a removal then reaches the second device too. scripts/sync_e2e_test.sh
 // runs each step in its own process with its own WERK_DATA.
@@ -14,7 +14,13 @@
 #import "device_link"
 #import "profile"
 #import "node_url"
-#import "daochi_client/keys"
+#import "mesh_client/keys"
+
+// This account fixture has no renderer, as in entity_account_test.zi.
+#program_export
+ImageWidth :: (path: string) -> s32 { unused path; return 0 }
+#program_export
+ImageHeight :: (path: string) -> s32 { unused path; return 0 }
 
 RECORD_ID :: "e2e0000000000000000000000000000a"
 // RFC 6238's test key; never a real secret.
@@ -238,7 +244,7 @@ Paused :: () -> s32 {
     return 0
 }
 
-// A fresh Daochi account key written as Inbe exports it, plain and with a
+// A fresh Mesh account key written as Inbe exports it, plain and with a
 // passphrase, for `werk sync key`.
 KeyFiles :: (plain: string, encrypted: string, passphrase: string) -> s32 {
     keys: AccountKeys

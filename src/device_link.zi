@@ -1,6 +1,6 @@
 // Connects another device to the account. The connected device shows a
 // 12-character code; the new device enters it. They swap X25519 keys
-// through the Daochi server's link mailbox, and the connected device sends
+// through the Mesh server's link mailbox, and the connected device sends
 // the account and vault keys sealed with a key derived from the exchange
 // and the code. Without the code, the server cannot open or replace them.
 #import "std/byte_text_linux"
@@ -9,7 +9,7 @@
 #import "std/json_scan"
 #import "std/net_http"
 #import "kryon/http_transfer"
-#import "daochi_client/keys"
+#import "mesh_client/keys"
 #import "platform"
 #import "sync_keys"
 #import "account"

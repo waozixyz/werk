@@ -66,7 +66,7 @@ code_text: [32]u8;
 node_field: FieldState;
 node_text: [256]u8;
 node_error: bool;
-// A Daochi account key to sign in with, such as Inbe's, and its passphrase.
+// A Mesh account key to sign in with, such as Inbe's, and its passphrase.
 account_key_field: FieldState;
 account_key_text: [17664]u8;
 passphrase_field: FieldState;
