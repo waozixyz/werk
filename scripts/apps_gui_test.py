@@ -121,6 +121,23 @@ try:
         assert app.poll() is None, "Werkzeug exited while loading Apps"
         assert time.monotonic() < deadline, "Shared Apps controller did not render: " + home
     assert not re.search(r"\d[\d.]*\s*(?:kB|MB)\b", home, re.I), home
+    pictures = work / "cache/werk/apps/entity/assets/entity"
+    expected_pictures = {"abstract-amber.webp", "abstract-jade.webp", "abstract-violet.webp",
+                         "flowers.webp", "pfp.webp", "wurm-base.webp", "wurm-reward-skins.webp",
+                         "wurm-skins.webp", "wurm-special-skins.webp"}
+    expected_pictures.update(f"shovey-{index}.png" for index in range(8))
+    assert {path.name for path in pictures.glob("*")} == expected_pictures, "Entity's bundled picture resources were not extracted"
+    picture_diagnostics = []
+    for path in sorted(pictures.iterdir()):
+        assert path.stat().st_mode & 0o777 == 0o600, path.name
+        with Image.open(path) as image:
+            image.load()
+            picture_diagnostics.append({'resource': path.name, 'size': image.size,
+                                        'private': True})
+    (work / 'entity-resource-diagnostics.json').write_text(json.dumps({
+        'fixture_only': True, 'bundle': 'entity',
+        'extraction_path': 'assets/entity', 'decoded': picture_diagnostics,
+    }, indent=2) + '\n')
     for name in ("Auth", "Calculator", "Clock", "Workbook", "Pass"):
         click_word(name)
         expect_title(name)

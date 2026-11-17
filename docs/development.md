@@ -214,6 +214,26 @@ src/desktop.zi, src/android_main.zi, src/browser.zi   platform main loops
 src/command.zi      werk sync and werk auth without a window
 ```
 
+## Profile-picture diagnostics
+
+`make entity-account-test` uses a private local HTTP fixture to fetch a
+picture through the normal background pump while Profile is closed. It checks
+the challenge and signed login, saves the returned picture locally and in the
+shared profile, and preserves another app's name. Its sanitized result is
+`build/entity-account-test/picture-sync-diagnostics.json`; it contains no account
+identifiers, keys, signatures or tokens.
+
+`make gui-test` also extracts and decodes all 17 Entity picture resources in a
+private display. Its resource names, dimensions and permissions are recorded
+in `build/apps-gui-test/entity-resource-diagnostics.json`. This distinguishes
+bundled-resource failures from sync failures without reading a real account.
+
+Werkzeug previously skipped starting the background picture reader when
+Profile was closed and no local picture was pending. Sync-enabled accounts
+now start it automatically. These tests cover that reproduced failure. The
+reported shared-resource failure across other apps has not been reproduced;
+the tests do not establish its server-side or cross-app cause.
+
 ## License
 
 Copyright © 2026 Waozi. Distributed under the BSD 3-Clause License. See

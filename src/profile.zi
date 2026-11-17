@@ -16,6 +16,7 @@ Image :: #import "kryon/image";
 #import "node_url"
 #if !#defined(PLATFORM_WEB) {
     #import "std/file"
+    ProfileShared :: #import "entity/native_files";
 }
 ProfileEntity :: #import "entity/model";
 
@@ -278,6 +279,45 @@ PictureImage :: (picture: s32, bounds: Rectangle) -> Image.Props {
 // The profile's picture in the numbers every app publishes.
 ProfileIcon :: () -> s32 {
     return ProfileEntity.EntityPictureIcon(profile.picture_kind, profile.picture, profile.abstract_picture)
+}
+
+// A remote picture cannot replace a local choice still waiting for the node.
+ProfileAdoptPicture :: (icon: s32, published: s32) -> bool {
+    selected := ProfileEntity.EntityPictureAdopt(icon, ProfileIcon(), profile.picture_chosen && ProfileIcon() != published)
+    if selected == 0 { return false }
+    state := ProfileEntity.EntityDefault()
+    state.picture = profile.picture
+    state.picture_kind = profile.picture_kind
+    state.abstract_picture = profile.abstract_picture
+    state = ProfileEntity.EntityWithPublicIcon(state, selected)
+    profile.picture = state.picture
+    profile.picture_kind = state.picture_kind
+    profile.abstract_picture = state.abstract_picture
+    profile.picture_chosen = false
+    profile.picture_published = selected
+    return true
+}
+
+#if !#defined(PLATFORM_WEB) {
+    // Keep the shared native profile in step with node readback. Otherwise
+    // opening Entity would load its older picture over the received one.
+    ProfileReceivePicture :: (icon: s32, published: s32, owner: string) -> bool {
+        if !ProfileShared.NativeAccountId(owner) { return false }
+        previous := profile
+        if !ProfileAdoptPicture(icon, published) { return false }
+        unused CopyCString(owner, profile.picture_owner[:])
+        if !SaveProfile() { profile = previous; return false }
+        shared := ProfileEntity.EntityDefault()
+        if ProfileShared.SharedProfileLoad(owner, *shared) {
+            shared = ProfileEntity.EntityWithPublicIcon(shared, ProfileIcon())
+            if !ProfileShared.SharedProfileSave(owner, shared) {
+                profile = previous
+                unused SaveProfile()
+                return false
+            }
+        }
+        return true
+    }
 }
 
 abstract_picture_path: [PATH_LIMIT]u8;

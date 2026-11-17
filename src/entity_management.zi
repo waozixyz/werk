@@ -36,15 +36,26 @@
     // The chosen picture reaches the node through Entity's publisher, as it
     // does from every other app.
     werk_picture: EntityPicturePublisher;
+    werk_picture_reader: EntityPictureReader;
+    werk_picture_sequence: s32;
+
+    WerkPictureChosen :: () { werk_picture_sequence += 1 }
 
     WerkPicturePump :: () {
         chosen := ifx profile.picture_chosen then ProfileIcon() else 0
         published := ifx TextUntilNul(profile.picture_owner[:]) == AccountId() then profile.picture_published else 0
         accepted := EntityPicturePublishPump(*werk_picture, *werk_management, chosen, published, UnixNow())
-        if accepted == 0 { return }
-        profile.picture_published = accepted
-        profile.picture_owner = werk_picture.owner
-        unused SaveProfile()
+        if accepted != 0 {
+            profile.picture_published = accepted
+            profile.picture_owner = werk_picture.owner
+            unused SaveProfile()
+        }
+        if !AccountReady() || !AccountSyncEnabled() {
+            EntityPictureReadStop(*werk_picture_reader)
+            return
+        }
+        icon := EntityPictureReadPump(*werk_picture_reader, *werk_management, werk_picture_sequence, UnixNow())
+        unused ProfileReceivePicture(icon, published, TextUntilNul(werk_picture_reader.owner[:]))
     }
 
     WerkAliasPath :: (output: []u8) -> string {
@@ -190,8 +201,8 @@ WerkManagementEnqueue :: (request: string) -> bool {
 }
 WerkManagementPump :: () {
     #if !#defined(PLATFORM_WEB) {
-        // A chosen picture is sent even when Profile is not open.
-        if !werk_management_started && profile.picture_chosen && AccountReady() { WerkManagementStart() }
+        // Sync also reads another app's picture while Profile is closed.
+        if !werk_management_started && AccountReady() && (profile.picture_chosen || AccountSyncEnabled()) { WerkManagementStart() }
         if !werk_management_started { return }
         ProviderPump(*werk_management)
         WerkPicturePump()

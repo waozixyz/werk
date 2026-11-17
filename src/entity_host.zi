@@ -6,6 +6,7 @@ Entity :: #import "entity/model";
 #import "std/text_buffer"
 #if !#defined(PLATFORM_WEB) {
     #import "account"
+    #import "entity_management"
     #import "sync"
     #import "device_link"
     #import "records"
@@ -76,7 +77,12 @@ WerkEntityWrite :: (document: string) -> bool {
     }
     previous := profile
     profile.name = state.name
-    if Entity.EntityPublicIcon(state) != ProfileIcon() { profile.picture_chosen = true }
+    if Entity.EntityPublicIcon(state) != ProfileIcon() {
+        profile.picture_chosen = true
+        #if !#defined(PLATFORM_WEB) {
+            WerkPictureChosen()
+        }
+    }
     profile.picture = state.picture
     profile.picture_kind = state.picture_kind
     profile.abstract_picture = state.abstract_picture

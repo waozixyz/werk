@@ -2,18 +2,29 @@
 #import "account_journal"
 #import "account_transition"
 #import "records"
+#import "entity_management"
 #import "profile"
 #import "files"
 #import "platform"
 #import "sync_keys"
 #import "entity/recovery"
+#import "entity/picture_publish"
 #import "daochi_client/keys"
 #import "std/file"
 #import "std/c_string"
 #import "std/text_buffer"
+PictureEntity :: #import "entity/model";
+PictureShared :: #import "entity/native_files";
 
 libc :: #system_library "libc";
 RemoveDirectory :: (path: *u8) -> s32 #foreign libc "rmdir";
+
+// Account fixtures have no renderer. Image extraction and rendering run in
+// the private GUI suite; an unavailable image is the real headless contract.
+#program_export
+ImageWidth :: (path: string) -> s32 { unused path; return 0 }
+#program_export
+ImageHeight :: (path: string) -> s32 { unused path; return 0 }
 
 #program_export
 Check :: () -> s32 {
@@ -62,7 +73,9 @@ Check :: () -> s32 {
     if !AccountReady() || AccountId() != TextUntilNul(original.keys.public_id[:]) || !RecordsOpen("auth") ||
     record_table.count != 1 || TextUntilNul(record_table.records[0].value[:]) != "fixture-recovered" || record_table.records[0].updated != 222 { return 18 }
     if !ForgetAccount() || AccountReady() || record_table.count != 1 { return 19 }
-    return CheckPictures()
+    pictures := CheckPictures()
+    if pictures != 0 { return pictures }
+    return CheckPictureReadback()
 }
 
 // Werkzeug keeps an abstract picture chosen in Entity's page, publishes it
@@ -76,15 +89,82 @@ CheckPictures :: () -> s32 {
     if profile.picture_kind != 1 || profile.abstract_picture != 2 || profile.picture != 4 || ProfileIcon() != 129 { return 21 }
     profile.picture_kind = 0
     if ProfileIcon() != 45 { return 22 }
-    if !EntityPictureAsset("entity", "assets/entity/abstract-jade.png") ||
-    !EntityPictureAsset("entity", "assets/entity/pfp.png") { return 23 }
-    if EntityPictureAsset("pass", "assets/entity/pfp.png") || EntityPictureAsset("entity", "assets/entity/") ||
+    profile.picture_chosen = false
+    if !ProfileAdoptPicture(128, 45) || ProfileIcon() != 128 || profile.picture_kind != 1 ||
+    profile.abstract_picture != 1 || profile.picture_published != 128 { return 25 }
+    if !SaveProfile() { return 26 }
+    LoadProfile()
+    if ProfileIcon() != 128 { return 27 }
+    // A valid remote picture, an invalid node icon and a pending local choice.
+    profile.picture_chosen = true
+    if ProfileAdoptPicture(45, 41) || ProfileIcon() != 128 { return 28 }
+    if ProfileAdoptPicture(0, 128) || ProfileAdoptPicture(130, 128) { return 29 }
+    if !ProfileAdoptPicture(45, 128) || ProfileIcon() != 45 || profile.picture_kind != 0 { return 30 }
+    if !EntityPictureAsset("entity", "assets/entity/abstract-jade.webp") ||
+    !EntityPictureAsset("entity", "assets/entity/pfp.webp") { return 23 }
+    if EntityPictureAsset("pass", "assets/entity/pfp.webp") || EntityPictureAsset("entity", "assets/entity/") ||
     EntityPictureAsset("entity", "assets/entity/../key") || EntityPictureAsset("entity", "assets/pfp.png") { return 24 }
+    // Readback must update the shared picture without replacing preferences
+    // another app saved in the same account's public profile.
+    owner := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    shared := PictureEntity.EntityDefault()
+    unused CopyCString(owner, shared.owner_id[:])
+    unused CopyCString("Shared name", shared.name[:])
+    unused CopyCString("Shared intention", shared.intention[:])
+    unused CopyCString("https://node.example.org", shared.nodes[0][:])
+    shared = PictureEntity.EntityWithPublicIcon(shared, 45)
+    if !PictureShared.SharedProfileSave(owner, shared) { return 31 }
+    profile.picture_chosen = false
+    if !ProfileReceivePicture(128, 45, owner) || ProfileIcon() != 128 { return 32 }
+    LoadProfile()
+    restored := PictureEntity.EntityDefault()
+    if ProfileIcon() != 128 || TextUntilNul(profile.picture_owner[:]) != owner ||
+    !PictureShared.SharedProfileLoad(owner, *restored) || PictureEntity.EntityPublicIcon(restored) != 128 ||
+    TextUntilNul(restored.name[:]) != "Shared name" || TextUntilNul(restored.intention[:]) != "Shared intention" ||
+    TextUntilNul(restored.nodes[0][:]) != "https://node.example.org" { return 33 }
+    profile.picture_chosen = true
+    if ProfileReceivePicture(45, 41, owner) || ProfileIcon() != 128 { return 34 }
+    if !PictureShared.SharedProfileLoad(owner, *restored) || PictureEntity.EntityPublicIcon(restored) != 128 { return 35 }
     return 0
 }
 
 
 ProbeSleep :: (microseconds: u32) -> s32 #foreign libc "usleep";
+
+// The normal background pump must fetch a remote choice without opening
+// Entity, and a previously saved shared profile must not shadow that choice.
+CheckPictureReadback :: () -> s32 {
+    server := EnvironmentText("WERK_TEST_PICTURE_SERVER")
+    if server == "" || !CopyCString(server, profile.node[:]) || !SaveProfile() ||
+    !CreateAccount() || !SetAccountSyncEnabled(true) { return 36 }
+    profile.picture_chosen = false
+    profile.picture_published = 45
+    profile.picture_kind = 0
+    profile.picture = 4
+    profile.picture_owner = account.keys.public_id
+    if !SaveProfile() { return 37 }
+    shared := PictureEntity.EntityDefault()
+    shared.owner_id = account.keys.public_id
+    unused CopyCString("Other app's name", shared.name[:])
+    shared = PictureEntity.EntityWithPublicIcon(shared, 45)
+    if !PictureShared.SharedProfileSave(AccountId(), shared) { return 38 }
+    // Exercise the same pump as WerkFrame, without opening Entity or
+    // explicitly starting its management provider.
+    if werk_management_started { return 42 }
+    for attempt: 0..299 {
+        WerkManagementPump()
+        if ProfileIcon() == 128 { break }
+        unused ProbeSleep(10000)
+    }
+    restored := PictureEntity.EntityDefault()
+    if ProfileIcon() != 128 || TextUntilNul(profile.picture_owner[:]) != AccountId() ||
+    !PictureShared.SharedProfileLoad(AccountId(), *restored) || PictureEntity.EntityPublicIcon(restored) != 128 ||
+    TextUntilNul(restored.name[:]) != "Other app's name" { return 39 }
+    LoadProfile()
+    if ProfileIcon() != 128 { return 40 }
+    EntityPictureReadStop(*werk_picture_reader)
+    return ifx ForgetAccount() then 0 else 41
+}
 
 #program_export
 HoldJournal :: () -> s32 {
