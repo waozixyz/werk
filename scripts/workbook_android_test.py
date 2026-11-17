@@ -8,6 +8,7 @@ import time
 import xml.etree.ElementTree as ET
 from android_labels import label_position
 from android_apk_check import check_apk
+from android_startup import launch_home
 
 root = Path(__file__).resolve().parents[1]
 output = root / "build/workbook-android-test"
@@ -22,9 +23,9 @@ apk = Path(os.environ.get("WERK_ANDROID_APK", root / "build/werk-android-emulato
 check_apk(apk)
 
 
-def adb(*args, check=True):
+def adb(*args, check=True, timeout=90):
     command = ["adb", "-s", serial, *map(str, args)]
-    result = subprocess.run(command, capture_output=True, timeout=90)
+    result = subprocess.run(command, capture_output=True, timeout=timeout)
     if check and result.returncode:
         # CalledProcessError's default traceback omits captured output, which
         # is essential to distinguish a failed shell command from lost ADB.
@@ -68,7 +69,8 @@ def label(word, scroll=False):
 
 
 def native_label(word):
-    until = time.monotonic() + 20
+    # A cold Android document picker can take longer than in-app controls.
+    until = time.monotonic() + 90
     while time.monotonic() < until:
         path = "/data/local/tmp/werk-window.xml"
         shell("rm", "-f", path, check=False)
@@ -80,7 +82,8 @@ def native_label(word):
         except ET.ParseError:
             nodes = []
         for node in nodes:
-            if node.get("text", "").casefold() == word.casefold():
+            if word.casefold() in (node.get("text", "").casefold(),
+                                   node.get("content-desc", "").casefold()):
                 bounds = list(map(int, re.findall(r"\d+", node.get("bounds", ""))))
                 if len(bounds) == 4:
                     tap((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
@@ -133,11 +136,9 @@ def edit(col, value):
         if time.monotonic() > until:
             raise AssertionError("Workbook did not focus Android's keyboard")
         time.sleep(.2)
-    if "keycombination" in input_commands:
-        shell("input", "keycombination", "113", "29")
-    else:
-        # Older input commands lack Ctrl+A; clear the fixture through its IME.
-        shell("input", "keyevent", "123", *["67" for _ in previous])
+    # These ASCII fixtures clear the actual framework editor through its
+    # caret and delete keys. ADB chord injection varies across Android APIs.
+    shell("input", "keyevent", "123", *["67" for _ in previous])
     shell("input", "text", shlex.quote(value))
     time.sleep(.5)
     hide_keyboard()
@@ -158,6 +159,7 @@ def failure_diagnostics():
         "adb-state.txt": ("get-state",),
         "failure.png": ("exec-out", "screencap", "-p"),
         "input-method.txt": ("shell", "dumpsys", "input_method"),
+        "saved-workbook.gnumeric": ("exec-out", "run-as", package, "cat", "files/apps/workbook/documents/workbook.gnumeric"),
         "document-intents.txt": ("shell", "dumpsys", "activity", "activities"),
         "crash-log.txt": ("logcat", "-d", "-b", "crash"),
         "startup-log.txt": ("logcat", "-d", "-s", "Werkzeug:I", "art:E", "AndroidRuntime:E"),
@@ -188,33 +190,40 @@ def failure_diagnostics():
         print(f"Could not save diagnostic errors: {error}", flush=True)
 
 
-adb("install", "-r", apk)
-input_help = adb("shell", "input", check=False)
-input_commands = (input_help.stdout + input_help.stderr).decode()
-shell("am", "force-stop", package)
-shell("run-as", package, "rm", "-rf", "files/apps/workbook", check=False)
-shell("rm", "-f", "/sdcard/Download/workbook.gnumeric", check=False)
-shell("am", "start", "-n", package + "/android.app.NativeActivity")
-time.sleep(1)
-width, height = map(int, shell("wm", "size").strip().split()[-1].split("x"))
-zoom = max(1, width / 390)
-windows = shell("dumpsys", "window")
-(output / "window-dump.txt").write_text(windows)
-status = re.search(r"type=(?:statusBars|ITYPE_STATUS_BAR).*?frame=\[0,0\]\[\d+,(\d+)\]", windows)
-top = int(status.group(1)) if status else round(24 * zoom)
 try:
+    # Package verification on a cold software guest can outlast ordinary ADB
+    # commands. Keep its separate deadline bounded and retain diagnostics.
+    adb("install", "-r", apk, timeout=300)
+    shell("am", "force-stop", package)
+    shell("run-as", package, "rm", "-rf", "files/apps/workbook", check=False)
+    shell("rm", "-f", "/sdcard/Download/workbook.gnumeric", check=False)
+    launch_home(adb, output, package, "launch")
+    width, height = map(int, shell("wm", "size").strip().split()[-1].split("x"))
+    # Native Kryon uses Android's configured density, independent of the
+    # display width. The private guest deliberately uses a wide viewport.
+    density = shell("wm", "density")
+    densities = re.findall(r"(?:Physical|Override) density:\s*(\d+)", density)
+    assert densities, "Android did not report its display density: " + density
+    zoom = int(densities[-1]) / 160
+    windows = shell("dumpsys", "window")
+    (output / "window-dump.txt").write_text(windows)
+    status = re.search(r"type=(?:statusBars|ITYPE_STATUS_BAR).*?frame=\[0,0\]\[\d+,(\d+)\]", windows)
+    top = int(status.group(1)) if status else round(24 * zoom)
     label("Workbook", scroll=True)
     edit(0, "12")
     edit(1, "=A1*2")
     shot("calculated")
     assert shell("run-as", package, "stat", "-c", "%a", "files/apps/workbook/documents/workbook.gnumeric").strip() == "600"
     shell("am", "force-stop", package)
-    shell("am", "start", "-n", package + "/android.app.NativeActivity")
-    time.sleep(1)
+    launch_home(adb, output, package, "restart")
     label("Workbook", scroll=True)
     expect("12"); expect("=A1*2", 1)
     original = document()
     file_menu(); label("As")
+    # DocumentsUI remembers other apps' last folder. Choose the fixture's
+    # destination explicitly so a previous Gallery picker cannot redirect it.
+    native_label("Show roots")
+    native_label("Downloads")
     native_label("Save")
     until = time.monotonic() + 30
     exported = ""
@@ -226,6 +235,8 @@ try:
     assert exported == original, "Android export changed document bytes"
     edit(0, "7")
     file_menu(); label("Open")
+    native_label("Show roots")
+    native_label("Downloads")
     native_label("workbook.gnumeric")
     expect("12"); expect("=A1*2", 1)
     assert shell("cat", "/sdcard/Download/workbook.gnumeric") == exported, "Import modified the selected source"

@@ -132,8 +132,8 @@ make android-emulator # the x86_64 APK for a private emulator
 ```
 
 Android input tests require an explicitly owned private emulator through
-`WERK_ANDROID_EMULATOR`. Use the API 35 Google APIs image for
-`make android-input-test`, including Workbook's system document picker.
+`WERK_ANDROID_EMULATOR`. `python3 scripts/private-emulator.py make android-input-test`
+owns a headless API 31 Google APIs emulator, including Workbook's system document picker.
 CI also retains API 30 input, profile and in-place update coverage through
 `make android-profile-test`.
 

@@ -144,7 +144,11 @@ entity-account-test: build/liboqs/lib/liboqs.a
 .PHONY: android-sdk-install-test
 android-sdk-install-test:
 	python3 scripts/install_android_sdk_test.py
-test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test entity-account-test android-sdk-install-test android-apk-check-test runtime-cache-test
+test: source-check core-test pass-state-test app-logic-test cli-test lesspass-compat-test entity-account-test android-sdk-install-test android-apk-check-test android-startup-test runtime-cache-test
+
+.PHONY: android-startup-test
+android-startup-test:
+	python3 scripts/android_startup_test.py
 .PHONY: android-apk-check-test
 android-apk-check-test:
 	python3 scripts/android_apk_check_test.py

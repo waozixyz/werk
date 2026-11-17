@@ -7,6 +7,7 @@ import subprocess
 import time
 from android_apk_check import check_apk
 from android_labels import label_position
+from android_startup import launch_home
 
 root = Path(__file__).resolve().parents[1]
 output = root / "build/android-input"
@@ -35,14 +36,29 @@ def find_label(word, timeout=15):
     while True:
         shot("label")
         position = label_position(output / "label.png", word)
+        if position is None:
+            # Sparse OCR can miss navigation text beside the clipboard preview.
+            position = label_position(output / "label.png", word, psm=6)
         if position is not None:
             return position
         if time.monotonic() >= deadline:
+            alive()
             raise AssertionError(f"Could not find {word!r} in the private emulator")
         time.sleep(0.3)
 
 def tap_label(word):
     tap(*find_label(word))
+
+def open_profiles():
+    # Android's clipboard preview can consume the first navigation tap.
+    # Require the destination form before letting the caller edit its name.
+    for attempt in range(2):
+        tap_label("Profiles")
+        try:
+            return find_label("Profile")
+        except AssertionError:
+            if attempt:
+                raise
 
 def scroll_to_label(word, direction="down"):
     hide_keyboard()
@@ -137,8 +153,8 @@ try:
     shell("run-as", package, "mkdir", "-p", "files/profile")
     adb("shell", f"run-as {package} sh -c 'umask 077; cat > files/profile/settings.txt'",
         input=b"name=Fixture Person\ntheme_mode=1\n")
-    shell("am", "start", "-n", package + "/android.app.NativeActivity")
-    time.sleep(2); alive(); dismiss_other_apps_not_responding(); shot("launch")
+    launch_home(adb, output, package, "launch")
+    alive(); dismiss_other_apps_not_responding(); shot("launch")
     size = shell("wm", "size").strip().split()[-1]
     width, height = map(int, size.split("x"))
     # Werkzeug scales by the screen density, as Android's dp do.
@@ -157,7 +173,7 @@ try:
     fill_field("Master", "test master")
     shot("keyboard")
     hide_keyboard(); alive()
-    tap(width // 2, bottom - int(35 * zoom))
+    open_profiles()
     fill_field("Profile", "Android test")
     shell("input", "keyevent", "4"); time.sleep(0.3)
     tap(int(100 * zoom), top + int((105 + bar) * zoom))
@@ -167,13 +183,13 @@ try:
     assert "test master" not in saved
     print("Android: keyboard input and first saved profile verified", flush=True)
     # Generate from the saved profile and copy it.
-    tap(int(100 * zoom), top + int((210 + bar) * zoom))
+    tap_label("Generate")
     # A slow emulator may still be deriving the password.
     time.sleep(2); dismiss_other_apps_not_responding()
-    tap(int(100 * zoom), bottom - int(119 * zoom))  # Copy, at the bottom of the scrolled form
+    tap(*scroll_to_label("Copy"))
     shot("generated")
-    tap(width // 2, bottom - int(35 * zoom))
-    tap(int(90 * zoom), top + int((55 + bar) * zoom))
+    _, profile_y = open_profiles()
+    tap(int(90 * zoom), profile_y + int(40 * zoom))
     shell("input", "keyevent", "123")  # Move to the end.
     shell("input", "keyevent", *["67" for _ in "Android test"])
     time.sleep(0.5)
@@ -189,8 +205,8 @@ try:
     expected += password + "\texample.com\talice\t16\t1\t1\t1\t1\t1\t\n"
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected, "Android second profile mismatch"
     shell("am", "force-stop", package)
-    shell("am", "start", "-n", package + "/android.app.NativeActivity")
-    time.sleep(1); alive(); dismiss_other_apps_not_responding()
+    launch_home(adb, output, package, "restart")
+    alive(); dismiss_other_apps_not_responding()
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected
     assert shell("run-as", package, "stat", "-c", "%a", "files/apps/pass/profiles.tsv").strip() == "600"
     shot("persisted")
@@ -232,8 +248,8 @@ try:
     # profile. No owner phone is selected by this harness.
     shell("am", "force-stop", package)
     adb("install", "-r", str(apk))
-    shell("am", "start", "-n", package + "/android.app.NativeActivity")
-    time.sleep(1); alive(); dismiss_other_apps_not_responding()
+    launch_home(adb, output, package, "updated")
+    alive(); dismiss_other_apps_not_responding()
     assert shell("run-as", package, "cat", "files/profile/settings.txt") == settings
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected
     shot("updated")
@@ -242,6 +258,6 @@ except BaseException:
     shot("failure")
     # These tags report asset loading and native startup without recording the
     # test's typed credentials. The emulator and its profile are disposable.
-    logs = adb("logcat", "-d", "-s", "raylib:I", "Werkzeug:I", check=False)
+    logs = adb("logcat", "-d", "-s", "kryon:I", "Werkzeug:I", "AndroidRuntime:E", "libc:F", check=False)
     (output / "startup-logcat.txt").write_bytes(logs.stdout)
     raise
