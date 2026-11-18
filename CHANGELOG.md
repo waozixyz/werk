@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Give Gallery matching artwork on Werkzeug Home and an icon in the Linux window switcher.
 - Use Mesh account sync and client imports while keeping existing account keys and Werkzeug data compatible.
 
 - Embedded in Harmony's Sessions window, Werkzeug draws every colour from Harmony's theme and follows its changes; started on its own it keeps its own appearance.

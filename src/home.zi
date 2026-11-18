@@ -72,7 +72,7 @@ home: HomeState;
 home_artwork_files: [APP_LIMIT][PATH_LIMIT]u8;
 
 HomeHasArtwork :: (id: string) -> bool {
-    return id == "pass" || id == "auth" || id == "calculator" || id == "clock" || id == "workbook"
+    return id == "pass" || id == "auth" || id == "calculator" || id == "clock" || id == "gallery" || id == "workbook"
 }
 
 HomeArtwork :: (index: s32, output: []u8) -> string {

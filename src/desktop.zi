@@ -8,6 +8,7 @@
 Command :: #import "command";
 Desktop :: #import "kryon/desktop_runtime";
 Capture :: #import "kryon/Cairo";
+GtkStyle :: #import "kryon/GtkStyleLinux";
 #import "kryon/Frame"
 #import "kryon/mini_embed"
 
@@ -66,6 +67,7 @@ main :: (argc: s32, argv: **u8) -> s32 {
         }
     }
     window_class: [64]u8
+    gallery := false
     unused CopyCString("werk", window_class[:])
     if argc >= 3 && TextFromCString(argv[1]) == "--app" {
         id := TextFromCString(argv[2])
@@ -73,16 +75,31 @@ main :: (argc: s32, argv: **u8) -> s32 {
         if id == "auth" { unused CopyCString("werk-auth", window_class[:]) }
         if id == "calculator" { unused CopyCString("werk-calculator", window_class[:]) }
         if id == "clock" { unused CopyCString("werk-clock", window_class[:]) }
-        if id == "gallery" { unused CopyCString("werk-gallery", window_class[:]) }
+        gallery = id == "gallery"
+        if gallery { unused CopyCString("werk-gallery", window_class[:]) }
         if id == "workbook" { unused CopyCString("werk-workbook", window_class[:]) }
     }
     hint: [32]u8
     unused CopyCString("SDL_VIDEO_X11_WMCLASS", hint[:])
     unused SetEnvironment(*hint[0], *window_class[0], 1)
+    if gallery {
+        app_id: [32]u8
+        unused CopyCString("xyz.waozi.werk.gallery", app_id[:])
+        unused CopyCString("SDL_VIDEO_WAYLAND_WMCLASS", hint[:])
+        unused SetEnvironment(*hint[0], *app_id[0], 1)
+    }
     if !Desktop.OpenDesktopSized(DESKTOP_WIDTH, DESKTOP_HEIGHT) {
         Desktop.CloseDesktop()
         Report("Werkzeug: could not open desktop\n")
         return 1
+    }
+    if gallery {
+        nodes: [1]GtkStyle.GtkStyleNode = .[.{widget_type = "GtkWindow"}]
+        icon := GtkStyle.GtkIconRaster("werk-gallery", 128, 1, nodes[:])
+        if icon.rgba.count > 0 {
+            unused Desktop.DesktopSetIcon(icon.width, icon.height, icon.rgba)
+            GtkStyle.GtkStyleBitmapRelease(*icon)
+        }
     }
     if !Desktop.WindowInterceptCloseHost(true) {
         Desktop.CloseDesktop()
