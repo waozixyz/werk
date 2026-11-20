@@ -86,7 +86,8 @@ class PictureNode(BaseHTTPRequestHandler):
         assert isinstance(json.loads(body), dict)
         requests.append('login')
         self.reply({'auth_token': 'private-fixture-token', 'expires_in_seconds': 3600,
-                    'server_time': int(time.time()), 'profile_icon': 128})
+                    'server_time': int(time.time()), 'profile_icon': 128,
+                    'account_alias': 'fixture_user'})
 
 
 with ThreadingHTTPServer(('127.0.0.1', 0), PictureNode) as node:

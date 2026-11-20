@@ -190,7 +190,7 @@ TopBar :: (session: Session, viewport: Rectangle) {
         title = ifx screen == SCREEN_APP then AppName(open_app) else "Profile"
         if screen == SCREEN_PROFILE && entity_account { title = "Account" }
     }
-    // The profile button names itself, with the picture beside the name.
+    // The profile button shows the account's username beside its picture.
     profile_width: float32 = 0.0
     if screen == SCREEN_HOME {
         profile_width = 150.0
@@ -198,8 +198,12 @@ TopBar :: (session: Session, viewport: Rectangle) {
     Label(session, cast(u64)11, title, Rectangle.{left, bar.y + 16.0,
             bar.width - left - profile_width - 24.0, 26.0}, 20)
     if screen == SCREEN_HOME {
+        username := ""
+        #if !#defined(PLATFORM_WEB) {
+            username = WerkAccountUsername()
+        }
         avatar := Button.Props.{.key = cast(u64)12, .id = 12,
-            .label = ifx ProfileName() == "" then "Profile" else ProfileName(),
+            .label = ifx username == "" then "Profile" else username,
             .bounds = Rectangle.{bar.x + bar.width - profile_width - 8.0, bar.y + 8.0, profile_width, 40.0},
             .image = ProfileImage(Rectangle.{}),
             .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}

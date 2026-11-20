@@ -10,11 +10,11 @@ ref = "e0367fa9c5731dcf9bb84ed7f3d294570d8c0bda"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "3f72441949d4e16094834fa9220e5d7fa77a0ac0"
+ref = "43e6ea3d76ded207e2be93ff82b2a609c3cfeb91"
 
 [dependencies.apps]
-git = "https://github.com/waozixyz/apps.git"
-ref = "40f598a1719bc99bbef7b61649aa168e923ef1f5"
+git = "https://git.waozi.xyz/waozi/apps.git"
+ref = "c18e70b434456823a5d332255d78b48064f12de3"
 
 [install]
 bin = "werk"
@@ -31,8 +31,8 @@ git = "https://github.com/kryonlabs/mingcute.git"
 ref = "master"
 
 [dependencies.mesh_client]
-git = "https://github.com/ziranlang/mesh-client.git"
-ref = "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449"
+git = "https://git.waozi.xyz/ziranlang/mesh-client.git"
+ref = "d99d9e9802061f726773a0f89d15ec4ed3366957"
 
 [dependencies.oqs]
 git = "https://github.com/ziranlang/oqs.git"
@@ -49,17 +49,17 @@ ref = "master"
 source = true
 
 [dependencies.entity]
-git = "https://github.com/waozixyz/entity.git"
-ref = "3c7df0daa0cfb12fff67dfaac34aac736687a59e"
+git = "https://git.waozi.xyz/waozi/entity.git"
+ref = "4e6b403d5daad43e1f1c09a36e2a69baacb68982"
 
 [dependencies.auth]
-git = "https://github.com/waozixyz/auth.git"
-ref = "e5a723713bf197b263444529ed55de5b96dd6ced"
+git = "https://git.waozi.xyz/waozi/auth.git"
+ref = "caf625df3c8720881dfe8818cff35180746bff56"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
 ref = "master"
 
 [dependencies.workbook]
-git = "https://github.com/kryonlabs/workbook.git"
-ref = "020c932232782d5f4526910a183fcb65b67b1e30"
+git = "https://git.waozi.xyz/kryonlabs/workbook.git"
+ref = "beda2d582965c391b21d5824cc0e5204f4318617"

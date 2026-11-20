@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Show a brief confirmation when Auth copies a code to the clipboard.
+- Show your account username in the top-right profile button.
 - Give Gallery matching artwork on Werkzeug Home and an icon in the Linux window switcher.
 - Use Mesh account sync and client imports while keeping existing account keys and Werkzeug data compatible.
 

@@ -15,6 +15,7 @@
     #import "std/date_time_linux"
     #import "entity/pairing"
     #import "mesh_client/client"
+    MeshAuth :: #import "mesh_client/auth";
     #import "account"
     #import "account_transition"
     #import "sync"
@@ -38,6 +39,7 @@
     werk_picture: EntityPicturePublisher;
     werk_picture_reader: EntityPictureReader;
     werk_picture_sequence: s32;
+    werk_alias_read_sequence: s32;
 
     WerkPictureChosen :: () { werk_picture_sequence += 1 }
 
@@ -54,8 +56,23 @@
             EntityPictureReadStop(*werk_picture_reader)
             return
         }
+        reading := werk_picture_reader.active
         icon := EntityPictureReadPump(*werk_picture_reader, *werk_management, werk_picture_sequence, UnixNow())
         unused ProfileReceivePicture(icon, published, TextUntilNul(werk_picture_reader.owner[:]))
+        if !reading && werk_picture_reader.active {
+            werk_alias_read_sequence = werk_management.queue.sequence
+        }
+        if reading && !werk_picture_reader.active &&
+        werk_picture_reader.pending.result == cast(MeshAuth.AuthResult)MeshAuth.AuthResult.AUTH_OK &&
+        werk_picture_reader.session.account_alias_known &&
+        TextUntilNul(werk_picture_reader.owner[:]) == AccountId() &&
+        TextUntilNul(werk_picture_reader.node[:]) == AccountServer() &&
+        werk_alias_read_sequence == werk_management.queue.sequence && !werk_management.queue.pending {
+            alias := TextUntilNul(werk_picture_reader.session.account_alias[:])
+            if (alias == "" || ProviderAliasValid(alias)) && alias != WerkAccountUsername() {
+                unused WerkAliasSave(alias)
+            }
+        }
     }
 
     WerkAliasPath :: (output: []u8) -> string {
@@ -70,21 +87,34 @@
         count := ReadPrivate(WerkAliasPath(path[:]), text[:])
         if count < 66 { return }
         document := TextUntilNul(text[:])
-        if document[:64] != AccountId() || document[64] != cast(u8)10 { return }
+        if document.count < 66 || document[:64] != AccountId() || document[64] != cast(u8)10 { return }
         if ProviderAliasValid(document[65:]) { unused CopyCString(document[65:], werk_management_alias[:]) }
     }
-    WerkManagementSnapshot :: (context: *void, output: *Management) {
+    WerkAccountUsername :: () -> string {
         if werk_management_generation != account_generation {
             WerkAliasRead()
             werk_management_generation = account_generation
         }
+        return TextUntilNul(werk_management_alias[:])
+    }
+    WerkAliasSave :: (alias: string) -> bool {
+        path: [PATH_LIMIT]u8
+        text: Vec(u8)
+        BuilderPrint(*text, "%\n%", AccountId(), alias)
+        document := BuilderFinish(text)
+        defer { Entity.EntityFree(document) }
+        if !WritePrivate(WerkAliasPath(path[:]), document) { return false }
+        werk_management_generation = account_generation
+        return CopyCString(alias, werk_management_alias[:])
+    }
+    WerkManagementSnapshot :: (context: *void, output: *Management) {
         output.available = true
         #if #defined(ANDROID_BUILD) {
             output.available = false
         }
         output.account = AccountReady()
         output.public_id = account.keys.public_id
-        output.alias = werk_management_alias
+        unused CopyCString(WerkAccountUsername(), output.alias[:])
         output.enabled = AccountSyncEnabled()
         output.busy = SyncRunning()
         output.capabilities = ACCOUNT_CREATE | ACCOUNT_IMPORT | ACCOUNT_SWITCH | ACCOUNT_LINK
@@ -156,14 +186,7 @@
             return 1
         }
         if operation == "alias_saved" {
-            path: [PATH_LIMIT]u8
-            text: Vec(u8)
-            BuilderPrint(*text, "%\n%", AccountId(), TextUntilNul(request.value[:]))
-            document := BuilderFinish(text)
-            defer { Entity.EntityFree(document) }
-            if !WritePrivate(WerkAliasPath(path[:]), document) { return 0 }
-            unused CopyCString(TextUntilNul(request.value[:]), werk_management_alias[:])
-            return 1
+            return ifx WerkAliasSave(TextUntilNul(request.value[:])) then 1 else 0
         }
         if operation == "link_show" { werk_management_pair_delivered = false; werk_management_link_owner = account.keys.public_id; LinkCancel(); return ifx Pairing.DeviceLinkShow() then 1 else 0 }
         if operation == "link_join" { werk_management_pair_delivered = false; werk_management_link_owner = account.keys.public_id; LinkCancel(); return ifx Pairing.DeviceLinkScan(TextUntilNul(request.value[:])) then 1 else 0 }

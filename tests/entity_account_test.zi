@@ -160,10 +160,14 @@ CheckPictureReadback :: () -> s32 {
     if ProfileIcon() != 128 || TextUntilNul(profile.picture_owner[:]) != AccountId() ||
     !PictureShared.SharedProfileLoad(AccountId(), *restored) || PictureEntity.EntityPublicIcon(restored) != 128 ||
     TextUntilNul(restored.name[:]) != "Other app's name" { return 39 }
+    if ProfileName() == "fixture_user" || WerkAccountUsername() != "fixture_user" { return 43 }
+    werk_management_generation = -1
+    if WerkAccountUsername() != "fixture_user" { return 44 }
     LoadProfile()
     if ProfileIcon() != 128 { return 40 }
     EntityPictureReadStop(*werk_picture_reader)
-    return ifx ForgetAccount() then 0 else 41
+    if !ForgetAccount() { return 41 }
+    return ifx WerkAccountUsername() == "" then 0 else 45
 }
 
 #program_export

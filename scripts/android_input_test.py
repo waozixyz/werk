@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import time
+from PIL import Image
 from android_apk_check import check_apk
 from android_labels import label_position
 from android_startup import launch_home
@@ -31,16 +32,20 @@ def shell(*arguments, check=True):
 def shot(name):
     (output / f"{name}.png").write_bytes(adb("exec-out", "screencap", "-p").stdout)
 
-def find_label(word, timeout=15):
+def find_label(word, timeout=15, minimum_y=0):
     deadline = time.monotonic() + timeout
     while True:
         shot("label")
-        position = label_position(output / "label.png", word)
+        screenshot = output / "label.png"
+        if minimum_y:
+            with Image.open(screenshot) as frame:
+                screenshot = output / "label-bottom.png"
+                frame.crop((0, minimum_y, frame.width, frame.height)).save(screenshot)
+        position = label_position(screenshot, word)
         if position is None:
-            # Sparse OCR can miss navigation text beside the clipboard preview.
-            position = label_position(output / "label.png", word, psm=6)
+            position = label_position(screenshot, word, psm=6)
         if position is not None:
-            return position
+            return position[0], position[1] + minimum_y
         if time.monotonic() >= deadline:
             alive()
             raise AssertionError(f"Could not find {word!r} in the private emulator")
@@ -53,9 +58,11 @@ def open_profiles():
     # Android's clipboard preview can consume the first navigation tap.
     # Require the destination form before letting the caller edit its name.
     for attempt in range(2):
-        tap_label("Profiles")
+        # Wait for the bottom bar to return to its full-height position
+        # after the keyboard closes before tapping the tab.
+        tap(*find_label("Profiles", minimum_y=bottom - int(100 * zoom)))
         try:
-            return find_label("Profile")
+            return find_label("Profile name")
         except AssertionError:
             if attempt:
                 raise
@@ -155,6 +162,7 @@ try:
         input=b"name=Fixture Person\ntheme_mode=1\n")
     launch_home(adb, output, package, "launch")
     alive(); dismiss_other_apps_not_responding(); shot("launch")
+    find_label("Profile")
     size = shell("wm", "size").strip().split()[-1]
     width, height = map(int, size.split("x"))
     # Werkzeug scales by the screen density, as Android's dp do.
@@ -166,7 +174,6 @@ try:
     runtime_modes = shell("run-as", package, "stat", "-c", "%a", "files/cache", "files/cache/ziran-native").split()
     assert runtime_modes == ["700", "700"], f"Native runtime cache is not private: {runtime_modes}"
     find_label("Site")
-    bar = 56
     fill_field("Site", "example.com")
     assert "mInputShown=true" in shell("dumpsys", "input_method"), "Soft keyboard did not open"
     fill_field("Login", "alice")
@@ -174,9 +181,9 @@ try:
     shot("keyboard")
     hide_keyboard(); alive()
     open_profiles()
-    fill_field("Profile", "Android test")
-    shell("input", "keyevent", "4"); time.sleep(0.3)
-    tap(int(100 * zoom), top + int((105 + bar) * zoom))
+    fill_field("Profile name", "Android test")
+    hide_keyboard()
+    tap_label("Save Current Profile")
     expected = "Android test\texample.com\talice\t16\t1\t1\t1\t1\t1\t\n"
     saved = shell("run-as", package, "cat", "files/apps/pass/profiles.tsv")
     assert saved == expected, f"Profile input/persistence mismatch: {saved!r}"
@@ -199,8 +206,8 @@ try:
     # once per clip, so it is not automated here.
     type_text("dEeEDu7/b27L#r\\<\\&")
     time.sleep(0.5)
-    shell("input", "keyevent", "4"); time.sleep(0.3)
-    tap(int(100 * zoom), top + int((105 + bar) * zoom))
+    hide_keyboard()
+    tap_label("Save Current Profile")
     password = "dEeEDu7/b27L#r<&"  # Independent LessPass reference.
     expected += password + "\texample.com\talice\t16\t1\t1\t1\t1\t1\t\n"
     assert shell("run-as", package, "cat", "files/apps/pass/profiles.tsv") == expected, "Android second profile mismatch"
@@ -212,7 +219,7 @@ try:
     shot("persisted")
     print("Android: second profile, restart and private permissions verified", flush=True)
     # The shared Profile retains existing names and edits appearance.
-    tap_label("Fixture"); time.sleep(0.8); alive()
+    tap_label("Profile"); time.sleep(0.8); alive()
     settings = shell("run-as", package, "cat", "files/profile/settings.txt")
     assert "name=Fixture Person\n" in settings, "Profile lost the retained name"
     tap(*scroll_to_label("Dark")); time.sleep(0.5)

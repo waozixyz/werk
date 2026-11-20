@@ -147,6 +147,16 @@ try:
             copied = command("xclip", "-selection", "clipboard", "-o")
             assert re.fullmatch(r"[0-9]{6}", copied), (x, y, copied)
             assert copied in {expected(key, at, 6, 10) for at in (before, time.time())}, (x, y, copied)
+        toast = output / f"copy-toast-text-{dark}.png"
+        with Image.open(capture(f"copy-toast-{dark}")) as frame:
+            center = frame.width // 2
+            region = frame.crop((center - 105, frame.height - 66, center + 105, frame.height - 4)).convert("L")
+            if dark:
+                region = ImageOps.invert(region)
+            region = ImageOps.autocontrast(region)
+            region.resize((region.width * 4, region.height * 4), Image.Resampling.LANCZOS).save(toast)
+        text = command("tesseract", str(toast), "stdout", "--psm", "11")
+        assert "Copied to clipboard" in text, text
         # Edit remains independently clickable and never overwrites the clipboard.
         before_edit = copied
         command("xdotool", "mousemove", "--window", window, "370", "146")
@@ -186,6 +196,6 @@ try:
                 time.sleep(0.2)
             assert seen == {"purple", "orange"}, seen
         stop()
-    print("Auth native GUI: grouped current/next codes, raw copy, both bar colours, dark/light cards")
+    print("Auth native GUI: grouped current/next codes, raw copy and toast, both bar colours, dark/light cards")
 finally:
     stop()
